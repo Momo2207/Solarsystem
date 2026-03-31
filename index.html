@@ -122,6 +122,7 @@
     let centerX, centerY, translateX = 0, translateY = 0, rotationX = 65, rotationY = 0;
     let isDragging = false, isRotating = false, lastX = 0, lastY = 0;
     
+    // COMPRESSED DATA ARRAYS
     const SOLAR_SYSTEM_DATA=[{name:"Sun",type:"star",mass:1.0,a:0,e:0,i:0,node:0,peri:0,M:0,radius:0.00465,day:27.28,texIdx:0,color:[1.0,0.85,0.5,1.0]},{name:"Mercury",type:"planet",mass:1.66e-7,a:0.387,e:0.2056,i:7.00,node:48.33,peri:29.12,M:174.79,radius:1.63e-5,day:58.65,texIdx:1,color:[0.6,0.6,0.6,1.0]},{name:"Venus",type:"planet",mass:2.45e-6,a:0.723,e:0.0067,i:3.39,node:76.68,peri:54.88,M:50.11,radius:4.04e-5,day:-243.02,texIdx:2,color:[0.9,0.8,0.6,1.0]},{name:"Earth",type:"planet",mass:3.04e-6,a:1.000,e:0.0167,i:0.00,node:-11.26,peri:114.20,M:358.61,radius:4.26e-5,day:1.0,texIdx:3,color:[0.3,0.6,1.0,1.0]},{name:"Mars",type:"planet",mass:3.23e-7,a:1.524,e:0.0934,i:1.85,node:49.55,peri:286.50,M:19.37,radius:2.26e-5,day:1.026,texIdx:4,color:[0.9,0.4,0.2,1.0]},{name:"Ceres",type:"dwarf",mass:4.7e-10,a:2.768,e:0.076,i:10.59,node:80.32,peri:73.59,M:77.37,radius:3.1e-6,day:0.378,texIdx:10,color:[0.6,0.5,0.5,1.0]},{name:"Jupiter",type:"planet",mass:9.54e-4,a:5.204,e:0.0484,i:1.30,node:100.46,peri:273.86,M:20.02,radius:4.67e-4,day:0.413,texIdx:5,color:[0.8,0.7,0.6,1.0],tilt:3.1,rings:{inner:1.3,outer:1.8,color:[0.8,0.75,0.7,0.08]}},{name:"Saturn",type:"planet",mass:2.85e-4,a:9.582,e:0.0538,i:2.48,node:113.66,peri:339.39,M:317.02,radius:3.89e-4,day:0.444,texIdx:6,color:[0.9,0.8,0.5,1.0],tilt:26.7,rings:{inner:1.2,outer:2.3,color:[0.85,0.8,0.7,0.15]}},{name:"Uranus",type:"planet",mass:4.36e-5,a:19.201,e:0.0472,i:0.77,node:74.00,peri:96.99,M:142.59,radius:1.69e-4,day:-0.718,texIdx:7,color:[0.5,0.9,0.9,1.0],tilt:97.7,rings:{inner:1.5,outer:2.1,color:[0.6,0.8,0.9,0.1]}},{name:"Neptune",type:"planet",mass:5.15e-5,a:30.047,e:0.0086,i:1.77,node:131.78,peri:273.18,M:256.22,radius:1.64e-4,day:0.671,texIdx:8,color:[0.2,0.4,0.9,1.0],tilt:28.3,rings:{inner:1.4,outer:1.9,color:[0.5,0.6,0.8,0.08]}},{name:"Pluto",type:"dwarf",mass:6.5e-9,a:39.482,e:0.2488,i:17.16,node:110.29,peri:113.83,M:14.53,radius:7.9e-6,day:-6.387,texIdx:9,color:[0.8,0.7,0.6,1.0]}];
     const LUNAR_DATA=[{name:"Moon",parent:"Earth",a:0.00257,e:0.0549,i:5.14,period:0.0748,radius:1.1e-5,day:27.3,mass:3.69e-8,M:0,texIdx:10,color:[0.7,0.7,0.7,1.0]},{name:"Io",parent:"Jupiter",a:0.00281,e:0.0041,i:0.04,period:0.0048,radius:1.2e-5,day:1.76,mass:4.4e-8,M:0,texIdx:10,color:[0.9,0.8,0.2,1.0]},{name:"Europa",parent:"Jupiter",a:0.00448,e:0.0094,i:0.47,period:0.0097,radius:1.0e-5,day:3.55,mass:2.4e-8,M:90,texIdx:10,color:[0.8,0.8,0.9,1.0]},{name:"Ganymede",parent:"Jupiter",a:0.00715,e:0.0013,i:0.20,period:0.0196,radius:1.7e-5,day:7.15,mass:7.4e-8,M:180,texIdx:10,color:[0.6,0.6,0.6,1.0]},{name:"Callisto",parent:"Jupiter",a:0.01258,e:0.0074,i:0.19,period:0.0457,radius:1.6e-5,day:16.68,mass:5.4e-8,M:270,texIdx:10,color:[0.4,0.4,0.4,1.0]},{name:"Titan",parent:"Saturn",a:0.00816,e:0.0288,i:0.33,period:0.0436,radius:1.7e-5,day:15.94,mass:6.7e-8,M:180,texIdx:10,color:[0.8,0.6,0.2,1.0]}];
     const COMET_DATA=[{name:"Halley's Comet",type:"comet",a:17.8,e:0.967,i:162.2,node:58.4,peri:111.3,M:38.0,mass:1e-12,radius:1e-6,color:[0.5,0.8,1.0,1.0]},{name:"Hale-Bopp",type:"comet",a:186.0,e:0.995,i:89.4,node:282.5,peri:130.6,M:0.5,mass:2e-12,radius:2e-6,color:[0.8,0.9,1.0,1.0]}];
@@ -130,7 +131,8 @@
     function solveKepler(M, e) { let E = M + e * Math.sin(M); for (let i = 0; i < 20; i++) { let E_next = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E)); if (Math.abs(E_next - E) < 1e-6) break; E = E_next; } return E; }
     function getEllipsePoint(a, e, i_deg, node_deg, peri_deg, E_deg) { const d2r = Math.PI / 180, i = i_deg * d2r, node = node_deg * d2r, peri = peri_deg * d2r, E = E_deg * d2r, v = 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(E / 2), Math.sqrt(1 - e) * Math.cos(E / 2)), r = a * (1 - e * Math.cos(E)), xo = r * Math.cos(v), yo = r * Math.sin(v), cn = Math.cos(node), sn = Math.sin(node), cp = Math.cos(peri), sp = Math.sin(peri), ci = Math.cos(i), si = Math.sin(i); return { x: (cn*cp-sn*sp*ci)*xo + (-cn*sp-sn*cp*ci)*yo, y: (sp*si)*xo + (cp*si)*yo, z: (sn*cp+cn*sp*ci)*xo + (-sn*sp+cn*cp*ci)*yo }; }
     function getCartesianFromKepler(a, e, i_deg, node_deg, peri_deg, M_deg, cM) { if (a === 0) return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }; const d2r = Math.PI / 180, i = i_deg * d2r, node = node_deg * d2r, peri = peri_deg * d2r, M = M_deg * d2r, E = solveKepler(M, e), v = 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(E / 2), Math.sqrt(1 - e) * Math.cos(E / 2)), r = a * (1 - e * Math.cos(E)), xo = r * Math.cos(v), yo = r * Math.sin(v), h = Math.sqrt(G * cM * a * (1 - e * e)), vxo = (G * cM / h) * -Math.sin(v), vyo = (G * cM / h) * (e + Math.cos(v)), cn = Math.cos(node), sn = Math.sin(node), cp = Math.cos(peri), sp = Math.sin(peri), ci = Math.cos(i), si = Math.sin(i), r11 = cn * cp - sn * sp * ci, r12 = -cn * sp - sn * cp * ci, r21 = sn * cp + cn * sp * ci, r22 = -sn * sp + cn * cp * ci, r31 = sp * si, r32 = cp * si; return { x: r11*xo + r12*yo, y: r31*xo + r32*yo, z: r21*xo + r22*yo, vx: r11*vxo + r12*vyo, vy: r31*vxo + r32*vyo, vz: r21*vxo + r22*vyo }; }
-
+    
+    // --- WEBGL SHADERS ---
     const vsSource = `attribute vec3 aPosition; attribute float aSize; attribute vec4 aColor; attribute float aType; attribute float aTexIndex; attribute float aRotRate; uniform vec2 uTranslate; uniform float uScale; uniform vec2 uCanvasSize; uniform float uRotX; uniform float uRotY; varying vec4 vColor; varying float vType; varying vec3 vLightDir; varying float vTexIndex; varying float vRotRate; void main(){ float cosY = cos(uRotY); float sinY = sin(uRotY); float x1 = aPosition.x * cosY + aPosition.z * sinY; float z1 = -aPosition.x * sinY + aPosition.z * cosY; float cosX = cos(uRotX); float sinX = sin(uRotX); float y2 = aPosition.y * cosX - z1 * sinX; float z2 = aPosition.y * sinX + z1 * cosX; float sf = 100.0 / (100.0 + z2); vec2 p = vec2(x1, y2) * sf * uScale + uTranslate + (uCanvasSize / 2.0); gl_Position = vec4(vec2((2.0 * p.x / uCanvasSize.x) - 1.0, 1.0 - (2.0 * p.y / uCanvasSize.y)), 0.0, 1.0); vec3 objToSun = -aPosition; float lx1 = objToSun.x * cosY + objToSun.z * sinY; float lz1 = -objToSun.x * sinY + objToSun.z * cosY; float ly2 = objToSun.y * cosX - lz1 * sinX; float lz2 = objToSun.y * sinX + lz1 * cosX; vLightDir = normalize(vec3(lx1, ly2, lz2)); float finalSize = aSize * sf * uScale; if (aType == 2.0) finalSize = max(finalSize, 5.0); else if (aType == 3.0) finalSize = aSize; else if (aType == 0.0) finalSize = clamp(aSize * uScale * sf * 0.1, 3.0, 35.0); else if (aType == 4.0) finalSize = clamp(aSize * uScale * sf * 0.5, 1.0, 2.5); else if (aType == 5.0) finalSize = max(finalSize, 3.0); else finalSize = max(finalSize, 2.5); gl_PointSize = finalSize; vColor = aColor; vType = aType; vTexIndex = aTexIndex; vRotRate = aRotRate; }`;
     const fsSource = `precision mediump float; varying vec4 vColor; varying float vType; varying vec3 vLightDir; varying float vTexIndex; varying float vRotRate; uniform float uExposure; uniform float uTime; uniform sampler2D uSampler; void main(){ vec2 c = gl_PointCoord * 2.0 - 1.0; float d = length(c); if(d > 1.0) discard; vec4 finalColor; if (vTexIndex >= 0.0) { float z = sqrt(max(0.0, 1.0 - d*d)); vec3 normal = vec3(c.x, -c.y, -z); float u = 0.5 + atan(normal.x, -normal.z) / 6.28318; u = fract(u + (uTime * vRotRate)); float v = 0.5 + asin(normal.y) / 3.14159; float uCompress = u * 0.98 + 0.01; float vCompress = v * 0.98 + 0.01; float col = mod(vTexIndex, 4.0); float row = floor(vTexIndex / 4.0); vec2 atlasUV = vec2((col + uCompress) * 0.25, (row + vCompress) * 0.25); vec4 texColor = texture2D(uSampler, atlasUV); if (vType == 2.0) { finalColor = vec4(texColor.rgb, 1.0); } else { float rawDiff = dot(normal, vLightDir); float diff = max(rawDiff, 0.0); float rim = (1.0 - max(dot(normal, vec3(0.0, 0.0, -1.0)), 0.0)) * 0.15; vec3 baseColor = texColor.rgb * (diff + 0.05) + (rim * diff); if (vTexIndex == 3.0) { vec2 nightUV = vec2((11.0 + uCompress) * 0.25, (2.0 + vCompress) * 0.25); vec4 nightTex = texture2D(uSampler, nightUV); float cityBlend = smoothstep(0.1, -0.2, rawDiff); baseColor += nightTex.rgb * cityBlend * vec3(1.0, 0.9, 0.6) * 1.5; } finalColor = vec4(baseColor, 1.0); } } else { if (vType == 3.0) { float glow = exp(-d * d * 15.0); finalColor = vec4(vColor.rgb, vColor.a * glow); } else if (vType == 0.0) { float glow = exp(-d * d * 4.0); finalColor = vec4(vColor.rgb, vColor.a * glow * (1.0 - smoothstep(0.4, 1.0, d))); } else if (vType == 4.0) { float glow = exp(-d * d * 15.0); finalColor = vec4(vColor.rgb, vColor.a * glow); } else if (vType == 5.0) { if (d < 0.75) discard; float alpha = (1.0 - smoothstep(0.75, 1.0, d)) * 0.6; finalColor = vec4(vColor.rgb, vColor.a * alpha); } else { finalColor = vColor; } } finalColor.rgb *= uExposure; gl_FragColor = finalColor; }`;
 
@@ -221,7 +223,7 @@
         });
     }
 
-    // --- NEW: LIVE JPL SBDB SEARCH (WITH FILE:/// CORS PROXY) ---
+    // --- NEW: LIVE JPL SBDB SEARCH (WITH RELIABLE CODETABS PROXY) ---
     document.getElementById('jplSearchBtn').addEventListener('click', async () => {
         const query = document.getElementById('jplSearchInput').value.trim();
         if (!query) return;
@@ -229,14 +231,13 @@
         status.textContent = "SEARCHING JPL SBDB..."; status.style.color = "#ffaa00";
 
         try {
-            // FIXED: Using AllOrigins proxy for the SBDB API to bypass file:/// CORS blocks
+            // FIXED: Using CodeTabs proxy. It is extremely reliable and does not timeout like AllOrigins.
             const rawUrl = `https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(query)}`;
-            const proxiedUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rawUrl)}`;
+            const proxiedUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rawUrl)}`;
             
             const res = await fetch(proxiedUrl);
-            if (!res.ok) throw new Error("Proxy Error.");
-            const proxyData = await res.json();
-            const data = JSON.parse(proxyData.contents);
+            if (!res.ok) throw new Error("Proxy Server Offline.");
+            const data = await res.json(); // CodeTabs returns raw JSON (no contents wrapper)
             
             if (data.code && data.code === '300') throw new Error(`Multiple matches found. Be specific.`);
             if (!data.orbit || !data.orbit.elements) throw new Error("No orbital elements.");
@@ -247,7 +248,6 @@
 
             if (e >= 0.99) throw new Error("Hyperbolic orbits not supported.");
 
-            // Math: Reversing JPL epoch to J2000 epoch
             const daysSinceJ2000 = epochJD - 2451545.0;
             let M_J2000 = M_epoch - (n * daysSinceJ2000);
             M_J2000 = M_J2000 % 360; if (M_J2000 < 0) M_J2000 += 360;
@@ -277,6 +277,7 @@
         }
     });
 
+    // --- JSONP NASA PROBE TELEMETRY (BYPASSES ALL CORS/PROXIES) ---
     function loadJPLTelemetryJSONP(dateObj) {
         return new Promise((resolve) => {
             const jplStatus = document.getElementById('jpl-status');
@@ -286,7 +287,8 @@
             const startStr = `${yyyy}-${mm}-${dd} 00:00`, stopStr = `${yyyy}-${mm}-${dd} 00:01`;
 
             const apiTargets = [ { id: '-31', name: 'Voyager 1' }, { id: '-32', name: 'Voyager 2' }, { id: '-170', name: 'JWST' } ];
-            probes = []; let scriptsLoaded = 0, successCount = 0; window.jplCallbacks = {};
+            probes = []; let scriptsLoaded = 0, successCount = 0;
+            window.jplCallbacks = {};
 
             const checkDone = () => { scriptsLoaded++; if (scriptsLoaded === apiTargets.length) { jplStatus.textContent = successCount === apiTargets.length ? "📡 JPL HORIZONS: LINK ESTABLISHED" : "📡 JPL HORIZONS: OFFLINE (USING FALLBACKS)"; jplStatus.style.color = successCount === apiTargets.length ? "#55ff55" : "#ff5555"; setTimeout(() => { jplStatus.textContent = ""; }, 4000); buildSidebar(); resolve(); } };
 
