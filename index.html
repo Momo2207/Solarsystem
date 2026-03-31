@@ -113,9 +113,7 @@
     if (!gl) throw new Error('WebGL not supported');
 
     const G = 4 * Math.PI * Math.PI, dt = 1.0 / 8766.0, J2000 = new Date(Date.UTC(2000, 0, 1, 12, 0, 0)); 
-    
-    let currentDate = new Date(J2000);
-    let isPaused = false, physicsStepsPerFrame = 240, elapsedTimeYears = 0;
+    let currentDate = new Date(J2000), isPaused = false, physicsStepsPerFrame = 240, elapsedTimeYears = 0;
     let majorBodies = [], moons = [], asteroids = [], comets = [], probes = [], starfield = [], ringParticles = [];
     let trackingTarget = null, showTrails = true, showGrid = true, showLabels = true, showOrbits = true;
     let visualScaleMult = 1000.0, viewZoom = 0.05, targetZoom = 0.05, globalExposure = 1.5; 
@@ -152,6 +150,7 @@
     const typBuffer = gl.createBuffer(), texIdxBuffer = gl.createBuffer(), rotRateBuffer = gl.createBuffer();
     const atlasTexture = gl.createTexture();
 
+    // --- ESSENTIAL ENGINE LOGIC ---
     function getScreenProjection(x, y, z) { const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180, cY = Math.cos(rY), sY = Math.sin(rY), cX = Math.cos(rX), sX = Math.sin(rX), x1 = x * cY + z * sY, z1 = -x * sY + z * cY, y2 = y * cX - z1 * sX, z2 = y * sX + z1 * cX, sf = 100 / (100 + z2); return { rawX: x1, rawY: y2, rawZ: z2, sf: sf, sx: centerX + x1 * sf * viewZoom + translateX, sy: centerY + y2 * sf * viewZoom + translateY }; }
     function getSpacetimeDepth(x, z) { let y = 0; const wells = majorBodies.filter(b => b.mass > 1e-5); for (let i = 0; i < wells.length; i++) { const b = wells[i], dist = Math.hypot(x - b.x, z - b.z); y += (b.mass * (b.name==="Sun"?3.0:1500.0)) / (dist + (b.name==="Sun"?0.3:0.1)); } return y; }
     function getBodyY(body) { if (!showGrid) return body.y; if (body.parentBody) return getSpacetimeDepth(body.parentBody.x, body.parentBody.z) + (body.y - body.parentBody.y); return getSpacetimeDepth(body.x, body.z); }
@@ -223,7 +222,24 @@
         });
     }
 
-    // --- PRODUCTION READY: LIVE JPL SBDB SEARCH ---
+    // --- CENTRAL PROXY QUEUE ---
+    // Safely routes direct fetches through a stable proxy (CodeTabs), and falls back to AllOrigins Raw Mode if it fails.
+    async function fetchWithProxy(rawUrl) {
+        const proxies = [
+            `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rawUrl)}`,
+            `https://api.allorigins.win/raw?url=${encodeURIComponent(rawUrl)}`
+        ];
+        let lastErr;
+        for (let p of proxies) {
+            try {
+                const res = await fetch(p);
+                if (res.ok) return await res.json();
+            } catch (e) { lastErr = e; }
+        }
+        throw lastErr || new Error("Proxies Offline");
+    }
+
+    // --- LIVE JPL SBDB SEARCH ---
     document.getElementById('jplSearchBtn').addEventListener('click', async () => {
         const query = document.getElementById('jplSearchInput').value.trim();
         if (!query) return;
@@ -231,11 +247,8 @@
         status.textContent = "SEARCHING JPL SBDB..."; status.style.color = "#ffaa00";
 
         try {
-            // FIXED: Direct call. NASA allows CORS for real web domains (like GitHub Pages)!
-            const url = `https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(query)}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error("API Error.");
-            const data = await res.json();
+            const rawUrl = `https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(query)}`;
+            const data = await fetchWithProxy(rawUrl);
             
             if (data.code && data.code === '300') throw new Error(`Multiple matches found. Be specific.`);
             if (!data.orbit || !data.orbit.elements) throw new Error("No orbital elements.");
@@ -246,7 +259,6 @@
 
             if (e >= 0.99) throw new Error("Hyperbolic orbits not supported.");
 
-            // Math: Reversing JPL epoch to J2000 epoch
             const daysSinceJ2000 = epochJD - 2451545.0;
             let M_J2000 = M_epoch - (n * daysSinceJ2000);
             M_J2000 = M_J2000 % 360; if (M_J2000 < 0) M_J2000 += 360;
@@ -276,7 +288,7 @@
         }
     });
 
-    // --- PRODUCTION READY: DIRECT NASA PROBE FETCH ---
+    // --- NASA HORIZONS PROBE TELEMETRY ---
     async function loadJPLTelemetry(dateObj) {
         const jplStatus = document.getElementById('jpl-status');
         jplStatus.textContent = "📡 JPL HORIZONS: FETCHING TELEMETRY..."; jplStatus.style.color = "#ffaa00";
@@ -288,13 +300,10 @@
         probes = []; let successCount = 0;
 
         for (const t of apiTargets) {
-            // FIXED: Direct call without proxies or JSONP.
-            const url = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='${t.id}'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='@10'&START_TIME='${startStr}'&STOP_TIME='${stopStr}'&STEP_SIZE='1m'&OUT_UNITS='AU-D'&VEC_TABLE='2'`;
+            const rawUrl = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='${t.id}'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='@10'&START_TIME='${startStr}'&STOP_TIME='${stopStr}'&STEP_SIZE='1m'&OUT_UNITS='AU-D'&VEC_TABLE='2'`;
             
             try {
-                const res = await fetch(url);
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
+                const data = await fetchWithProxy(rawUrl);
                 const text = data.result;
 
                 const xMatch = text.match(/X =\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
@@ -309,7 +318,7 @@
                     const vx = parseFloat(vxMatch[1]) * 365.25, vz = parseFloat(vyMatch[1]) * 365.25, vy = parseFloat(vzMatch[1]) * 365.25;
                     probes.push({ name: t.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: x, y: y, z: z, vx: vx, vy: vy, vz: vz, ax: 0, ay: 0, az: 0, trail: [] });
                     successCount++;
-                }
+                } else throw new Error("Parse");
             } catch (e) {
                 console.warn(`JPL Fetch Failed for ${t.name}, using Hardcoded Fallback.`);
                 const fb = FALLBACK_PROBES.find(p => p.name === t.name);
