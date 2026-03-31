@@ -224,7 +224,7 @@
         });
     }
 
-    // --- LIVE JPL SBDB SEARCH (Direct Fetch) ---
+    // --- LIVE JPL SBDB SEARCH (Now Bypassing CORS Blocks via AllOrigins Proxy) ---
     document.getElementById('jplSearchBtn').addEventListener('click', async () => {
         const query = document.getElementById('jplSearchInput').value.trim();
         if (!query) return;
@@ -232,8 +232,11 @@
         status.textContent = "SEARCHING JPL SBDB..."; status.style.color = "#ffaa00";
 
         try {
-            // Direct fetch (SBDB supports CORS)
-            const res = await fetch(`https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(query)}`);
+            // FIX: Wraps the NASA URL in the reliable allorigins.win proxy
+            const targetUrl = `https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(query)}`;
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`;
+            
+            const res = await fetch(proxyUrl);
             if (!res.ok) throw new Error("API Error.");
             const data = await res.json();
             
@@ -275,29 +278,33 @@
         }
     });
 
-    // --- HORIZONS PROBE TELEMETRY (CLEAN CODE_TABS PROXY WITHOUT SPACES/QUOTES) ---
+    // --- HORIZONS PROBE TELEMETRY (FIXED CORS & PROXY ROUTING) ---
     async function loadJPLTelemetry(dateObj) {
         const jplStatus = document.getElementById('jpl-status');
         jplStatus.textContent = "📡 JPL HORIZONS: FETCHING TELEMETRY..."; jplStatus.style.color = "#ffaa00";
 
-        // FIXED: Using only simple dates (no time, no spaces) to prevent CodeTabs from throwing a 400 Bad Request
+        // Formatted with times because NASA requires accurate timestamp bounds for VECTORS
         const yyyy = dateObj.getUTCFullYear(), mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0'), dd = String(dateObj.getUTCDate()).padStart(2, '0');
-        const startStr = `${yyyy}-${mm}-${dd}`;
+        const startStr = `${yyyy}-${mm}-${dd} 00:00`;
         const nextDate = new Date(dateObj.getTime() + 86400000);
-        const stopStr = `${nextDate.getUTCFullYear()}-${String(nextDate.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDate.getUTCDate()).padStart(2, '0')}`;
+        const stopStr = `${nextDate.getUTCFullYear()}-${String(nextDate.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDate.getUTCDate()).padStart(2, '0')} 00:00`;
 
         const apiTargets = [ { id: '-31', name: 'Voyager 1' }, { id: '-32', name: 'Voyager 2' }, { id: '-170', name: 'JWST' } ];
         probes = []; let successCount = 0;
 
         for (const t of apiTargets) {
-            // FIXED: Removed all single quotes so the URL encoding stays completely clean
-            const rawUrl = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=${t.id}&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=@10&START_TIME=${startStr}&STOP_TIME=${stopStr}&STEP_SIZE=1d&OUT_UNITS=AU-D&VEC_TABLE=2`;
-            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rawUrl)}`;
+            // FIX: Re-introduced single quotes because Horizons parser demands them, but wrapped in AllOrigins to bypass CORS entirely
+            const rawUrl = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='${t.id}'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='@10'&START_TIME='${startStr}'&STOP_TIME='${stopStr}'&STEP_SIZE='1d'&OUT_UNITS='AU-D'&VEC_TABLE='2'`;
+            
+            // Encode the full NASA URL before passing to proxy
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(rawUrl)}`;
             
             try {
                 const res = await fetch(proxyUrl);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const data = await res.json();
+                const data = await res.json(); // Returns NASA's direct JSON response
+                
+                // NASA embeds the text response inside the JSON 'result' property
                 const text = data.result;
 
                 const xMatch = text.match(/X =\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
@@ -314,7 +321,7 @@
                     successCount++;
                 } else throw new Error("Parse");
             } catch (e) {
-                console.warn(`JPL Fetch Failed for ${t.name}, using Hardcoded Fallback.`);
+                console.warn(`JPL Fetch Failed for ${t.name}, using Hardcoded Fallback. Error:`, e);
                 const fb = FALLBACK_PROBES.find(p => p.name === t.name);
                 if (fb) { probes.push({ name: fb.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: fb.x, y: fb.y, z: fb.z, vx: fb.vx, vy: fb.vy, vz: fb.vz, ax: 0, ay: 0, az: 0, trail: [] }); }
             }
