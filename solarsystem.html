@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Solar System Simulation – Planetarium Edition</title>
+  <style>
+    html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: -apple-system, sans-serif; }
+    body { display: flex; flex-direction: row; }
+    .controls { background: rgba(10, 10, 15, 0.95); color: #fff; padding: 20px; box-sizing: border-box; z-index: 10; overflow-y: auto; backdrop-filter: blur(15px); }
+    #left-controls { width: 320px; box-shadow: 2px 0 20px rgba(0,0,0,1.0); border-right: 1px solid rgba(255,255,255,0.05); }
+    #flight-computer { width: 240px; box-shadow: -2px 0 20px rgba(0,0,0,1.0); border-left: 1px solid rgba(255,255,255,0.05); padding: 15px;}
+    .control-group { margin-bottom: 20px; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 15px; }
+    .control-group:last-child { border-bottom: none; }
+    .group-header { font-weight: 700; text-transform: uppercase; font-size: 11px; letter-spacing: 2px; color: #66aaff; margin-bottom: 12px; }
+    #sim-container { position: relative; flex: 1; height: 100%; background: radial-gradient(circle at center, #080812 0%, #000000 90%); }
+    #simulation, #overlay-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+    #overlay-canvas { pointer-events: none; z-index: 2; }
+    #data-panel { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); padding: 15px; border: 1px solid rgba(100,170,255,0.3); border-radius: 8px; color: #fff; font-family: monospace; font-size: 13px; pointer-events: none; z-index: 5; backdrop-filter: blur(5px); display: none; }
+    .dp-title { font-size: 18px; font-weight: bold; color: #66aaff; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;}
+    .dp-row { margin-bottom: 5px; } .dp-label { color: #aaa; display: inline-block; width: 110px;}
+    .fc-category { font-weight: bold; color: #66aaff; margin-top: 15px; margin-bottom: 5px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 4px; }
+    .fc-btn { background: transparent; border: none; color: #ccc; cursor: pointer; display: block; width: 100%; text-align: left; padding: 4px 0; font-size: 12px; transition: all 0.2s; font-family: inherit;}
+    .fc-btn:hover { color: #fff; text-shadow: 0 0 8px rgba(255,255,255,0.8); transform: translateX(5px);}
+    .fc-btn.active { color: #66aaff; font-weight: bold; text-shadow: 0 0 8px rgba(100,170,255,0.8); }
+    .hud-element { position: absolute; font-size: 13px; color: #fff; text-shadow: 0px 2px 5px rgba(0,0,0,0.9); z-index: 5; pointer-events: none; }
+    #timer { bottom: 45px; left: 20px; font-weight: bold; font-size: 16px; letter-spacing: 1.5px; }
+    #scale-readout { bottom: 20px; left: 20px; color: rgba(255,255,255,0.5); font-size: 11px; letter-spacing: 1px;}
+    #jpl-status { top: 20px; right: 20px; color: #ffaa00; font-family: monospace; font-weight: bold; letter-spacing: 1px; }
+    label { display: block; margin: 8px 0 4px 0; font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 0.5px;}
+    input[type="range"], input[type="text"] { width: 100%; box-sizing: border-box; margin-bottom: 8px; }
+    input[type="text"] { padding: 8px; background: rgba(255,255,255,0.1); color: #fff; border: 1px solid #66aaff; border-radius: 4px; font-family: inherit; }
+    input[type="date"] { width: 100%; padding: 8px; margin-bottom: 8px; background: rgba(255,255,255,0.1); color: #fff; border: 1px solid #66aaff; border-radius: 4px; font-family: inherit; box-sizing: border-box; color-scheme: dark;}
+    button.ui-btn { width: 100%; padding: 12px; margin: 8px 0; background: rgba(255,255,255,0.05); color: #fff; border: 1px solid rgba(255,255,255,0.1); border-radius: 4px; cursor: pointer; font-weight: bold; transition: all 0.2s; text-transform: uppercase; font-size: 11px; letter-spacing: 1.5px; } 
+    button.ui-btn:hover { background: rgba(100, 170, 255, 0.2); border-color: #66aaff; box-shadow: 0 0 15px rgba(100, 170, 255, 0.2); }
+    .btn-active { background: rgba(0, 150, 136, 0.3) !important; border-color: #009688 !important; }
+    .checkbox-label { margin: 8px 0; font-size: 12px; display: flex; align-items: center; cursor: pointer; color: #ccc;} .checkbox-label input { margin-right: 8px; cursor: pointer; }
+    #loading-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 100; display: flex; justify-content: center; align-items: center; color: #66aaff; font-size: 20px; font-weight: bold; letter-spacing: 3px; text-transform: uppercase; transition: opacity 0.5s; }
+  </style>
+</head>
+<body>
+  <div id="left-controls" class="controls">
+    <div class="control-group">
+      <div class="group-header">JPL Small-Body Search</div>
+      <input type="text" id="jplSearchInput" placeholder="e.g. Apophis, Halley...">
+      <button id="jplSearchBtn" class="ui-btn" style="background: rgba(150, 100, 255, 0.1); border-color: #9966ff;">Fetch Orbit</button>
+      <div id="jplSearchStatus" style="font-size: 11px; margin-top: 4px; font-family: monospace;"></div>
+    </div>
+    <div class="control-group">
+      <div class="group-header">Time Machine</div>
+      <input type="date" id="datePicker" value="2000-01-01">
+      <div style="display: flex; gap: 8px;">
+        <button id="jumpDateBtn" class="ui-btn" style="flex: 1;">Jump to Date</button>
+        <button id="todayBtn" class="ui-btn" style="flex: 1; background: rgba(100, 170, 255, 0.2); border-color: #66aaff;">Today</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <div class="group-header">Time & Optics</div>
+      <label for="speed">Time Warp: <span id="speedValue" style="color:#fff;">10.0 Days / Frame</span></label>
+      <input type="range" id="speed" min="1" max="1200" step="1" value="240">
+      <label for="planetScale">Planet Magnification: <span id="planetScaleValue" style="color:#fff;">1,000x</span></label>
+      <input type="range" id="planetScale" min="0" max="100" step="1" value="67">
+      <label for="exposure">Global Brightness: <span id="exposureValue" style="color:#fff;">1.5x</span></label>
+      <input type="range" id="exposure" min="0.1" max="4.0" step="0.1" value="1.5">
+      <button id="pauseSim" class="ui-btn">Pause / Resume</button>
+    </div>
+    <div class="control-group">
+      <div class="group-header">Cosmic Generation</div>
+      <label for="asteroidCount">Main Belt Density: <span id="asteroidCountValue" style="color:#fff;">10,000</span></label>
+      <input type="range" id="asteroidCount" min="0" max="20000" step="500" value="10000">
+      <label for="kuiperCount">Kuiper Belt Density: <span id="kuiperCountValue" style="color:#fff;">8,000</span></label>
+      <input type="range" id="kuiperCount" min="0" max="15000" step="500" value="8000">
+      <button id="restartSim" class="ui-btn" style="background: rgba(0, 200, 150, 0.1); border-color: rgba(0, 200, 150, 0.4);">Rebuild Belts</button>
+    </div>
+    <div class="control-group">
+      <div class="group-header">Director & Overlays</div>
+      <button id="freeCamBtn" class="ui-btn btn-active">Free Camera</button>
+      <div style="margin-top:15px;">
+        <label class="checkbox-label"><input type="checkbox" id="showLabels" checked> Floating Labels</label>
+        <label class="checkbox-label"><input type="checkbox" id="showOrbits" checked> Orbit Lines (Paths)</label>
+        <label class="checkbox-label"><input type="checkbox" id="showTrails" checked> Orbital Trails (History)</label>
+        <label class="checkbox-label"><input type="checkbox" id="showGrid" checked> Spacetime Grid</label>
+      </div>
+    </div>
+  </div>
+
+  <div id="sim-container">
+    <div id="loading-overlay">Intercepting NASA Satellite Imagery...</div>
+    <canvas id="simulation"></canvas>
+    <canvas id="overlay-canvas"></canvas>
+    <div id="data-panel">
+        <div id="dp-name" class="dp-title">Target</div>
+        <div class="dp-row"><span class="dp-label">Dist to Sun:</span> <span id="dp-dist">--</span></div>
+        <div class="dp-row"><span class="dp-label">Velocity:</span> <span id="dp-speed">--</span></div>
+        <div class="dp-row"><span class="dp-label">Day Length:</span> <span id="dp-day">--</span></div>
+        <div class="dp-row"><span class="dp-label">Mass:</span> <span id="dp-mass">--</span></div>
+    </div>
+    <div id="jpl-status">📡 JPL TELEMETRY: STANDBY</div>
+    <div id="timer" class="hud-element">Jan 1, 2000</div>
+    <div id="scale-readout" class="hud-element">View Width: 10.0 AU</div>
+  </div>
+
+  <div id="flight-computer" class="controls">
+    <div style="font-weight:bold; color:#fff; font-size:14px; letter-spacing:2px; text-transform:uppercase; text-align:center; margin-bottom: 10px;">Flight Log</div>
+    <div id="fc-content"></div>
+  </div>
+
+  <script>
+    const glCanvas = document.getElementById('simulation');
+    const gl = glCanvas.getContext('webgl', { preserveDrawingBuffer: true, antialias: true, alpha: false });
+    const overlayCanvas = document.getElementById('overlay-canvas');
+    const overlayCtx = overlayCanvas.getContext('2d');
+    if (!gl) throw new Error('WebGL not supported');
+
+    const G = 4 * Math.PI * Math.PI, dt = 1.0 / 8766.0, J2000 = new Date(Date.UTC(2000, 0, 1, 12, 0, 0)); 
+    
+    let currentDate = new Date(J2000);
+    let isPaused = false, physicsStepsPerFrame = 240, elapsedTimeYears = 0;
+    let majorBodies = [], moons = [], asteroids = [], comets = [], probes = [], starfield = [], ringParticles = [];
+    let trackingTarget = null, showTrails = true, showGrid = true, showLabels = true, showOrbits = true;
+    let visualScaleMult = 1000.0, viewZoom = 0.05, targetZoom = 0.05, globalExposure = 1.5; 
+    let centerX, centerY, translateX = 0, translateY = 0, rotationX = 65, rotationY = 0;
+    let isDragging = false, isRotating = false, lastX = 0, lastY = 0;
+    
+    const SOLAR_SYSTEM_DATA=[{name:"Sun",type:"star",mass:1.0,a:0,e:0,i:0,node:0,peri:0,M:0,radius:0.00465,day:27.28,texIdx:0,color:[1.0,0.85,0.5,1.0]},{name:"Mercury",type:"planet",mass:1.66e-7,a:0.387,e:0.2056,i:7.00,node:48.33,peri:29.12,M:174.79,radius:1.63e-5,day:58.65,texIdx:1,color:[0.6,0.6,0.6,1.0]},{name:"Venus",type:"planet",mass:2.45e-6,a:0.723,e:0.0067,i:3.39,node:76.68,peri:54.88,M:50.11,radius:4.04e-5,day:-243.02,texIdx:2,color:[0.9,0.8,0.6,1.0]},{name:"Earth",type:"planet",mass:3.04e-6,a:1.000,e:0.0167,i:0.00,node:-11.26,peri:114.20,M:358.61,radius:4.26e-5,day:1.0,texIdx:3,color:[0.3,0.6,1.0,1.0]},{name:"Mars",type:"planet",mass:3.23e-7,a:1.524,e:0.0934,i:1.85,node:49.55,peri:286.50,M:19.37,radius:2.26e-5,day:1.026,texIdx:4,color:[0.9,0.4,0.2,1.0]},{name:"Ceres",type:"dwarf",mass:4.7e-10,a:2.768,e:0.076,i:10.59,node:80.32,peri:73.59,M:77.37,radius:3.1e-6,day:0.378,texIdx:10,color:[0.6,0.5,0.5,1.0]},{name:"Jupiter",type:"planet",mass:9.54e-4,a:5.204,e:0.0484,i:1.30,node:100.46,peri:273.86,M:20.02,radius:4.67e-4,day:0.413,texIdx:5,color:[0.8,0.7,0.6,1.0],tilt:3.1,rings:{inner:1.3,outer:1.8,color:[0.8,0.75,0.7,0.08]}},{name:"Saturn",type:"planet",mass:2.85e-4,a:9.582,e:0.0538,i:2.48,node:113.66,peri:339.39,M:317.02,radius:3.89e-4,day:0.444,texIdx:6,color:[0.9,0.8,0.5,1.0],tilt:26.7,rings:{inner:1.2,outer:2.3,color:[0.85,0.8,0.7,0.15]}},{name:"Uranus",type:"planet",mass:4.36e-5,a:19.201,e:0.0472,i:0.77,node:74.00,peri:96.99,M:142.59,radius:1.69e-4,day:-0.718,texIdx:7,color:[0.5,0.9,0.9,1.0],tilt:97.7,rings:{inner:1.5,outer:2.1,color:[0.6,0.8,0.9,0.1]}},{name:"Neptune",type:"planet",mass:5.15e-5,a:30.047,e:0.0086,i:1.77,node:131.78,peri:273.18,M:256.22,radius:1.64e-4,day:0.671,texIdx:8,color:[0.2,0.4,0.9,1.0],tilt:28.3,rings:{inner:1.4,outer:1.9,color:[0.5,0.6,0.8,0.08]}},{name:"Pluto",type:"dwarf",mass:6.5e-9,a:39.482,e:0.2488,i:17.16,node:110.29,peri:113.83,M:14.53,radius:7.9e-6,day:-6.387,texIdx:9,color:[0.8,0.7,0.6,1.0]}];
+    const LUNAR_DATA=[{name:"Moon",parent:"Earth",a:0.00257,e:0.0549,i:5.14,period:0.0748,radius:1.1e-5,day:27.3,mass:3.69e-8,M:0,texIdx:10,color:[0.7,0.7,0.7,1.0]},{name:"Io",parent:"Jupiter",a:0.00281,e:0.0041,i:0.04,period:0.0048,radius:1.2e-5,day:1.76,mass:4.4e-8,M:0,texIdx:10,color:[0.9,0.8,0.2,1.0]},{name:"Europa",parent:"Jupiter",a:0.00448,e:0.0094,i:0.47,period:0.0097,radius:1.0e-5,day:3.55,mass:2.4e-8,M:90,texIdx:10,color:[0.8,0.8,0.9,1.0]},{name:"Ganymede",parent:"Jupiter",a:0.00715,e:0.0013,i:0.20,period:0.0196,radius:1.7e-5,day:7.15,mass:7.4e-8,M:180,texIdx:10,color:[0.6,0.6,0.6,1.0]},{name:"Callisto",parent:"Jupiter",a:0.01258,e:0.0074,i:0.19,period:0.0457,radius:1.6e-5,day:16.68,mass:5.4e-8,M:270,texIdx:10,color:[0.4,0.4,0.4,1.0]},{name:"Titan",parent:"Saturn",a:0.00816,e:0.0288,i:0.33,period:0.0436,radius:1.7e-5,day:15.94,mass:6.7e-8,M:180,texIdx:10,color:[0.8,0.6,0.2,1.0]}];
+    const COMET_DATA=[{name:"Halley's Comet",type:"comet",a:17.8,e:0.967,i:162.2,node:58.4,peri:111.3,M:38.0,mass:1e-12,radius:1e-6,color:[0.5,0.8,1.0,1.0]},{name:"Hale-Bopp",type:"comet",a:186.0,e:0.995,i:89.4,node:282.5,peri:130.6,M:0.5,mass:2e-12,radius:2e-6,color:[0.8,0.9,1.0,1.0]}];
+    const FALLBACK_PROBES=[{name:"Voyager 1",x:130,y:30,z:80,vx:0,vy:0,vz:3.6},{name:"Voyager 2",x:80,y:-50,z:-100,vx:0,vy:0,vz:3.3},{name:"JWST",x:1.01,y:0.001,z:0.001,vx:-0.5,vy:0,vz:6.28}];
+
+    function solveKepler(M, e) { let E = M + e * Math.sin(M); for (let i = 0; i < 20; i++) { let E_next = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E)); if (Math.abs(E_next - E) < 1e-6) break; E = E_next; } return E; }
+    function getEllipsePoint(a, e, i_deg, node_deg, peri_deg, E_deg) { const d2r = Math.PI / 180, i = i_deg * d2r, node = node_deg * d2r, peri = peri_deg * d2r, E = E_deg * d2r, v = 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(E / 2), Math.sqrt(1 - e) * Math.cos(E / 2)), r = a * (1 - e * Math.cos(E)), xo = r * Math.cos(v), yo = r * Math.sin(v), cn = Math.cos(node), sn = Math.sin(node), cp = Math.cos(peri), sp = Math.sin(peri), ci = Math.cos(i), si = Math.sin(i); return { x: (cn*cp-sn*sp*ci)*xo + (-cn*sp-sn*cp*ci)*yo, y: (sp*si)*xo + (cp*si)*yo, z: (sn*cp+cn*sp*ci)*xo + (-sn*sp+cn*cp*ci)*yo }; }
+    function getCartesianFromKepler(a, e, i_deg, node_deg, peri_deg, M_deg, cM) { if (a === 0) return { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }; const d2r = Math.PI / 180, i = i_deg * d2r, node = node_deg * d2r, peri = peri_deg * d2r, M = M_deg * d2r, E = solveKepler(M, e), v = 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(E / 2), Math.sqrt(1 - e) * Math.cos(E / 2)), r = a * (1 - e * Math.cos(E)), xo = r * Math.cos(v), yo = r * Math.sin(v), h = Math.sqrt(G * cM * a * (1 - e * e)), vxo = (G * cM / h) * -Math.sin(v), vyo = (G * cM / h) * (e + Math.cos(v)), cn = Math.cos(node), sn = Math.sin(node), cp = Math.cos(peri), sp = Math.sin(peri), ci = Math.cos(i), si = Math.sin(i), r11 = cn * cp - sn * sp * ci, r12 = -cn * sp - sn * cp * ci, r21 = sn * cp + cn * sp * ci, r22 = -sn * sp + cn * cp * ci, r31 = sp * si, r32 = cp * si; return { x: r11*xo + r12*yo, y: r31*xo + r32*yo, z: r21*xo + r22*yo, vx: r11*vxo + r12*vyo, vy: r31*vxo + r32*vyo, vz: r21*vxo + r22*vyo }; }
+
+    const vsSource = `attribute vec3 aPosition; attribute float aSize; attribute vec4 aColor; attribute float aType; attribute float aTexIndex; attribute float aRotRate; uniform vec2 uTranslate; uniform float uScale; uniform vec2 uCanvasSize; uniform float uRotX; uniform float uRotY; varying vec4 vColor; varying float vType; varying vec3 vLightDir; varying float vTexIndex; varying float vRotRate; void main(){ float cosY = cos(uRotY); float sinY = sin(uRotY); float x1 = aPosition.x * cosY + aPosition.z * sinY; float z1 = -aPosition.x * sinY + aPosition.z * cosY; float cosX = cos(uRotX); float sinX = sin(uRotX); float y2 = aPosition.y * cosX - z1 * sinX; float z2 = aPosition.y * sinX + z1 * cosX; float sf = 100.0 / (100.0 + z2); vec2 p = vec2(x1, y2) * sf * uScale + uTranslate + (uCanvasSize / 2.0); gl_Position = vec4(vec2((2.0 * p.x / uCanvasSize.x) - 1.0, 1.0 - (2.0 * p.y / uCanvasSize.y)), 0.0, 1.0); vec3 objToSun = -aPosition; float lx1 = objToSun.x * cosY + objToSun.z * sinY; float lz1 = -objToSun.x * sinY + objToSun.z * cosY; float ly2 = objToSun.y * cosX - lz1 * sinX; float lz2 = objToSun.y * sinX + lz1 * cosX; vLightDir = normalize(vec3(lx1, ly2, lz2)); float finalSize = aSize * sf * uScale; if (aType == 2.0) finalSize = max(finalSize, 5.0); else if (aType == 3.0) finalSize = aSize; else if (aType == 0.0) finalSize = clamp(aSize * uScale * sf * 0.1, 3.0, 35.0); else if (aType == 4.0) finalSize = clamp(aSize * uScale * sf * 0.5, 1.0, 2.5); else if (aType == 5.0) finalSize = max(finalSize, 3.0); else finalSize = max(finalSize, 2.5); gl_PointSize = finalSize; vColor = aColor; vType = aType; vTexIndex = aTexIndex; vRotRate = aRotRate; }`;
+    const fsSource = `precision mediump float; varying vec4 vColor; varying float vType; varying vec3 vLightDir; varying float vTexIndex; varying float vRotRate; uniform float uExposure; uniform float uTime; uniform sampler2D uSampler; void main(){ vec2 c = gl_PointCoord * 2.0 - 1.0; float d = length(c); if(d > 1.0) discard; vec4 finalColor; if (vTexIndex >= 0.0) { float z = sqrt(max(0.0, 1.0 - d*d)); vec3 normal = vec3(c.x, -c.y, -z); float u = 0.5 + atan(normal.x, -normal.z) / 6.28318; u = fract(u + (uTime * vRotRate)); float v = 0.5 + asin(normal.y) / 3.14159; float uCompress = u * 0.98 + 0.01; float vCompress = v * 0.98 + 0.01; float col = mod(vTexIndex, 4.0); float row = floor(vTexIndex / 4.0); vec2 atlasUV = vec2((col + uCompress) * 0.25, (row + vCompress) * 0.25); vec4 texColor = texture2D(uSampler, atlasUV); if (vType == 2.0) { finalColor = vec4(texColor.rgb, 1.0); } else { float rawDiff = dot(normal, vLightDir); float diff = max(rawDiff, 0.0); float rim = (1.0 - max(dot(normal, vec3(0.0, 0.0, -1.0)), 0.0)) * 0.15; vec3 baseColor = texColor.rgb * (diff + 0.05) + (rim * diff); if (vTexIndex == 3.0) { vec2 nightUV = vec2((11.0 + uCompress) * 0.25, (2.0 + vCompress) * 0.25); vec4 nightTex = texture2D(uSampler, nightUV); float cityBlend = smoothstep(0.1, -0.2, rawDiff); baseColor += nightTex.rgb * cityBlend * vec3(1.0, 0.9, 0.6) * 1.5; } finalColor = vec4(baseColor, 1.0); } } else { if (vType == 3.0) { float glow = exp(-d * d * 15.0); finalColor = vec4(vColor.rgb, vColor.a * glow); } else if (vType == 0.0) { float glow = exp(-d * d * 4.0); finalColor = vec4(vColor.rgb, vColor.a * glow * (1.0 - smoothstep(0.4, 1.0, d))); } else if (vType == 4.0) { float glow = exp(-d * d * 15.0); finalColor = vec4(vColor.rgb, vColor.a * glow); } else if (vType == 5.0) { if (d < 0.75) discard; float alpha = (1.0 - smoothstep(0.75, 1.0, d)) * 0.6; finalColor = vec4(vColor.rgb, vColor.a * alpha); } else { finalColor = vColor; } } finalColor.rgb *= uExposure; gl_FragColor = finalColor; }`;
+
+    const p = gl.createProgram(), v = gl.createShader(gl.VERTEX_SHADER), f = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(v,vsSource); gl.compileShader(v); gl.shaderSource(f,fsSource); gl.compileShader(f);
+    gl.attachShader(p,v); gl.attachShader(p,f); gl.linkProgram(p); gl.useProgram(p);
+    
+    const aPositionLoc = gl.getAttribLocation(p, 'aPosition'), aSizeLoc = gl.getAttribLocation(p, 'aSize'), aColorLoc = gl.getAttribLocation(p, 'aColor');
+    const aTypeLoc = gl.getAttribLocation(p, 'aType'), aTexIndexLoc = gl.getAttribLocation(p, 'aTexIndex'), aRotRateLoc = gl.getAttribLocation(p, 'aRotRate');
+    const uTranslateLoc = gl.getUniformLocation(p, 'uTranslate'), uScaleLoc = gl.getUniformLocation(p, 'uScale'), uCanvasSizeLoc = gl.getUniformLocation(p, 'uCanvasSize');
+    const uRotXLoc = gl.getUniformLocation(p, 'uRotX'), uRotYLoc = gl.getUniformLocation(p, 'uRotY'), uExposureLoc = gl.getUniformLocation(p, 'uExposure'), uTimeLoc = gl.getUniformLocation(p, 'uTime');
+
+    const MAX_PARTICLES = 80000;
+    const posData = new Float32Array(MAX_PARTICLES * 3), sizData = new Float32Array(MAX_PARTICLES), colData = new Float32Array(MAX_PARTICLES * 4);
+    const typData = new Float32Array(MAX_PARTICLES), texIdxData = new Float32Array(MAX_PARTICLES), rotRateData = new Float32Array(MAX_PARTICLES);
+    const posBuffer = gl.createBuffer(), sizBuffer = gl.createBuffer(), colBuffer = gl.createBuffer();
+    const typBuffer = gl.createBuffer(), texIdxBuffer = gl.createBuffer(), rotRateBuffer = gl.createBuffer();
+    const atlasTexture = gl.createTexture();
+
+    function getScreenProjection(x, y, z) { const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180, cY = Math.cos(rY), sY = Math.sin(rY), cX = Math.cos(rX), sX = Math.sin(rX), x1 = x * cY + z * sY, z1 = -x * sY + z * cY, y2 = y * cX - z1 * sX, z2 = y * sX + z1 * cX, sf = 100 / (100 + z2); return { rawX: x1, rawY: y2, rawZ: z2, sf: sf, sx: centerX + x1 * sf * viewZoom + translateX, sy: centerY + y2 * sf * viewZoom + translateY }; }
+    function getSpacetimeDepth(x, z) { let y = 0; const wells = majorBodies.filter(b => b.mass > 1e-5); for (let i = 0; i < wells.length; i++) { const b = wells[i], dist = Math.hypot(x - b.x, z - b.z); y += (b.mass * (b.name==="Sun"?3.0:1500.0)) / (dist + (b.name==="Sun"?0.3:0.1)); } return y; }
+    function getBodyY(body) { if (!showGrid) return body.y; if (body.parentBody) return getSpacetimeDepth(body.parentBody.x, body.parentBody.z) + (body.y - body.parentBody.y); return getSpacetimeDepth(body.x, body.z); }
+    const getColorBucket = (y) => { const depth = Math.min(1.0, Math.abs(y) / 8.0), bucket = Math.floor(depth * 10) / 10; return `rgba(${Math.floor(100 + bucket * 155)}, ${Math.floor(200 - bucket * 50)}, ${Math.floor(255 - bucket * 255)}, ${(Math.max(0.15, 0.8 * bucket) * globalExposure).toFixed(2)})`; };
+
+    function onResize() { glCanvas.width = overlayCanvas.width = glCanvas.parentElement.clientWidth; glCanvas.height = overlayCanvas.height = glCanvas.parentElement.clientHeight; centerX = glCanvas.width/2; centerY = glCanvas.height/2; gl.viewport(0, 0, glCanvas.width, glCanvas.height); }
+    window.addEventListener('resize', onResize);
+
+    function focusOnTarget(body) {
+        if (!body) { trackingTarget = null; document.getElementById('data-panel').style.display = 'none'; document.querySelectorAll('.fc-btn').forEach(el => el.classList.remove('active')); document.getElementById('freeCamBtn').classList.add('btn-active'); return; }
+        trackingTarget = body; let rSize = body.radius * visualScaleMult; if (body.name === "Sun") rSize = Math.min(rSize, 0.08); if (body.type === "probe" || body.type === "imported") rSize = 0.005; 
+        targetZoom = Math.max(0.5, Math.min(1000000, 120 / rSize));
+        document.querySelectorAll('.fc-btn').forEach(el => { el.classList.remove('active'); if (el.textContent.includes(body.name)) el.classList.add('active'); });
+        document.getElementById('freeCamBtn').classList.remove('btn-active');
+    }
+
+    function buildSidebar() {
+        const container = document.getElementById('fc-content'); container.innerHTML = '';
+        const addGroup = (title, items) => {
+            if (items.length === 0) return;
+            const group = document.createElement('div'); group.className = 'fc-category'; group.textContent = title; container.appendChild(group);
+            items.forEach(b => { const btn = document.createElement('button'); btn.className = 'fc-btn'; btn.textContent = (b.type === 'probe' ? '📡 ' : (b.type === 'imported' ? '🔍 ' : '➤ ')) + b.name; btn.onclick = () => focusOnTarget(b); container.appendChild(btn); });
+        }
+        addGroup('Stars', majorBodies.filter(b => b.type === 'star')); 
+        addGroup('Planets', majorBodies.filter(b => b.type === 'planet')); 
+        addGroup('Dwarf Planets', majorBodies.filter(b => b.type === 'dwarf')); 
+        addGroup('Imported Objects', majorBodies.filter(b => b.type === 'imported'));
+        addGroup('Major Moons', moons); 
+        addGroup('Active Probes', probes); 
+        addGroup('Comets', comets);
+    }
+
+    function initStarfield() {
+        starfield = []; for(let i=0; i<1500; i++) { const r = 300 + Math.random() * 500, theta = Math.random() * Math.PI * 2, phi = Math.acos(2 * Math.random() - 1); starfield.push({ x: r * Math.sin(phi) * Math.cos(theta), y: r * Math.cos(phi), z: r * Math.sin(phi) * Math.sin(theta), size: 1.0 + Math.random() * 2.5, color: [0.8 + Math.random()*0.2, 0.8 + Math.random()*0.2, 1.0, 0.3 + Math.random()*0.5]}); }
+    }
+
+    function loadTexturesAndStart() {
+        const textureUrls = [
+            "https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/sunmap.jpg",
+            "https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/mercurymap.jpg",
+            "https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/venusmap.jpg",
+            "https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/earthmap1k.jpg",
+            "https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/marsmap1k.jpg",
+            "https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/jupitermap.jpg",
+            "https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/saturnmap.jpg",
+            "https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/uranusmap.jpg",
+            "https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/neptunemap.jpg",
+            "https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/plutomap1k.jpg",
+            "https://raw.githubusercontent.com/jeromeetienne/threex.planets/master/images/moonmap1k.jpg",
+            "https://raw.githubusercontent.com/mrdoob/three.js/master/examples/textures/planets/earth_lights_2048.png"
+        ];
+        const atlasCanvas = document.createElement('canvas'); atlasCanvas.width = 2048; atlasCanvas.height = 2048; const atlasCtx = atlasCanvas.getContext('2d');
+        let loaded = 0;
+        textureUrls.forEach((url, i) => {
+            const img = new Image(); img.crossOrigin = "Anonymous"; 
+            img.onload = () => {
+                atlasCtx.drawImage(img, (i % 4) * 512, Math.floor(i / 4) * 512, 512, 512); loaded++;
+                if (loaded === textureUrls.length) {
+                    gl.bindTexture(gl.TEXTURE_2D, atlasTexture);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, atlasCanvas);
+                    document.getElementById('loading-overlay').style.opacity = '0'; setTimeout(() => document.getElementById('loading-overlay').style.display = 'none', 500);
+                    onResize(); viewZoom = glCanvas.width / 40; targetZoom = viewZoom;
+                    initStarfield(); jumpToDate(new Date()); draw();
+                }
+            };
+            img.onerror = () => { console.warn("Failed to load texture:", url); loaded++; } 
+            img.src = url;
+        });
+    }
+
+    // --- NEW: LIVE JPL SBDB SEARCH (WITH FILE:/// CORS PROXY) ---
+    document.getElementById('jplSearchBtn').addEventListener('click', async () => {
+        const query = document.getElementById('jplSearchInput').value.trim();
+        if (!query) return;
+        const status = document.getElementById('jplSearchStatus');
+        status.textContent = "SEARCHING JPL SBDB..."; status.style.color = "#ffaa00";
+
+        try {
+            // FIXED: Using AllOrigins proxy for the SBDB API to bypass file:/// CORS blocks
+            const rawUrl = `https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(query)}`;
+            const proxiedUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(rawUrl)}`;
+            
+            const res = await fetch(proxiedUrl);
+            if (!res.ok) throw new Error("Proxy Error.");
+            const proxyData = await res.json();
+            const data = JSON.parse(proxyData.contents);
+            
+            if (data.code && data.code === '300') throw new Error(`Multiple matches found. Be specific.`);
+            if (!data.orbit || !data.orbit.elements) throw new Error("No orbital elements.");
+
+            const getEl = (name) => { const el = data.orbit.elements.find(e => e.name === name); return el ? parseFloat(el.value) : 0; };
+            const a = getEl('a'), e = getEl('e'), i = getEl('i'), node = getEl('om'), peri = getEl('w'), M_epoch = getEl('ma'), n = getEl('n');
+            const epochJD = parseFloat(data.orbit.epoch);
+
+            if (e >= 0.99) throw new Error("Hyperbolic orbits not supported.");
+
+            // Math: Reversing JPL epoch to J2000 epoch
+            const daysSinceJ2000 = epochJD - 2451545.0;
+            let M_J2000 = M_epoch - (n * daysSinceJ2000);
+            M_J2000 = M_J2000 % 360; if (M_J2000 < 0) M_J2000 += 360;
+
+            const newBody = {
+                name: data.object.fullname.replace(/[\(\)]/g, '').trim(),
+                type: 'imported', mass: 1e-12, radius: 5e-6, day: 0.5, texIdx: 10, color: [0.6, 1.0, 0.8, 1.0], 
+                a: a, e: e, i: i, node: node, peri: peri, M: M_J2000,
+                x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, ax: 0, ay: 0, az: 0, trail: [], orbitPath: []
+            };
+
+            for(let deg = 0; deg <= 360; deg += 1) { newBody.orbitPath.push(getEllipsePoint(a, e, i, node, peri, deg)); }
+
+            const period = Math.pow(a, 1.5), currentM = newBody.M + (elapsedTimeYears / period) * 360;
+            const coords = getCartesianFromKepler(a, e, i, node, peri, currentM, 1.0);
+            newBody.x = coords.x; newBody.y = coords.y; newBody.z = coords.z;
+            newBody.vx = coords.vx; newBody.vy = coords.vy; newBody.vz = coords.vz;
+
+            majorBodies.push(newBody); buildSidebar(); focusOnTarget(newBody);
+
+            status.textContent = "SUCCESS: IMPORTED"; status.style.color = "#55ff55";
+            setTimeout(() => status.textContent = "", 3000);
+            document.getElementById('jplSearchInput').value = "";
+
+        } catch (err) {
+            status.textContent = `ERROR: ${err.message}`; status.style.color = "#ff5555";
+        }
+    });
+
+    function loadJPLTelemetryJSONP(dateObj) {
+        return new Promise((resolve) => {
+            const jplStatus = document.getElementById('jpl-status');
+            jplStatus.textContent = "📡 JPL HORIZONS: FETCHING TELEMETRY..."; jplStatus.style.color = "#ffaa00";
+
+            const yyyy = dateObj.getUTCFullYear(), mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0'), dd = String(dateObj.getUTCDate()).padStart(2, '0');
+            const startStr = `${yyyy}-${mm}-${dd} 00:00`, stopStr = `${yyyy}-${mm}-${dd} 00:01`;
+
+            const apiTargets = [ { id: '-31', name: 'Voyager 1' }, { id: '-32', name: 'Voyager 2' }, { id: '-170', name: 'JWST' } ];
+            probes = []; let scriptsLoaded = 0, successCount = 0; window.jplCallbacks = {};
+
+            const checkDone = () => { scriptsLoaded++; if (scriptsLoaded === apiTargets.length) { jplStatus.textContent = successCount === apiTargets.length ? "📡 JPL HORIZONS: LINK ESTABLISHED" : "📡 JPL HORIZONS: OFFLINE (USING FALLBACKS)"; jplStatus.style.color = successCount === apiTargets.length ? "#55ff55" : "#ff5555"; setTimeout(() => { jplStatus.textContent = ""; }, 4000); buildSidebar(); resolve(); } };
+
+            apiTargets.forEach((t, index) => {
+                const callbackName = `cb_${index}`;
+                window.jplCallbacks[callbackName] = function(data) {
+                    try {
+                        const text = data.result;
+                        const x = text.match(/X =\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/), y = text.match(/Y =\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/), z = text.match(/Z =\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
+                        const vx = text.match(/VX=\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/), vy = text.match(/VY=\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/), vz = text.match(/VZ=\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
+                        if (x && vx) { probes.push({ name: t.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: parseFloat(x[1]), y: parseFloat(z[1]), z: parseFloat(y[1]), vx: parseFloat(vx[1])*365.25, vy: parseFloat(vz[1])*365.25, vz: parseFloat(vy[1])*365.25, ax: 0, ay: 0, az: 0, trail: [] }); successCount++; } else throw new Error("Parse");
+                    } catch (e) {
+                        const fb = FALLBACK_PROBES.find(p => p.name === t.name); if (fb) probes.push({ name: fb.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: fb.x, y: fb.y, z: fb.z, vx: fb.vx, vy: fb.vy, vz: fb.vz, ax: 0, ay: 0, az: 0, trail: [] });
+                    }
+                    checkDone();
+                };
+
+                const script = document.createElement('script');
+                script.src = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='${t.id}'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='@10'&START_TIME='${startStr}'&STOP_TIME='${stopStr}'&STEP_SIZE='1m'&OUT_UNITS='AU-D'&VEC_TABLE='2'&callback=jplCallbacks.${callbackName}`;
+                script.onerror = () => { const fb = FALLBACK_PROBES.find(p => p.name === t.name); if (fb) probes.push({ name: fb.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: fb.x, y: fb.y, z: fb.z, vx: fb.vx, vy: fb.vy, vz: fb.vz, ax: 0, ay: 0, az: 0, trail: [] }); checkDone(); };
+                document.body.appendChild(script);
+            });
+        });
+    }
+
+    async function jumpToDate(targetDate) {
+        elapsedTimeYears = (targetDate - J2000) / (1000 * 60 * 60 * 24 * 365.25); currentDate = new Date(targetDate);
+        document.getElementById('datePicker').value = targetDate.toISOString().split('T')[0];
+        const savedTargetName = trackingTarget ? trackingTarget.name : null;
+        initSimulation(); 
+        await loadJPLTelemetryJSONP(targetDate);
+        if (savedTargetName) { const target = [...majorBodies, ...moons, ...probes, ...comets].find(b => b.name === savedTargetName); if (target) focusOnTarget(target); }
+    }
+
+    function initSimulation() {
+        majorBodies = []; moons = []; asteroids = []; comets = []; ringParticles = [];
+        SOLAR_SYSTEM_DATA.forEach(data => {
+            const period = data.name === "Sun" ? 1 : Math.pow(data.a, 1.5), currentM = data.name === "Sun" ? 0 : data.M + (elapsedTimeYears / period) * 360;
+            const coords = getCartesianFromKepler(data.a, data.e, data.i, data.node, data.peri, currentM, 1.0);
+            let orbitPath = []; if (data.name !== "Sun") { for(let deg = 0; deg <= 360; deg += 1) { orbitPath.push(getEllipsePoint(data.a, data.e, data.i, data.node, data.peri, deg)); } }
+            majorBodies.push({ ...data, x: coords.x, y: coords.y, z: coords.z, vx: coords.vx, vy: coords.vy, vz: coords.vz, ax: 0, ay: 0, az: 0, trail: [], orbitPath: orbitPath });
+            if (data.rings) {
+                const parentPlanet = majorBodies[majorBodies.length - 1], pCount = data.name === "Saturn" ? 4000 : (data.name === "Uranus" ? 1500 : 600);
+                for(let j=0; j<pCount; j++) {
+                    let rNorm = Math.random(); if (data.name === "Saturn" && rNorm > 0.65 && rNorm < 0.72) continue;
+                    const ringR = parentPlanet.radius * (data.rings.inner + rNorm * (data.rings.outer - data.rings.inner)), ringTheta = Math.random() * Math.PI * 2;
+                    let relX = ringR * Math.cos(ringTheta), relY = ringR * Math.sin(ringTheta), relZ = (Math.random() - 0.5) * parentPlanet.radius * 0.02; 
+                    const tilt = (data.tilt || 0) * Math.PI / 180, ty = relY * Math.cos(tilt) - relZ * Math.sin(tilt), tz = relY * Math.sin(tilt) + relZ * Math.cos(tilt);
+                    let pColor = [...data.rings.color];
+                    if (data.name === "Saturn") { let band = Math.sin(rNorm * 30.0), intensity = 0.85 + 0.15 * band; pColor[0] = Math.min(1.0, pColor[0] * intensity + (rNorm > 0.72 ? 0.1 : 0.0)); pColor[1] = Math.min(1.0, pColor[1] * intensity); pColor[2] = Math.min(1.0, pColor[2] * intensity); pColor[3] = rNorm < 0.65 ? 0.35 : 0.15; }
+                    ringParticles.push({ parent: parentPlanet, baseRelX: relX, baseRelY: ty, baseRelZ: tz, color: pColor });
+                }
+            }
+        });
+        LUNAR_DATA.forEach(data => {
+            const parent = majorBodies.find(b => b.name === data.parent);
+            if (parent) { let orbitPath = []; for(let deg = 0; deg <= 360; deg += 4) { orbitPath.push(getEllipsePoint(data.a, data.e, data.i, 0, 0, deg)); } moons.push({ ...data, parentBody: parent, M0: data.M, x: 0, y: 0, z: 0, orbitPath: orbitPath }); }
+        });
+        COMET_DATA.forEach(data => {
+            const period = Math.pow(data.a, 1.5), currentM = data.M + (elapsedTimeYears / period) * 360, coords = getCartesianFromKepler(data.a, data.e, data.i, data.node, data.peri, currentM, 1.0);
+            let orbitPath = []; for(let deg = 0; deg <= 360; deg += 1) { orbitPath.push(getEllipsePoint(data.a, data.e, data.i, data.node, data.peri, deg)); }
+            comets.push({ ...data, x: coords.x, y: coords.y, z: coords.z, vx: coords.vx, vy: coords.vy, vz: coords.vz, ax: 0, ay: 0, az: 0, orbitPath: orbitPath });
+        });
+        const numAsteroids = parseInt(document.getElementById('asteroidCount').value);
+        for(let i = 0; i < numAsteroids; i++) {
+            const a = 2.1 + Math.random() * 1.2, e = Math.pow(Math.random(), 2) * 0.15, inc = Math.pow(Math.random(), 5) * 12, node = Math.random() * 360, peri = Math.random() * 360, M = Math.random() * 360;
+            const period = Math.pow(a, 1.5), currentM = M + (elapsedTimeYears / period) * 360, coords = getCartesianFromKepler(a, e, inc, node, peri, currentM, 1.0);
+            asteroids.push({ x: coords.x, y: coords.y, z: coords.z, vx: coords.vx, vy: coords.vy, vz: coords.vz, baseSize: 5.0 + Math.random() * 8.0, color: [0.9, 0.7, 0.5, 0.04] });
+        }
+        const numKuiper = parseInt(document.getElementById('kuiperCount').value);
+        for(let i = 0; i < numKuiper; i++) {
+            const a = 30 + Math.random() * 20, e = Math.pow(Math.random(), 2) * 0.25, inc = Math.pow(Math.random(), 4) * 20, node = Math.random() * 360, peri = Math.random() * 360, M = Math.random() * 360;
+            const period = Math.pow(a, 1.5), currentM = M + (elapsedTimeYears / period) * 360, coords = getCartesianFromKepler(a, e, inc, node, peri, currentM, 1.0);
+            asteroids.push({ x: coords.x, y: coords.y, z: coords.z, vx: coords.vx, vy: coords.vy, vz: coords.vz, baseSize: 6.0 + Math.random() * 10.0, color: [0.4, 0.6, 0.9, 0.03] });
+        }
+    }
+
+    function updatePhysics() {
+        if(isPaused) return;
+        for (let step = 0; step < physicsStepsPerFrame; step++) {
+            elapsedTimeYears += dt; currentDate = new Date(J2000.getTime() + elapsedTimeYears * 365.25 * 24 * 60 * 60 * 1000);
+            const massiveBodies = [...majorBodies, ...comets, ...probes];
+            for (let i = 0; i < massiveBodies.length; i++) {
+                let ax = 0, ay = 0, az = 0;
+                for (let j = 0; j < majorBodies.length; j++) {
+                    if (massiveBodies[i] === majorBodies[j]) continue;
+                    const dx = majorBodies[j].x - massiveBodies[i].x, dy = majorBodies[j].y - massiveBodies[i].y, dz = majorBodies[j].z - massiveBodies[i].z, distSq = dx*dx + dy*dy + dz*dz, dist = Math.sqrt(distSq), force = (G * majorBodies[j].mass) / distSq;
+                    ax += force * (dx / dist); ay += force * (dy / dist); az += force * (dz / dist);
+                }
+                massiveBodies[i].ax = ax; massiveBodies[i].ay = ay; massiveBodies[i].az = az;
+            }
+            for (let i = 0; i < massiveBodies.length; i++) {
+                if (massiveBodies[i].name === "Sun") continue;
+                const p = massiveBodies[i]; p.vx += p.ax * dt; p.vy += p.ay * dt; p.vz += p.az * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.z += p.vz * dt;
+                if (step === 0 && showTrails && p.trail) { p.trail.push({x: p.x, y: p.y, z: p.z}); if (p.trail.length > 250) p.trail.shift(); }
+            }
+            for (let i = 0; i < moons.length; i++) {
+                const m = moons[i], currentM = m.M0 + (elapsedTimeYears / m.period) * 360, relCoords = getCartesianFromKepler(m.a, m.e, m.i, 0, 0, currentM, m.parentBody.mass);
+                let relX = relCoords.x, relY = relCoords.y, relZ = relCoords.z;
+                const currentDist = Math.hypot(relX, relY, relZ), parentVisualRadius = m.parentBody.radius * visualScaleMult;
+                let targetDist = currentDist;
+                if (visualScaleMult > 1) { targetDist = currentDist * (1.0 + (visualScaleMult * 0.05)); const minVisualDist = Math.min(parentVisualRadius * 1.2, currentDist + (m.parentBody.a * 0.08)); if (targetDist < minVisualDist) targetDist = minVisualDist; }
+                const pushFactor = targetDist / currentDist; m.x = m.parentBody.x + (relX * pushFactor); m.y = m.parentBody.y + (relY * pushFactor); m.z = m.parentBody.z + (relZ * pushFactor);
+            }
+            for(let i = 0; i < asteroids.length; i++) {
+                const a = asteroids[i], distSq = a.x*a.x + a.y*a.y + a.z*a.z, dist = Math.sqrt(distSq), f = G / distSq;
+                a.vx += -f * (a.x/dist) * dt; a.vy += -f * (a.y/dist) * dt; a.vz += -f * (a.z/dist) * dt; a.x += a.vx * dt; a.y += a.vy * dt; a.z += a.vz * dt;
+            }
+        }
+    }
+
+    function draw() {
+        updatePhysics();
+        if (trackingTarget) {
+            const targetY = getBodyY(trackingTarget), p = getScreenProjection(trackingTarget.x, targetY, trackingTarget.z);
+            translateX += (-p.rawX * p.sf * viewZoom - translateX) * 0.08; translateY += (-p.rawY * p.sf * viewZoom - translateY) * 0.08;
+            const sun = majorBodies[0], distAU = Math.hypot(trackingTarget.x - sun.x, trackingTarget.y - sun.y, trackingTarget.z - sun.z), speedKm = Math.hypot(trackingTarget.vx, trackingTarget.vy, trackingTarget.vz) * 4.74; 
+            document.getElementById('dp-name').textContent = trackingTarget.name; document.getElementById('dp-dist').textContent = (distAU * 149.6).toLocaleString('en-US', {maximumFractionDigits:1}) + " M km"; document.getElementById('dp-speed').textContent = speedKm.toLocaleString('en-US', {maximumFractionDigits:1}) + " km/s"; document.getElementById('dp-mass').textContent = trackingTarget.mass ? trackingTarget.mass.toExponential(2) + " M☉" : "N/A"; document.getElementById('dp-day').textContent = trackingTarget.day ? trackingTarget.day + " Days" : "N/A"; document.getElementById('data-panel').style.display = 'block';
+        }
+        viewZoom += (targetZoom - viewZoom) * 0.05;
+
+        gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+        let pIdx = 0;
+        
+        for(let i=0; i<starfield.length; i++) {
+            const s = starfield[i]; posData[pIdx*3]=s.x; posData[pIdx*3+1]=s.y; posData[pIdx*3+2]=s.z; sizData[pIdx]=s.size; colData[pIdx*4]=s.color[0]; colData[pIdx*4+1]=s.color[1]; colData[pIdx*4+2]=s.color[2]; colData[pIdx*4+3]=s.color[3]; typData[pIdx]=3.0; texIdxData[pIdx]=-1.0; rotRateData[pIdx]=0.0; pIdx++;
+        }
+        for(let i=0; i<asteroids.length; i++) {
+            const a = asteroids[i], ay = showGrid ? getSpacetimeDepth(a.x, a.z) : a.y; posData[pIdx*3]=a.x; posData[pIdx*3+1]=ay; posData[pIdx*3+2]=a.z; sizData[pIdx]=a.baseSize; colData[pIdx*4]=a.color[0]; colData[pIdx*4+1]=a.color[1]; colData[pIdx*4+2]=a.color[2]; colData[pIdx*4+3]=a.color[3]; typData[pIdx]=0.0; texIdxData[pIdx]=-1.0; rotRateData[pIdx]=0.0; pIdx++;
+        }
+        for(let i=0; i<ringParticles.length; i++) {
+            const r = ringParticles[i], rx = r.parent.x + (r.baseRelX * visualScaleMult), rz = r.parent.z + (r.baseRelZ * visualScaleMult), ry = getBodyY(r.parent) + (r.baseRelY * visualScaleMult);
+            posData[pIdx*3]=rx; posData[pIdx*3+1]=ry; posData[pIdx*3+2]=rz; sizData[pIdx]=1.5; colData[pIdx*4]=r.color[0]; colData[pIdx*4+1]=r.color[1]; colData[pIdx*4+2]=r.color[2]; colData[pIdx*4+3]=r.color[3]; typData[pIdx]=4.0; texIdxData[pIdx]=-1.0; rotRateData[pIdx]=0.0; pIdx++;
+        }
+        const allTrackableBodies = [...majorBodies, ...moons, ...probes, ...comets];
+        for(let i=0; i<allTrackableBodies.length; i++) {
+            const p = allTrackableBodies[i], py = getBodyY(p), hasAtmos = ["Venus", "Earth", "Mars", "Jupiter", "Saturn", "Uranus", "Neptune"].includes(p.name);
+            if (hasAtmos) {
+                posData[pIdx*3]=p.x; posData[pIdx*3+1]=py; posData[pIdx*3+2]=p.z; sizData[pIdx] = p.radius * visualScaleMult * 1.35; 
+                let ac = p.color; if (p.name === "Earth") ac = [0.2, 0.5, 1.0, 1.0]; if (p.name === "Venus") ac = [0.9, 0.8, 0.5, 1.0]; if (p.name === "Mars") ac = [0.9, 0.3, 0.1, 1.0];
+                colData[pIdx*4]=ac[0]; colData[pIdx*4+1]=ac[1]; colData[pIdx*4+2]=ac[2]; colData[pIdx*4+3]=1.0; typData[pIdx]=5.0; texIdxData[pIdx]=-1.0; rotRateData[pIdx]=0.0; pIdx++;
+            }
+            posData[pIdx*3]=p.x; posData[pIdx*3+1]=py; posData[pIdx*3+2]=p.z;
+            let typeCode = 1.0, renderSize = p.radius * visualScaleMult;
+            if (p.name === "Sun") { typeCode = 2.0; renderSize = Math.min(renderSize, 0.08); } if (p.type === "probe" || p.type === "imported") { typeCode = 4.0; renderSize = 4.0; } 
+            sizData[pIdx] = renderSize; colData[pIdx*4]=p.color[0]; colData[pIdx*4+1]=p.color[1]; colData[pIdx*4+2]=p.color[2]; colData[pIdx*4+3]=1.0; typData[pIdx]=typeCode; texIdxData[pIdx] = p.texIdx !== undefined ? p.texIdx : -1.0; rotRateData[pIdx] = p.day ? (365.25 / p.day) : 0.0; pIdx++;
+        }
+
+        if (pIdx > 0) {
+            gl.bindBuffer(gl.ARRAY_BUFFER, posBuffer); gl.bufferData(gl.ARRAY_BUFFER, posData.subarray(0,pIdx*3), gl.DYNAMIC_DRAW); gl.vertexAttribPointer(aPositionLoc, 3, gl.FLOAT, !1, 0, 0); gl.enableVertexAttribArray(aPositionLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, sizBuffer); gl.bufferData(gl.ARRAY_BUFFER, sizData.subarray(0,pIdx), gl.DYNAMIC_DRAW); gl.vertexAttribPointer(aSizeLoc, 1, gl.FLOAT, !1, 0, 0); gl.enableVertexAttribArray(aSizeLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, colBuffer); gl.bufferData(gl.ARRAY_BUFFER, colData.subarray(0,pIdx*4), gl.DYNAMIC_DRAW); gl.vertexAttribPointer(aColorLoc, 4, gl.FLOAT, !1, 0, 0); gl.enableVertexAttribArray(aColorLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, typBuffer); gl.bufferData(gl.ARRAY_BUFFER, typData.subarray(0,pIdx), gl.DYNAMIC_DRAW); gl.vertexAttribPointer(aTypeLoc, 1, gl.FLOAT, !1, 0, 0); gl.enableVertexAttribArray(aTypeLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, texIdxBuffer); gl.bufferData(gl.ARRAY_BUFFER, texIdxData.subarray(0,pIdx), gl.DYNAMIC_DRAW); gl.vertexAttribPointer(aTexIndexLoc, 1, gl.FLOAT, !1, 0, 0); gl.enableVertexAttribArray(aTexIndexLoc);
+            gl.bindBuffer(gl.ARRAY_BUFFER, rotRateBuffer); gl.bufferData(gl.ARRAY_BUFFER, rotRateData.subarray(0,pIdx), gl.DYNAMIC_DRAW); gl.vertexAttribPointer(aRotRateLoc, 1, gl.FLOAT, !1, 0, 0); gl.enableVertexAttribArray(aRotRateLoc);
+            gl.uniform2f(uTranslateLoc, translateX, translateY); gl.uniform1f(uScaleLoc, viewZoom); gl.uniform2f(uCanvasSizeLoc, glCanvas.width, glCanvas.height); gl.uniform1f(uRotXLoc, rotationX * Math.PI / 180); gl.uniform1f(uRotYLoc, rotationY * Math.PI / 180); gl.uniform1f(uExposureLoc, globalExposure); gl.uniform1f(uTimeLoc, elapsedTimeYears);
+            gl.drawArrays(gl.POINTS, 0, pIdx);
+        }
+
+        overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+        const sun = majorBodies.find(b => b.name === "Sun");
+        if (sun) {
+            const sy = getBodyY(sun), p = getScreenProjection(sun.x, sy, sun.z);
+            if (p.rawZ > -100) {
+                overlayCtx.globalCompositeOperation = 'lighter';
+                const glowSize = Math.max(glCanvas.width * 0.4, 600) * globalExposure, glowGrad = overlayCtx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, glowSize);
+                glowGrad.addColorStop(0, `rgba(255, 220, 150, ${0.4 * globalExposure})`); glowGrad.addColorStop(0.1, `rgba(255, 150, 40, ${0.1 * globalExposure})`); glowGrad.addColorStop(0.4, `rgba(100, 30, 0, ${0.02 * globalExposure})`); glowGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                overlayCtx.fillStyle = glowGrad; overlayCtx.beginPath(); overlayCtx.arc(p.sx, p.sy, glowSize, 0, Math.PI * 2); overlayCtx.fill();
+                const coreSize = (Math.min(sun.radius * visualScaleMult * 2.0, 0.08) * p.sf * viewZoom) + 5.0, coreGrad = overlayCtx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, coreSize * 3.0);
+                coreGrad.addColorStop(0, `rgba(255, 255, 255, 1.0)`); coreGrad.addColorStop(0.2, `rgba(255, 240, 200, 1.0)`); coreGrad.addColorStop(0.6, `rgba(255, 120, 0, 0.6)`); coreGrad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+                overlayCtx.fillStyle = coreGrad; overlayCtx.beginPath(); overlayCtx.arc(p.sx, p.sy, coreSize * 3.0, 0, Math.PI * 2); overlayCtx.fill();
+                overlayCtx.globalCompositeOperation = 'source-over';
+            }
+        }
+
+        comets.forEach(c => {
+            const cy = getBodyY(c), cp = getScreenProjection(c.x, cy, c.z);
+            if (cp.rawZ > -100 && sun) {
+                const dx = c.x - sun.x, dy = c.y - sun.y, dz = c.z - sun.z, dist = Math.sqrt(dx*dx + dy*dy + dz*dz), tx = dx/dist, ty = dy/dist, tz = dz/dist;
+                const tailLen = (30.0 / Math.max(0.5, dist)) * visualScaleMult, tpX = c.x + tx*tailLen, tpZ = c.z + tz*tailLen, tpY = showGrid ? getSpacetimeDepth(tpX, tpZ) : c.y + ty*tailLen, tp = getScreenProjection(tpX, tpY, tpZ);
+                overlayCtx.globalCompositeOperation = 'lighter';
+                const tailGrad = overlayCtx.createLinearGradient(cp.sx, cp.sy, tp.sx, tp.sy);
+                tailGrad.addColorStop(0, `rgba(200, 230, 255, ${Math.min(1.0, 1.5/dist) * globalExposure})`); tailGrad.addColorStop(1, 'rgba(200, 230, 255, 0)');
+                overlayCtx.beginPath(); overlayCtx.moveTo(cp.sx, cp.sy); overlayCtx.lineTo(tp.sx, tp.sy); overlayCtx.strokeStyle = tailGrad; overlayCtx.lineWidth = 3.0; overlayCtx.stroke();
+                overlayCtx.globalCompositeOperation = 'source-over';
+            }
+        });
+
+        if (showGrid) {
+            const gridLimit = 35, gridStep = 1.5, subSteps = 6, buckets = {};
+            const addSegment = (x1, z1, x2, z2) => {
+                const y1 = getSpacetimeDepth(x1, z1), y2 = getSpacetimeDepth(x2, z2), p1 = getScreenProjection(x1, y1, z1), p2 = getScreenProjection(x2, y2, z2);
+                if (p1.rawZ > -90 && p2.rawZ > -90) { const avgY = (y1 + y2) / 2, color = getColorBucket(avgY); if (!buckets[color]) buckets[color] = []; buckets[color].push({ x1: p1.sx, y1: p1.sy, x2: p2.sx, y2: p2.sy }); }
+            };
+            for (let z = -gridLimit; z <= gridLimit; z += gridStep) { for (let x = -gridLimit; x < gridLimit; x += gridStep / subSteps) { addSegment(x, z, x + gridStep / subSteps, z); } }
+            for (let x = -gridLimit; x <= gridLimit; x += gridStep) { for (let z = -gridLimit; z < gridLimit; z += gridStep / subSteps) { addSegment(x, z, x, z + gridStep / subSteps); } }
+            overlayCtx.lineWidth = 1;
+            for (const color in buckets) { overlayCtx.beginPath(); overlayCtx.strokeStyle = color; buckets[color].forEach(seg => { overlayCtx.moveTo(seg.x1, seg.y1); overlayCtx.lineTo(seg.x2, seg.y2); }); overlayCtx.stroke(); }
+        }
+
+        if (showOrbits) {
+            overlayCtx.lineWidth = 1.0;
+            const orbitingBodies = [...majorBodies, ...comets];
+            for(let i=0; i<orbitingBodies.length; i++) {
+                const body = orbitingBodies[i]; if (body.name === "Sun" || !body.orbitPath) continue;
+                overlayCtx.beginPath(); overlayCtx.strokeStyle = `rgba(${Math.floor(body.color[0]*255)}, ${Math.floor(body.color[1]*255)}, ${Math.floor(body.color[2]*255)}, ${0.15 * globalExposure})`;
+                let isDrawing = false;
+                for(let t=0; t<body.orbitPath.length; t++) {
+                    const pt = body.orbitPath[t], pY = showGrid ? getSpacetimeDepth(pt.x, pt.z) : pt.y, p = getScreenProjection(pt.x, pY, pt.z);
+                    if (p.rawZ > -90) { if (!isDrawing) { overlayCtx.moveTo(p.sx, p.sy); isDrawing = true; } else { overlayCtx.lineTo(p.sx, p.sy); } } else { isDrawing = false; }
+                }
+                overlayCtx.stroke();
+            }
+            for(let i=0; i<moons.length; i++) {
+                const m = moons[i]; overlayCtx.beginPath(); overlayCtx.strokeStyle = `rgba(255, 255, 255, ${0.08 * globalExposure})`;
+                let orbitExpansion = 1.0; const parentVisualRadius = m.parentBody.radius * visualScaleMult;
+                if (visualScaleMult > 1) orbitExpansion = 1.0 + Math.log10(visualScaleMult) * 2.0;
+                let isDrawing = false;
+                for(let t=0; t<m.orbitPath.length; t++) {
+                    const pt = m.orbitPath[t]; const cDist = Math.hypot(pt.x, pt.y, pt.z);
+                    let targetDist = cDist * orbitExpansion; if (visualScaleMult > 1) { const minVisualDist = Math.min(parentVisualRadius * 1.2, cDist + (m.parentBody.a * 0.08)); if (targetDist < minVisualDist) targetDist = minVisualDist; }
+                    const pushF = targetDist / cDist, pX = m.parentBody.x + pt.x*pushF, pZ = m.parentBody.z + pt.z*pushF, pY = showGrid ? getSpacetimeDepth(m.parentBody.x, m.parentBody.z) + pt.y*pushF : m.parentBody.y + pt.y*pushF, p = getScreenProjection(pX, pY, pZ);
+                    if (p.rawZ > -90) { if (!isDrawing) { overlayCtx.moveTo(p.sx, p.sy); isDrawing = true; } else { overlayCtx.lineTo(p.sx, p.sy); } } else { isDrawing = false; }
+                }
+                overlayCtx.stroke();
+            }
+        }
+
+        if (showTrails) {
+            overlayCtx.globalCompositeOperation = 'lighter';
+            const trailBodies = [...majorBodies, ...probes, ...comets];
+            for(let i=0; i<trailBodies.length; i++) {
+                const trail = trailBodies[i].trail; if (!trail || trail.length < 2) continue;
+                const r = Math.floor(trailBodies[i].color[0]*255), g = Math.floor(trailBodies[i].color[1]*255), b = Math.floor(trailBodies[i].color[2]*255);
+                for(let t=0; t<trail.length-1; t++) {
+                    const progress = t / trail.length; overlayCtx.beginPath(); overlayCtx.strokeStyle = `rgba(${r}, ${g}, ${b}, ${0.5 * progress * globalExposure})`; overlayCtx.lineWidth = 0.5 + (2.0 * progress);
+                    const y1 = showGrid ? getSpacetimeDepth(trail[t].x, trail[t].z) : trail[t].y, y2 = showGrid ? getSpacetimeDepth(trail[t+1].x, trail[t+1].z) : trail[t+1].y;
+                    const p1 = getScreenProjection(trail[t].x, y1, trail[t].z), p2 = getScreenProjection(trail[t+1].x, y2, trail[t+1].z);
+                    if (p1.rawZ > -90 && p2.rawZ > -90) { overlayCtx.moveTo(p1.sx, p1.sy); overlayCtx.lineTo(p2.sx, p2.sy); overlayCtx.stroke(); }
+                }
+            }
+            overlayCtx.globalCompositeOperation = 'source-over'; 
+        }
+
+        if (showLabels) {
+            overlayCtx.fillStyle = 'rgba(200, 230, 255, 0.7)'; overlayCtx.font = '10px "Segoe UI", sans-serif';
+            for(let i=0; i<allTrackableBodies.length; i++) {
+                const b = allTrackableBodies[i];
+                if (b.name !== "Sun") {
+                    const yOffset = getBodyY(b), proj = getScreenProjection(b.x, yOffset, b.z);
+                    if (proj.rawZ > -50) { 
+                        let preText = ''; if(b.type === 'probe') preText = '📡 '; if(b.type === 'imported') preText = '🔍 ';
+                        overlayCtx.fillText(preText + b.name, proj.sx + 8, proj.sy + 4); 
+                    }
+                }
+            }
+        }
+
+        if (trackingTarget) {
+            const yOffset = getBodyY(trackingTarget), p = getScreenProjection(trackingTarget.x, yOffset, trackingTarget.z);
+            if (p.rawZ > -100) {
+                let rSize = trackingTarget.radius * visualScaleMult; if (trackingTarget.name === "Sun") rSize = Math.min(rSize, 0.08);
+                const screenRadius = (trackingTarget.type === 'probe' || trackingTarget.type === 'imported') ? 5 : (rSize * p.sf * viewZoom), chRadius = Math.max(20, screenRadius + 15); 
+                overlayCtx.strokeStyle = 'rgba(100, 255, 150, 0.9)'; overlayCtx.lineWidth = 1.5; overlayCtx.beginPath(); overlayCtx.arc(p.sx, p.sy, chRadius, 0, Math.PI * 2); overlayCtx.stroke();
+                overlayCtx.beginPath(); overlayCtx.moveTo(p.sx - chRadius - 10, p.sy); overlayCtx.lineTo(p.sx - chRadius + 5, p.sy); overlayCtx.moveTo(p.sx + chRadius - 5, p.sy); overlayCtx.lineTo(p.sx + chRadius + 10, p.sy);
+                overlayCtx.moveTo(p.sx, p.sy - chRadius - 10); overlayCtx.lineTo(p.sx, p.sy - chRadius + 5); overlayCtx.moveTo(p.sx, p.sy + chRadius - 5); overlayCtx.lineTo(p.sx, p.sy + chRadius + 10); overlayCtx.stroke();
+            }
+        }
+
+        const dateString = currentDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+        document.getElementById('timer').textContent = `${dateString} (${elapsedTimeYears >= 0 ? '+' : ''}${elapsedTimeYears.toFixed(2)} Yrs)`;
+        document.getElementById('scale-readout').textContent = `View Width: ${(glCanvas.width / viewZoom).toFixed(1)} AU`;
+        requestAnimationFrame(draw);
+    }
+
+    // --- EVENTS & UI CONTROLS ---
+    document.getElementById('jumpDateBtn').addEventListener('click', () => { const pickerVal = document.getElementById('datePicker').value; if (pickerVal) { jumpToDate(new Date(pickerVal)); } });
+    document.getElementById('todayBtn').addEventListener('click', () => { jumpToDate(new Date()); });
+    document.getElementById('speed').addEventListener('input', (e) => { physicsStepsPerFrame = parseInt(e.target.value); let displayStr = ""; if (physicsStepsPerFrame < 24) { displayStr = `${physicsStepsPerFrame} Hour${physicsStepsPerFrame > 1 ? 's' : ''} / Frame`; } else { displayStr = `${(physicsStepsPerFrame / 24).toFixed(1)} Days / Frame`; } document.getElementById('speedValue').textContent = displayStr; });
+    document.getElementById('planetScale').addEventListener('input', (e) => { visualScaleMult = Math.pow(10, (parseInt(e.target.value) / 100) * 4.5); document.getElementById('planetScaleValue').textContent = `${visualScaleMult.toLocaleString('en-US', {maximumFractionDigits:0})}x`; if (trackingTarget) focusOnTarget(trackingTarget); });
+    document.getElementById('exposure').addEventListener('input', (e) => { globalExposure = parseFloat(e.target.value); document.getElementById('exposureValue').textContent = `${globalExposure.toFixed(1)}x`; });
+    document.getElementById('asteroidCount').addEventListener('input', (e) => document.getElementById('asteroidCountValue').textContent = parseInt(e.target.value).toLocaleString());
+    document.getElementById('kuiperCount').addEventListener('input', (e) => document.getElementById('kuiperCountValue').textContent = parseInt(e.target.value).toLocaleString());
+    document.getElementById('pauseSim').addEventListener('click', () => isPaused = !isPaused);
+    document.getElementById('restartSim').addEventListener('click', () => { initSimulation(); buildSidebar(); });
+    document.getElementById('showTrails').addEventListener('change', (e) => showTrails = e.target.checked);
+    document.getElementById('showOrbits').addEventListener('change', (e) => showOrbits = e.target.checked);
+    document.getElementById('showGrid').addEventListener('change', (e) => showGrid = e.target.checked);
+    document.getElementById('showLabels').addEventListener('change', (e) => showLabels = e.target.checked);
+    const freeCamBtn = document.getElementById('freeCamBtn'); freeCamBtn.addEventListener('click', () => focusOnTarget(null));
+    glCanvas.addEventListener('wheel',(e)=>{ e.preventDefault(); const r=glCanvas.getBoundingClientRect(), mx=e.clientX-r.left, my=e.clientY-r.top; const sF=e.deltaY>0?0.9:1.1, nS=Math.max(0.5, Math.min(1000000, viewZoom*sF)); translateX = mx - (mx - translateX) * (nS / viewZoom); translateY = my - (my - translateY) * (nS / viewZoom); targetZoom = nS; viewZoom = nS; }, { passive: false });
+    window.addEventListener('mousedown',(e)=>{ isDragging = e.button === 0; isRotating = e.button === 2; lastX = e.clientX; lastY = e.clientY; });
+    window.addEventListener('mousemove',(e)=>{ if (isDragging) { translateX += e.clientX - lastX; translateY += e.clientY - lastY; if (trackingTarget && (Math.abs(e.clientX - lastX) > 2 || Math.abs(e.clientY - lastY) > 2)) { focusOnTarget(null); } } else if (isRotating) { rotationY += (e.clientX - lastX) * 0.5; rotationX = Math.max(-90, Math.min(90, rotationX + (e.clientY - lastY) * 0.5)); } lastX = e.clientX; lastY = e.clientY; });
+    window.addEventListener('mouseup',() => { isDragging = false; isRotating = false; });
+    glCanvas.addEventListener('contextmenu', e => e.preventDefault());
+    glCanvas.addEventListener('click', (e) => { const r = glCanvas.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top; let closestBody = null, minDist = 20; [...majorBodies, ...moons, ...probes, ...comets].forEach(body => { const yOffset = getBodyY(body), p = getScreenProjection(body.x, yOffset, body.z); if (p.rawZ > -100) { const dist = Math.hypot(p.sx - mx, p.sy - my); if (dist < minDist) { minDist = dist; closestBody = body; } } }); focusOnTarget(closestBody); });
+
+    // --- BOOT SEQUENCE ---
+    function bootEngine() {
+        onResize();
+        visualScaleMult = Math.pow(10, (67 / 100) * 4.5); 
+        document.getElementById('planetScaleValue').textContent = `${visualScaleMult.toLocaleString('en-US', {maximumFractionDigits:0})}x`; 
+        loadTexturesAndStart(); 
+    }
+    
+    bootEngine();
+
+  </script>
+</body>
+</html>
