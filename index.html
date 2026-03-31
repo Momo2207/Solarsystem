@@ -122,6 +122,7 @@
     let centerX, centerY, translateX = 0, translateY = 0, rotationX = 65, rotationY = 0;
     let isDragging = false, isRotating = false, lastX = 0, lastY = 0;
     
+    // COMPRESSED DATA ARRAYS
     const SOLAR_SYSTEM_DATA=[{name:"Sun",type:"star",mass:1.0,a:0,e:0,i:0,node:0,peri:0,M:0,radius:0.00465,day:27.28,texIdx:0,color:[1.0,0.85,0.5,1.0]},{name:"Mercury",type:"planet",mass:1.66e-7,a:0.387,e:0.2056,i:7.00,node:48.33,peri:29.12,M:174.79,radius:1.63e-5,day:58.65,texIdx:1,color:[0.6,0.6,0.6,1.0]},{name:"Venus",type:"planet",mass:2.45e-6,a:0.723,e:0.0067,i:3.39,node:76.68,peri:54.88,M:50.11,radius:4.04e-5,day:-243.02,texIdx:2,color:[0.9,0.8,0.6,1.0]},{name:"Earth",type:"planet",mass:3.04e-6,a:1.000,e:0.0167,i:0.00,node:-11.26,peri:114.20,M:358.61,radius:4.26e-5,day:1.0,texIdx:3,color:[0.3,0.6,1.0,1.0]},{name:"Mars",type:"planet",mass:3.23e-7,a:1.524,e:0.0934,i:1.85,node:49.55,peri:286.50,M:19.37,radius:2.26e-5,day:1.026,texIdx:4,color:[0.9,0.4,0.2,1.0]},{name:"Ceres",type:"dwarf",mass:4.7e-10,a:2.768,e:0.076,i:10.59,node:80.32,peri:73.59,M:77.37,radius:3.1e-6,day:0.378,texIdx:10,color:[0.6,0.5,0.5,1.0]},{name:"Jupiter",type:"planet",mass:9.54e-4,a:5.204,e:0.0484,i:1.30,node:100.46,peri:273.86,M:20.02,radius:4.67e-4,day:0.413,texIdx:5,color:[0.8,0.7,0.6,1.0],tilt:3.1,rings:{inner:1.3,outer:1.8,color:[0.8,0.75,0.7,0.08]}},{name:"Saturn",type:"planet",mass:2.85e-4,a:9.582,e:0.0538,i:2.48,node:113.66,peri:339.39,M:317.02,radius:3.89e-4,day:0.444,texIdx:6,color:[0.9,0.8,0.5,1.0],tilt:26.7,rings:{inner:1.2,outer:2.3,color:[0.85,0.8,0.7,0.15]}},{name:"Uranus",type:"planet",mass:4.36e-5,a:19.201,e:0.0472,i:0.77,node:74.00,peri:96.99,M:142.59,radius:1.69e-4,day:-0.718,texIdx:7,color:[0.5,0.9,0.9,1.0],tilt:97.7,rings:{inner:1.5,outer:2.1,color:[0.6,0.8,0.9,0.1]}},{name:"Neptune",type:"planet",mass:5.15e-5,a:30.047,e:0.0086,i:1.77,node:131.78,peri:273.18,M:256.22,radius:1.64e-4,day:0.671,texIdx:8,color:[0.2,0.4,0.9,1.0],tilt:28.3,rings:{inner:1.4,outer:1.9,color:[0.5,0.6,0.8,0.08]}},{name:"Pluto",type:"dwarf",mass:6.5e-9,a:39.482,e:0.2488,i:17.16,node:110.29,peri:113.83,M:14.53,radius:7.9e-6,day:-6.387,texIdx:9,color:[0.8,0.7,0.6,1.0]}];
     const LUNAR_DATA=[{name:"Moon",parent:"Earth",a:0.00257,e:0.0549,i:5.14,period:0.0748,radius:1.1e-5,day:27.3,mass:3.69e-8,M:0,texIdx:10,color:[0.7,0.7,0.7,1.0]},{name:"Io",parent:"Jupiter",a:0.00281,e:0.0041,i:0.04,period:0.0048,radius:1.2e-5,day:1.76,mass:4.4e-8,M:0,texIdx:10,color:[0.9,0.8,0.2,1.0]},{name:"Europa",parent:"Jupiter",a:0.00448,e:0.0094,i:0.47,period:0.0097,radius:1.0e-5,day:3.55,mass:2.4e-8,M:90,texIdx:10,color:[0.8,0.8,0.9,1.0]},{name:"Ganymede",parent:"Jupiter",a:0.00715,e:0.0013,i:0.20,period:0.0196,radius:1.7e-5,day:7.15,mass:7.4e-8,M:180,texIdx:10,color:[0.6,0.6,0.6,1.0]},{name:"Callisto",parent:"Jupiter",a:0.01258,e:0.0074,i:0.19,period:0.0457,radius:1.6e-5,day:16.68,mass:5.4e-8,M:270,texIdx:10,color:[0.4,0.4,0.4,1.0]},{name:"Titan",parent:"Saturn",a:0.00816,e:0.0288,i:0.33,period:0.0436,radius:1.7e-5,day:15.94,mass:6.7e-8,M:180,texIdx:10,color:[0.8,0.6,0.2,1.0]}];
     const COMET_DATA=[{name:"Halley's Comet",type:"comet",a:17.8,e:0.967,i:162.2,node:58.4,peri:111.3,M:38.0,mass:1e-12,radius:1e-6,color:[0.5,0.8,1.0,1.0]},{name:"Hale-Bopp",type:"comet",a:186.0,e:0.995,i:89.4,node:282.5,peri:130.6,M:0.5,mass:2e-12,radius:2e-6,color:[0.8,0.9,1.0,1.0]}];
@@ -151,6 +152,7 @@
     const typBuffer = gl.createBuffer(), texIdxBuffer = gl.createBuffer(), rotRateBuffer = gl.createBuffer();
     const atlasTexture = gl.createTexture();
 
+    // --- ENGINE LOGIC ---
     function getScreenProjection(x, y, z) { const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180, cY = Math.cos(rY), sY = Math.sin(rY), cX = Math.cos(rX), sX = Math.sin(rX), x1 = x * cY + z * sY, z1 = -x * sY + z * cY, y2 = y * cX - z1 * sX, z2 = y * sX + z1 * cX, sf = 100 / (100 + z2); return { rawX: x1, rawY: y2, rawZ: z2, sf: sf, sx: centerX + x1 * sf * viewZoom + translateX, sy: centerY + y2 * sf * viewZoom + translateY }; }
     function getSpacetimeDepth(x, z) { let y = 0; const wells = majorBodies.filter(b => b.mass > 1e-5); for (let i = 0; i < wells.length; i++) { const b = wells[i], dist = Math.hypot(x - b.x, z - b.z); y += (b.mass * (b.name==="Sun"?3.0:1500.0)) / (dist + (b.name==="Sun"?0.3:0.1)); } return y; }
     function getBodyY(body) { if (!showGrid) return body.y; if (body.parentBody) return getSpacetimeDepth(body.parentBody.x, body.parentBody.z) + (body.y - body.parentBody.y); return getSpacetimeDepth(body.x, body.z); }
@@ -222,9 +224,7 @@
         });
     }
 
-    // --- NEW: DIRECT GITHUB PAGES NETWORKING (NO PROXIES) ---
-    
-    // SBDB Asteroid Search - Direct Fetch
+    // --- DIRECT NASA GITHUB PAGES FETCH (NO PROXIES) ---
     document.getElementById('jplSearchBtn').addEventListener('click', async () => {
         const query = document.getElementById('jplSearchInput').value.trim();
         if (!query) return;
@@ -232,8 +232,8 @@
         status.textContent = "SEARCHING JPL SBDB..."; status.style.color = "#ffaa00";
 
         try {
-            const url = `https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(query)}`;
-            const res = await fetch(url);
+            // Direct Fetch - No Proxies!
+            const res = await fetch(`https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(query)}`);
             if (!res.ok) throw new Error("API Error.");
             const data = await res.json();
             
@@ -246,7 +246,6 @@
 
             if (e >= 0.99) throw new Error("Hyperbolic orbits not supported.");
 
-            // Time Dilation to J2000 Baseline
             const daysSinceJ2000 = epochJD - 2451545.0;
             let M_J2000 = M_epoch - (n * daysSinceJ2000);
             M_J2000 = M_J2000 % 360; if (M_J2000 < 0) M_J2000 += 360;
@@ -276,19 +275,19 @@
         }
     });
 
-    // Horizons Probe Telemetry - Direct Fetch
     async function loadJPLTelemetry(dateObj) {
         const jplStatus = document.getElementById('jpl-status');
         jplStatus.textContent = "📡 JPL HORIZONS: FETCHING TELEMETRY..."; jplStatus.style.color = "#ffaa00";
 
         const yyyy = dateObj.getUTCFullYear(), mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0'), dd = String(dateObj.getUTCDate()).padStart(2, '0');
-        // Encode the space as %20 directly in the string so the URL doesn't break
+        // Space is hard-encoded as %20 so NASA doesn't throw a 400 Bad Request Error
         const startStr = `${yyyy}-${mm}-${dd}%2000:00`, stopStr = `${yyyy}-${mm}-${dd}%2000:01`;
 
         const apiTargets = [ { id: '-31', name: 'Voyager 1' }, { id: '-32', name: 'Voyager 2' }, { id: '-170', name: 'JWST' } ];
         probes = []; let successCount = 0;
 
         for (const t of apiTargets) {
+            // Direct Fetch - No Proxies!
             const url = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='${t.id}'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='@10'&START_TIME='${startStr}'&STOP_TIME='${stopStr}'&STEP_SIZE='1m'&OUT_UNITS='AU-D'&VEC_TABLE='2'`;
             
             try {
@@ -315,7 +314,8 @@
                 const fb = FALLBACK_PROBES.find(p => p.name === t.name);
                 if (fb) { probes.push({ name: fb.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: fb.x, y: fb.y, z: fb.z, vx: fb.vx, vy: fb.vy, vz: fb.vz, ax: 0, ay: 0, az: 0, trail: [] }); }
             }
-            await new Promise(resolve => setTimeout(resolve, 300)); 
+            // 1 Second Delay to prevent 503 Rate Limiting by NASA
+            await new Promise(resolve => setTimeout(resolve, 1000)); 
         }
         
         jplStatus.textContent = successCount === apiTargets.length ? "📡 JPL HORIZONS: LINK ESTABLISHED" : "📡 JPL HORIZONS: OFFLINE (USING FALLBACKS)";
