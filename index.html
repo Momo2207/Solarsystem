@@ -223,7 +223,7 @@
         });
     }
 
-    // --- NEW: LIVE JPL SBDB SEARCH (WITH RELIABLE CODETABS PROXY) ---
+    // --- PRODUCTION READY: LIVE JPL SBDB SEARCH ---
     document.getElementById('jplSearchBtn').addEventListener('click', async () => {
         const query = document.getElementById('jplSearchInput').value.trim();
         if (!query) return;
@@ -231,13 +231,11 @@
         status.textContent = "SEARCHING JPL SBDB..."; status.style.color = "#ffaa00";
 
         try {
-            // FIXED: Using CodeTabs proxy. It is extremely reliable and does not timeout like AllOrigins.
-            const rawUrl = `https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(query)}`;
-            const proxiedUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rawUrl)}`;
-            
-            const res = await fetch(proxiedUrl);
-            if (!res.ok) throw new Error("Proxy Server Offline.");
-            const data = await res.json(); // CodeTabs returns raw JSON (no contents wrapper)
+            // FIXED: Direct call. NASA allows CORS for real web domains (like GitHub Pages)!
+            const url = `https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(query)}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error("API Error.");
+            const data = await res.json();
             
             if (data.code && data.code === '300') throw new Error(`Multiple matches found. Be specific.`);
             if (!data.orbit || !data.orbit.elements) throw new Error("No orbital elements.");
@@ -248,6 +246,7 @@
 
             if (e >= 0.99) throw new Error("Hyperbolic orbits not supported.");
 
+            // Math: Reversing JPL epoch to J2000 epoch
             const daysSinceJ2000 = epochJD - 2451545.0;
             let M_J2000 = M_epoch - (n * daysSinceJ2000);
             M_J2000 = M_J2000 % 360; if (M_J2000 < 0) M_J2000 += 360;
@@ -277,41 +276,52 @@
         }
     });
 
-    // --- JSONP NASA PROBE TELEMETRY (BYPASSES ALL CORS/PROXIES) ---
-    function loadJPLTelemetryJSONP(dateObj) {
-        return new Promise((resolve) => {
-            const jplStatus = document.getElementById('jpl-status');
-            jplStatus.textContent = "📡 JPL HORIZONS: FETCHING TELEMETRY..."; jplStatus.style.color = "#ffaa00";
+    // --- PRODUCTION READY: DIRECT NASA PROBE FETCH ---
+    async function loadJPLTelemetry(dateObj) {
+        const jplStatus = document.getElementById('jpl-status');
+        jplStatus.textContent = "📡 JPL HORIZONS: FETCHING TELEMETRY..."; jplStatus.style.color = "#ffaa00";
 
-            const yyyy = dateObj.getUTCFullYear(), mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0'), dd = String(dateObj.getUTCDate()).padStart(2, '0');
-            const startStr = `${yyyy}-${mm}-${dd} 00:00`, stopStr = `${yyyy}-${mm}-${dd} 00:01`;
+        const yyyy = dateObj.getUTCFullYear(), mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0'), dd = String(dateObj.getUTCDate()).padStart(2, '0');
+        const startStr = `${yyyy}-${mm}-${dd} 00:00`, stopStr = `${yyyy}-${mm}-${dd} 00:01`;
 
-            const apiTargets = [ { id: '-31', name: 'Voyager 1' }, { id: '-32', name: 'Voyager 2' }, { id: '-170', name: 'JWST' } ];
-            probes = []; let scriptsLoaded = 0, successCount = 0;
-            window.jplCallbacks = {};
+        const apiTargets = [ { id: '-31', name: 'Voyager 1' }, { id: '-32', name: 'Voyager 2' }, { id: '-170', name: 'JWST' } ];
+        probes = []; let successCount = 0;
 
-            const checkDone = () => { scriptsLoaded++; if (scriptsLoaded === apiTargets.length) { jplStatus.textContent = successCount === apiTargets.length ? "📡 JPL HORIZONS: LINK ESTABLISHED" : "📡 JPL HORIZONS: OFFLINE (USING FALLBACKS)"; jplStatus.style.color = successCount === apiTargets.length ? "#55ff55" : "#ff5555"; setTimeout(() => { jplStatus.textContent = ""; }, 4000); buildSidebar(); resolve(); } };
+        for (const t of apiTargets) {
+            // FIXED: Direct call without proxies or JSONP.
+            const url = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='${t.id}'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='@10'&START_TIME='${startStr}'&STOP_TIME='${stopStr}'&STEP_SIZE='1m'&OUT_UNITS='AU-D'&VEC_TABLE='2'`;
+            
+            try {
+                const res = await fetch(url);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                const text = data.result;
 
-            apiTargets.forEach((t, index) => {
-                const callbackName = `cb_${index}`;
-                window.jplCallbacks[callbackName] = function(data) {
-                    try {
-                        const text = data.result;
-                        const x = text.match(/X =\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/), y = text.match(/Y =\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/), z = text.match(/Z =\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
-                        const vx = text.match(/VX=\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/), vy = text.match(/VY=\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/), vz = text.match(/VZ=\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
-                        if (x && vx) { probes.push({ name: t.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: parseFloat(x[1]), y: parseFloat(z[1]), z: parseFloat(y[1]), vx: parseFloat(vx[1])*365.25, vy: parseFloat(vz[1])*365.25, vz: parseFloat(vy[1])*365.25, ax: 0, ay: 0, az: 0, trail: [] }); successCount++; } else throw new Error("Parse");
-                    } catch (e) {
-                        const fb = FALLBACK_PROBES.find(p => p.name === t.name); if (fb) probes.push({ name: fb.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: fb.x, y: fb.y, z: fb.z, vx: fb.vx, vy: fb.vy, vz: fb.vz, ax: 0, ay: 0, az: 0, trail: [] });
-                    }
-                    checkDone();
-                };
+                const xMatch = text.match(/X =\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
+                const yMatch = text.match(/Y =\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
+                const zMatch = text.match(/Z =\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
+                const vxMatch = text.match(/VX=\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
+                const vyMatch = text.match(/VY=\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
+                const vzMatch = text.match(/VZ=\s*([-+]?[0-9]*\.?[0-9]+[E|e][-+]?[0-9]+)/);
 
-                const script = document.createElement('script');
-                script.src = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='${t.id}'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='@10'&START_TIME='${startStr}'&STOP_TIME='${stopStr}'&STEP_SIZE='1m'&OUT_UNITS='AU-D'&VEC_TABLE='2'&callback=jplCallbacks.${callbackName}`;
-                script.onerror = () => { const fb = FALLBACK_PROBES.find(p => p.name === t.name); if (fb) probes.push({ name: fb.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: fb.x, y: fb.y, z: fb.z, vx: fb.vx, vy: fb.vy, vz: fb.vz, ax: 0, ay: 0, az: 0, trail: [] }); checkDone(); };
-                document.body.appendChild(script);
-            });
-        });
+                if (xMatch && vxMatch) {
+                    const x = parseFloat(xMatch[1]), z = parseFloat(yMatch[1]), y = parseFloat(zMatch[1]);
+                    const vx = parseFloat(vxMatch[1]) * 365.25, vz = parseFloat(vyMatch[1]) * 365.25, vy = parseFloat(vzMatch[1]) * 365.25;
+                    probes.push({ name: t.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: x, y: y, z: z, vx: vx, vy: vy, vz: vz, ax: 0, ay: 0, az: 0, trail: [] });
+                    successCount++;
+                }
+            } catch (e) {
+                console.warn(`JPL Fetch Failed for ${t.name}, using Hardcoded Fallback.`);
+                const fb = FALLBACK_PROBES.find(p => p.name === t.name);
+                if (fb) { probes.push({ name: fb.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: fb.x, y: fb.y, z: fb.z, vx: fb.vx, vy: fb.vy, vz: fb.vz, ax: 0, ay: 0, az: 0, trail: [] }); }
+            }
+            await new Promise(resolve => setTimeout(resolve, 300)); 
+        }
+        
+        jplStatus.textContent = successCount === apiTargets.length ? "📡 JPL HORIZONS: LINK ESTABLISHED" : "📡 JPL HORIZONS: OFFLINE (USING FALLBACKS)";
+        jplStatus.style.color = successCount === apiTargets.length ? "#55ff55" : "#ff5555";
+        setTimeout(() => { jplStatus.textContent = ""; }, 4000);
+        buildSidebar(); 
     }
 
     async function jumpToDate(targetDate) {
@@ -319,7 +329,7 @@
         document.getElementById('datePicker').value = targetDate.toISOString().split('T')[0];
         const savedTargetName = trackingTarget ? trackingTarget.name : null;
         initSimulation(); 
-        await loadJPLTelemetryJSONP(targetDate);
+        await loadJPLTelemetry(targetDate);
         if (savedTargetName) { const target = [...majorBodies, ...moons, ...probes, ...comets].find(b => b.name === savedTargetName); if (target) focusOnTarget(target); }
     }
 
