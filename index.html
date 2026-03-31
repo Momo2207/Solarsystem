@@ -152,7 +152,7 @@
     const typBuffer = gl.createBuffer(), texIdxBuffer = gl.createBuffer(), rotRateBuffer = gl.createBuffer();
     const atlasTexture = gl.createTexture();
 
-    // --- ENGINE LOGIC ---
+    // --- ESSENTIAL ENGINE LOGIC ---
     function getScreenProjection(x, y, z) { const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180, cY = Math.cos(rY), sY = Math.sin(rY), cX = Math.cos(rX), sX = Math.sin(rX), x1 = x * cY + z * sY, z1 = -x * sY + z * cY, y2 = y * cX - z1 * sX, z2 = y * sX + z1 * cX, sf = 100 / (100 + z2); return { rawX: x1, rawY: y2, rawZ: z2, sf: sf, sx: centerX + x1 * sf * viewZoom + translateX, sy: centerY + y2 * sf * viewZoom + translateY }; }
     function getSpacetimeDepth(x, z) { let y = 0; const wells = majorBodies.filter(b => b.mass > 1e-5); for (let i = 0; i < wells.length; i++) { const b = wells[i], dist = Math.hypot(x - b.x, z - b.z); y += (b.mass * (b.name==="Sun"?3.0:1500.0)) / (dist + (b.name==="Sun"?0.3:0.1)); } return y; }
     function getBodyY(body) { if (!showGrid) return body.y; if (body.parentBody) return getSpacetimeDepth(body.parentBody.x, body.parentBody.z) + (body.y - body.parentBody.y); return getSpacetimeDepth(body.x, body.z); }
@@ -224,7 +224,7 @@
         });
     }
 
-    // --- DIRECT NASA GITHUB PAGES FETCH (NO PROXIES) ---
+    // --- LIVE JPL SBDB SEARCH (Direct Fetch) ---
     document.getElementById('jplSearchBtn').addEventListener('click', async () => {
         const query = document.getElementById('jplSearchInput').value.trim();
         if (!query) return;
@@ -232,7 +232,7 @@
         status.textContent = "SEARCHING JPL SBDB..."; status.style.color = "#ffaa00";
 
         try {
-            // Direct Fetch - No Proxies!
+            // Direct fetch (SBDB supports CORS)
             const res = await fetch(`https://ssd-api.jpl.nasa.gov/sbdb.api?sstr=${encodeURIComponent(query)}`);
             if (!res.ok) throw new Error("API Error.");
             const data = await res.json();
@@ -275,23 +275,27 @@
         }
     });
 
+    // --- HORIZONS PROBE TELEMETRY (CLEAN CODE_TABS PROXY WITHOUT SPACES/QUOTES) ---
     async function loadJPLTelemetry(dateObj) {
         const jplStatus = document.getElementById('jpl-status');
         jplStatus.textContent = "📡 JPL HORIZONS: FETCHING TELEMETRY..."; jplStatus.style.color = "#ffaa00";
 
+        // FIXED: Using only simple dates (no time, no spaces) to prevent CodeTabs from throwing a 400 Bad Request
         const yyyy = dateObj.getUTCFullYear(), mm = String(dateObj.getUTCMonth() + 1).padStart(2, '0'), dd = String(dateObj.getUTCDate()).padStart(2, '0');
-        // Space is hard-encoded as %20 so NASA doesn't throw a 400 Bad Request Error
-        const startStr = `${yyyy}-${mm}-${dd}%2000:00`, stopStr = `${yyyy}-${mm}-${dd}%2000:01`;
+        const startStr = `${yyyy}-${mm}-${dd}`;
+        const nextDate = new Date(dateObj.getTime() + 86400000);
+        const stopStr = `${nextDate.getUTCFullYear()}-${String(nextDate.getUTCMonth() + 1).padStart(2, '0')}-${String(nextDate.getUTCDate()).padStart(2, '0')}`;
 
         const apiTargets = [ { id: '-31', name: 'Voyager 1' }, { id: '-32', name: 'Voyager 2' }, { id: '-170', name: 'JWST' } ];
         probes = []; let successCount = 0;
 
         for (const t of apiTargets) {
-            // Direct Fetch - No Proxies!
-            const url = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND='${t.id}'&OBJ_DATA='NO'&MAKE_EPHEM='YES'&EPHEM_TYPE='VECTORS'&CENTER='@10'&START_TIME='${startStr}'&STOP_TIME='${stopStr}'&STEP_SIZE='1m'&OUT_UNITS='AU-D'&VEC_TABLE='2'`;
+            // FIXED: Removed all single quotes so the URL encoding stays completely clean
+            const rawUrl = `https://ssd.jpl.nasa.gov/api/horizons.api?format=json&COMMAND=${t.id}&OBJ_DATA=NO&MAKE_EPHEM=YES&EPHEM_TYPE=VECTORS&CENTER=@10&START_TIME=${startStr}&STOP_TIME=${stopStr}&STEP_SIZE=1d&OUT_UNITS=AU-D&VEC_TABLE=2`;
+            const proxyUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(rawUrl)}`;
             
             try {
-                const res = await fetch(url);
+                const res = await fetch(proxyUrl);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
                 const text = data.result;
@@ -314,8 +318,7 @@
                 const fb = FALLBACK_PROBES.find(p => p.name === t.name);
                 if (fb) { probes.push({ name: fb.name, type: 'probe', mass: 1e-15, radius: 2e-6, color: [0.3, 1.0, 0.5, 1.0], x: fb.x, y: fb.y, z: fb.z, vx: fb.vx, vy: fb.vy, vz: fb.vz, ax: 0, ay: 0, az: 0, trail: [] }); }
             }
-            // 1 Second Delay to prevent 503 Rate Limiting by NASA
-            await new Promise(resolve => setTimeout(resolve, 1000)); 
+            await new Promise(resolve => setTimeout(resolve, 500)); 
         }
         
         jplStatus.textContent = successCount === apiTargets.length ? "📡 JPL HORIZONS: LINK ESTABLISHED" : "📡 JPL HORIZONS: OFFLINE (USING FALLBACKS)";
