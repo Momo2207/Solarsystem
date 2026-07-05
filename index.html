@@ -165,6 +165,13 @@ float voronoi(vec3 x){
   return sqrt(res);
 }
 mat2 rot2(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);} 
+mat3 transpose3(mat3 m){
+  return mat3(
+    m[0][0], m[1][0], m[2][0],
+    m[0][1], m[1][1], m[2][1],
+    m[0][2], m[1][2], m[2][2]
+  );
+}
 vec3 rotateY(vec3 p,float a){float c=cos(a),s=sin(a);return vec3(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);} 
 float smoothPulse(float x,float c,float w){return exp(-pow((x-c)/w,2.0));}
 
@@ -265,7 +272,7 @@ void main(){
   float camZ=3.1/uZoom;
   vec3 roCam=vec3(0.0,0.0,camZ);
   vec3 rdCam=normalize(vec3(uv*1.82,-2.25));
-  mat3 invR=transpose(uRot);
+  mat3 invR=transpose3(uRot);
   vec3 ro=invR*roCam;
   vec3 rd=invR*rdCam;
   float B=dot(ro,rd), C=dot(ro,ro)-1.0, H=B*B-C;
