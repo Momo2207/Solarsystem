@@ -321,7 +321,13 @@ const world = {
   symbiosisHeat: new Float32Array(N),
   fireRisk: new Float32Array(N),
   selectionPressure: new Float32Array(N),
-  preyPressure: new Float32Array(N)
+  preyPressure: new Float32Array(N),
+  biomassDensity: new Float32Array(N),
+  staticDensity: new Float32Array(N),
+  mobileDensity: new Float32Array(N),
+  producerDensity: new Float32Array(N),
+  grazerDensity: new Float32Array(N),
+  predatorDensity: new Float32Array(N)
 };
 
 const BIOME = { OCEAN: 0, LAKE: 1, WETLAND: 2, DESERT: 3, GRASS: 4, FOREST: 5, BURNED: 6, COLD: 7, BARREN: 8, FIRE: 9 };
@@ -351,7 +357,7 @@ let milestones = new Set();
 let lastDeathPulse = 0;
 let lastRadiationCheck = 0;
 let previousDominantEcosystem = '';
-let lastWeatherEvent = { rain: -9999, drought: -9999, heatwave: -9999, storm: -9999, cold: -9999, wildfire: -9999, postFire: -9999, armsRace: -9999, predatorCrash: -9999, trophic: -9999 };
+let lastWeatherEvent = { rain: -9999, drought: -9999, heatwave: -9999, storm: -9999, cold: -9999, wildfire: -9999, postFire: -9999, armsRace: -9999, predatorCrash: -9999, trophic: -9999, mobileGrazer: -9999, plantThrottle: -9999 };
 let lastTruePredatorCount = 0;
 let lastPreyCount = 0;
 
@@ -818,13 +824,38 @@ function feedingLabel(g) {
   return role;
 }
 
+function strategyUpdateInterval(org) {
+  if (org.strategy === STRATEGY.STATIC) return clamp(4 + Math.floor(org.bodyCells.length / 4), 4, 10);
+  if (org.strategy === STRATEGY.SYMBIOTIC && org.genome.mobilityType < 0.48) return clamp(3 + Math.floor(org.bodyCells.length / 5), 3, 8);
+  if (org.strategy === STRATEGY.SOLITARY && org.genome.movementSpeed < 0.32 && !isTruePredator(org.genome)) return 2;
+  return 1;
+}
+
+function staticLightLimiter(org, env) {
+  const bodyN = Math.max(1, org.bodyCells.length);
+  const selfShade = 1 / (1 + Math.max(0, bodyN - 4) * 0.075 + Math.max(0, env.staticCover - bodyN * 0.55) * 0.075);
+  const wetRootBonus = org.genome.structuralStrength * 0.08 + org.genome.droughtDormancy * 0.06;
+  return clamp(env.light * selfShade + wetRootBonus, 0.05, 1);
+}
+
+function mobileOpportunityScore(g, env) {
+  const staticFood = Math.max(0, env.staticCover - 0.25) * (g.grazing || 0) * 0.10;
+  const greenFood = env.veg * (g.grazing || 0) * 0.55;
+  const escapeValue = (env.fireRisk + env.weather.drought + env.selection) * (g.migrationResponse || 0) * 0.18;
+  return greenFood + staticFood + escapeValue;
+}
+
 function strategyFromGenome(g) {
-  const multicell = g.adhesion * 0.55 + g.colonyGrowth * 0.65 + g.structuralStrength * 0.22 + g.specialization * 0.22;
-  const mobileDrive = g.movementSpeed * 0.45 + g.mobilityType * 0.65 + truePredatorScore(g) * 0.22;
+  const multicell = g.adhesion * 0.52 + g.colonyGrowth * 0.56 + g.structuralStrength * 0.18 + g.specialization * 0.20;
+  const grazerMobility = Math.max(g.grazing || 0, g.feeding || 0) * 0.10 + (g.migrationResponse || 0) * 0.18 + (g.evasiveMovement || 0) * 0.14;
+  const mobileDrive = g.movementSpeed * 0.58 + g.mobilityType * 0.70 + truePredatorScore(g) * 0.25 + grazerMobility;
+  const staticLock = g.colonyGrowth * 0.54 + g.photosynthesis * 0.13 + g.structuralStrength * 0.17 - g.mobilityType * 0.30 - g.movementSpeed * 0.16;
   const symDrive = g.symbiosisOpen * 0.72 + g.symbiosisDependency * 0.36 + (g.bodyPlan > 7.7 ? 0.18 : 0);
   if (symDrive > 0.92 && multicell > 0.78) return STRATEGY.SYMBIOTIC;
-  if (multicell > 0.95) return mobileDrive > 0.82 ? STRATEGY.MOBILE : STRATEGY.STATIC;
-  if (mobileDrive > 1.08 && g.size > 0.7 && g.adhesion > 0.32) return STRATEGY.MOBILE;
+  if (mobileDrive > 0.88 && g.adhesion > 0.25 && g.size > 0.55) return STRATEGY.MOBILE;
+  if (multicell > 1.04 && staticLock > 0.58) return STRATEGY.STATIC;
+  if (multicell > 1.15) return mobileDrive > 0.68 ? STRATEGY.MOBILE : STRATEGY.STATIC;
+  if (mobileDrive > 1.02 && g.movementSpeed > 0.42) return STRATEGY.MOBILE;
   return STRATEGY.SOLITARY;
 }
 function baseStrategyFromGenome(g) { return strategyFromGenome(g); }
@@ -842,7 +873,7 @@ function randomGenome(x = W / 2, y = H / 2) {
     droughtResistance: randRange(0.15, 0.85),
     fireResistance: randRange(0.02, 0.22),
     metabolism: randRange(0.55, 1.18),
-    movementSpeed: randRange(0.10, 0.95),
+    movementSpeed: randRange(0.16, 1.08),
     energyStorage: randRange(36, 105),
     reproductionRate: randRange(0.35, 1.25),
     mutationRate: randRange(0.012, 0.055),
@@ -879,8 +910,8 @@ function randomGenome(x = W / 2, y = H / 2) {
     attractionHeat: randRange(0, 0.65),
     attractionCold: randRange(0, 0.65),
     meiosisDrive: randRange(0.08, 0.52),
-    adhesion: randRange(0.04, 0.72),
-    colonyGrowth: randRange(0.02, 0.68),
+    adhesion: randRange(0.04, 0.66),
+    colonyGrowth: randRange(0.02, 0.58),
     mobilityType: randRange(0.0, 1.0),
     specialization: randRange(0.02, 0.62),
     structuralStrength: randRange(0.03, 0.72),
@@ -900,7 +931,7 @@ function randomGenome(x = W / 2, y = H / 2) {
     lightningFireRecovery: randRange(0.0, 0.22),
     sporeSurvival: randRange(0.04, 0.48),
     seedDispersalWindUse: randRange(0.04, 0.55),
-    migrationResponse: randRange(0.06, 0.62),
+    migrationResponse: randRange(0.10, 0.72),
     seasonalReproduction: randRange(0.04, 0.58)
   };
 }
@@ -953,7 +984,7 @@ function mutateGenome(g, multiplier = 1) {
   // Rare breakthrough mutations: most are failures unless selection later supports them.
   const breakthrough = clamp(rate * 0.075 + g.bodyPlanMutation * 0.025, 0.0005, 0.025);
   if (chance(breakthrough)) {
-    const choices = ['predation','armor','pack','toxin','spores','weather','cooperation','ambush'];
+    const choices = ['predation','armor','pack','toxin','spores','weather','cooperation','ambush','mobility','browser'];
     const pick = choices[Math.floor(srand() * choices.length)];
     if (pick === 'predation') {
       child.predation = clamp(child.predation + randRange(0.10, 0.28), 0, 1.25);
@@ -979,12 +1010,24 @@ function mutateGenome(g, multiplier = 1) {
       child.symbiosisOpen = clamp(child.symbiosisOpen + randRange(0.12, 0.30), 0, 1.35); child.cooperation = clamp(child.cooperation + randRange(0.10, 0.26), 0, 1.3); child.cheating = clamp(child.cheating - randRange(0.02, 0.12), 0, 1.2);
     } else if (pick === 'ambush') {
       child.ambushTendency = clamp(child.ambushTendency + randRange(0.15, 0.38), 0, 1.2); child.camouflage = clamp(child.camouflage + randRange(0.10, 0.24), 0, 1.2); child.pursuitEnergyCost = clamp(child.pursuitEnergyCost - randRange(0.03, 0.14), 0.05, 1.25);
+    } else if (pick === 'mobility') {
+      child.movementSpeed = clamp(child.movementSpeed + randRange(0.12, 0.34), 0.02, 2.4);
+      child.mobilityType = clamp(child.mobilityType + randRange(0.10, 0.30), 0, 1);
+      child.migrationResponse = clamp(child.migrationResponse + randRange(0.10, 0.28), 0, 1.2);
+      child.evasiveMovement = clamp(child.evasiveMovement + randRange(0.08, 0.24), 0, 1.3);
+      child.colonyGrowth = clamp(child.colonyGrowth - randRange(0.02, 0.10), 0, 1.5);
+    } else if (pick === 'browser') {
+      child.grazing = clamp(child.grazing + randRange(0.15, 0.38), 0, 1.3);
+      child.feeding = clamp(child.feeding + randRange(0.08, 0.24), 0, 1.2);
+      child.movementSpeed = clamp(child.movementSpeed + randRange(0.04, 0.16), 0.02, 2.4);
+      child.photosynthesis = clamp(child.photosynthesis - randRange(0.04, 0.15), 0, 1.4);
+      child.metabolism = clamp(child.metabolism + randRange(0.02, 0.09), 0.25, 2.5);
     }
   }
 
   // Trade-offs keep breakthroughs from becoming free upgrades.
   child.metabolism = clamp(child.metabolism + child.movementSpeed * 0.010 + child.size * 0.009 + child.colonyGrowth * 0.004 + truePredatorScore(child) * 0.030 + child.armor * 0.010, geneRanges.metabolism[0], geneRanges.metabolism[1]);
-  child.reproductionRate = clamp(child.reproductionRate - child.energyStorage * 0.00042 - child.structuralStrength * 0.010 - child.armor * 0.022 - truePredatorScore(child) * 0.060 - weatherResistanceScore(child) * 0.018 + randRange(-0.012, 0.012), geneRanges.reproductionRate[0], geneRanges.reproductionRate[1]);
+  child.reproductionRate = clamp(child.reproductionRate - child.energyStorage * 0.00042 - child.structuralStrength * 0.012 - child.armor * 0.022 - child.colonyGrowth * 0.032 - child.specialization * 0.012 - truePredatorScore(child) * 0.060 - weatherResistanceScore(child) * 0.018 + child.migrationResponse * 0.006 + randRange(-0.012, 0.012), geneRanges.reproductionRate[0], geneRanges.reproductionRate[1]);
   child.movementSpeed = clamp(child.movementSpeed - child.armor * 0.010 - child.structuralStrength * 0.004 + child.evasiveMovement * 0.006, geneRanges.movementSpeed[0], geneRanges.movementSpeed[1]);
   child.photosynthesis = clamp(child.photosynthesis - truePredatorScore(child) * 0.018 - child.armor * 0.006, 0, 1.4);
   child.grazing = clamp(child.grazing - truePredatorScore(child) * 0.012, 0, 1.3);
@@ -1031,10 +1074,10 @@ function ecologyDistance(g, s) {
 
 function targetCellCount(g, strategy = strategyFromGenome(g)) {
   if (strategy === STRATEGY.SOLITARY) return 1;
-  const base = 1 + Math.floor(g.colonyGrowth * 8 + g.adhesion * 5 + g.size * 3 + g.specialization * 4);
-  if (strategy === STRATEGY.MOBILE) return clamp(Math.floor(base * 0.55 + g.movementSpeed * 2), 3, 15);
-  if (strategy === STRATEGY.SYMBIOTIC) return clamp(Math.floor(base * 1.05 + g.symbiosisOpen * 5), 4, 28);
-  return clamp(base + Math.floor(g.structuralStrength * 5), 3, CFG.maxBodyCells);
+  const base = 1 + Math.floor(g.colonyGrowth * 6.5 + g.adhesion * 4.2 + g.size * 2.6 + g.specialization * 3.4);
+  if (strategy === STRATEGY.MOBILE) return clamp(Math.floor(base * 0.62 + g.movementSpeed * 2.4 + g.grazing * 1.2), 3, 17);
+  if (strategy === STRATEGY.SYMBIOTIC) return clamp(Math.floor(base * 0.92 + g.symbiosisOpen * 4.2), 4, 24);
+  return clamp(base + Math.floor(g.structuralStrength * 3.2), 3, 24);
 }
 
 function addUniqueOffset(cells, seen, dx, dy, role) {
@@ -1349,13 +1392,28 @@ function buildBins() {
   bins = Array.from({ length: binCols * binRows }, () => []);
   world.occupancy.fill(0);
   world.staticCover.fill(0);
+  world.biomassDensity.fill(0);
+  world.staticDensity.fill(0);
+  world.mobileDensity.fill(0);
+  world.producerDensity.fill(0);
+  world.grazerDensity.fill(0);
+  world.predatorDensity.fill(0);
   for (const o of organisms) {
     const tx = clamp(Math.floor(o.x), 0, W - 1), ty = clamp(Math.floor(o.y), 0, H - 1);
     const bx = Math.floor(tx / CFG.binSize), by = Math.floor(ty / CFG.binSize);
     bins[by * binCols + bx].push(o);
+    const role = trophicRole(o.genome);
+    const pred = truePredatorScore(o.genome);
+    const isStatic = o.strategy === STRATEGY.STATIC || o.strategy === STRATEGY.SYMBIOTIC;
+    const isMobile = o.strategy === STRATEGY.MOBILE || (o.strategy === STRATEGY.SOLITARY && o.genome.movementSpeed > 0.42);
     for (const c of bodyFootprint(o)) {
       world.occupancy[c.i]++;
-      if (o.strategy === STRATEGY.STATIC || o.strategy === STRATEGY.SYMBIOTIC) world.staticCover[c.i] += 1;
+      world.biomassDensity[c.i] += 1;
+      if (isStatic) { world.staticCover[c.i] += 1; world.staticDensity[c.i] += 1; }
+      if (isMobile) world.mobileDensity[c.i] += 1;
+      if (role === 'producer') world.producerDensity[c.i] += 1;
+      else if (role === 'grazer') world.grazerDensity[c.i] += 1;
+      else if (role === 'predator') world.predatorDensity[c.i] += pred;
     }
   }
 }
@@ -1382,9 +1440,9 @@ function habitatScore(genome, x, y, org = null) {
   const waterDanger = Math.max(0, world.water[i] - genome.waterTolerance) * 1.6;
   const dryDanger = Math.max(0, 0.22 - world.moisture[i]) * (1 - genome.droughtResistance) * 2.4;
   const fireDanger = world.fire[i] * (1 - genome.fireResistance) * 2.8;
-  const food = world.vegetation[i] * genome.grazing * 0.45 + world.fertility[i] * genome.attractionFertility * 0.25 + world.ash[i] * genome.decomposition * 0.28 + world.moisture[i] * genome.photosynthesis * 0.2 + world.deathHeat[i] * genome.decomposition * 0.1;
+  const food = world.vegetation[i] * genome.grazing * 0.50 + world.staticDensity[i] * genome.grazing * 0.060 + world.fertility[i] * genome.attractionFertility * 0.22 + world.ash[i] * genome.decomposition * 0.28 + world.moisture[i] * genome.photosynthesis * 0.18 + world.deathHeat[i] * genome.decomposition * 0.1;
   const occupancy = world.occupancy[i];
-  const predBonus = isTruePredator(genome) ? occupancy * 0.045 : Math.max(0, occupancy - 3) * (genome.predationDrive || 0) * 0.010;
+  const predBonus = isTruePredator(genome) ? (world.grazerDensity[i] + world.mobileDensity[i] * 0.45 + occupancy * 0.25) * 0.055 : Math.max(0, occupancy - 3) * (genome.predationDrive || 0) * 0.012;
   const densityPenalty = isTruePredator(genome) ? 0 : Math.max(0, occupancy - 1.2) * (0.040 + (genome.avoidance || 0) * 0.020 + (genome.migrationResponse || 0) * 0.026);
   const tempPull = genome.attractionHeat * clamp((world.temp[i] - genome.preferredTemp) / 20, -1, 1) - genome.attractionCold * clamp((genome.preferredTemp - world.temp[i]) / 20, -1, 1);
   const lightPenalty = (org && (org.strategy === STRATEGY.STATIC || org.strategy === STRATEGY.SYMBIOTIC)) ? world.staticCover[i] * 0.014 : 0;
@@ -1393,23 +1451,23 @@ function habitatScore(genome, x, y, org = null) {
 
 function footprintAverages(org) {
   const cells = bodyFootprint(org);
-  let temp = 0, moist = 0, water = 0, fert = 0, veg = 0, ash = 0, fire = 0, density = 0, light = 0, staticCover = 0, detritus = 0, fireRisk = 0, selection = 0;
+  let temp = 0, moist = 0, water = 0, fert = 0, veg = 0, ash = 0, fire = 0, density = 0, light = 0, staticCover = 0, detritus = 0, fireRisk = 0, selection = 0, biomass = 0, mobileDensity = 0, producerDensity = 0, grazerDensity = 0, predatorDensity = 0;
   let rain = 0, drought = 0, heatwave = 0, cold = 0, storm = 0, windX = 0, windY = 0, cloud = 0;
   for (const c of cells) {
     const w = weatherSample(c.x, c.y);
-    temp += world.temp[c.i]; moist += world.moisture[c.i]; water += world.water[c.i]; fert += world.fertility[c.i]; veg += world.vegetation[c.i]; ash += world.ash[c.i]; fire += world.fire[c.i]; density += world.occupancy[c.i]; staticCover += world.staticCover[c.i]; detritus += world.detritus[c.i]; fireRisk += world.fireRisk[c.i]; selection += world.selectionPressure[c.i];
+    temp += world.temp[c.i]; moist += world.moisture[c.i]; water += world.water[c.i]; fert += world.fertility[c.i]; veg += world.vegetation[c.i]; ash += world.ash[c.i]; fire += world.fire[c.i]; density += world.occupancy[c.i]; staticCover += world.staticCover[c.i]; detritus += world.detritus[c.i]; fireRisk += world.fireRisk[c.i]; selection += world.selectionPressure[c.i]; biomass += world.biomassDensity[c.i]; mobileDensity += world.mobileDensity[c.i]; producerDensity += world.producerDensity[c.i]; grazerDensity += world.grazerDensity[c.i]; predatorDensity += world.predatorDensity[c.i];
     rain += w.rain; drought += w.drought; heatwave += w.heatwave; cold += w.cold; storm += w.storm; windX += w.windX; windY += w.windY; cloud += w.cloud;
     light += clamp(1 - world.water[c.i] * 0.2 - world.fire[c.i] - Math.max(0, world.staticCover[c.i] - 1) * 0.045 - w.cloud * 0.12, 0.08, 1);
   }
   const n = Math.max(1, cells.length);
-  return { cells, temp: temp/n, moist: moist/n, water: water/n, fert: fert/n, veg: veg/n, ash: ash/n, fire: fire/n, density: density/n, light: light/n, staticCover: staticCover/n, detritus: detritus/n, fireRisk: fireRisk/n, selection: selection/n, weather: { rain: rain/n, drought: drought/n, heatwave: heatwave/n, cold: cold/n, storm: storm/n, windX: windX/n, windY: windY/n, cloud: cloud/n } };
+  return { cells, temp: temp/n, moist: moist/n, water: water/n, fert: fert/n, veg: veg/n, ash: ash/n, fire: fire/n, density: density/n, light: light/n, staticCover: staticCover/n, detritus: detritus/n, fireRisk: fireRisk/n, selection: selection/n, biomass: biomass/n, mobileDensity: mobileDensity/n, producerDensity: producerDensity/n, grazerDensity: grazerDensity/n, predatorDensity: predatorDensity/n, weather: { rain: rain/n, drought: drought/n, heatwave: heatwave/n, cold: cold/n, storm: storm/n, windX: windX/n, windY: windY/n, cloud: cloud/n } };
 }
 
 function localCarryingCapacity(env, genome, org = null) {
   const selfCells = org ? Math.max(1, org.bodyCells.length) : 1;
   const selfAllowance = Math.min(1.2, selfCells * 0.08);
-  const producerSupport = env.light * env.moist * env.fert * (1 - clamp(env.water * 0.65, 0, 0.7)) * (1 - clamp(env.fire * 1.3, 0, 0.95));
-  const grazerSupport = (env.veg * 0.85 + Math.max(0, env.staticCover - selfAllowance) * 0.06) * clamp(env.fert + 0.25, 0.15, 1.2);
+  const producerSupport = env.light * env.moist * env.fert * (1 - clamp(env.water * 0.65, 0, 0.7)) * (1 - clamp(env.fire * 1.3, 0, 0.95)) / (1 + Math.max(0, env.staticCover - selfCells * 0.45) * 0.16);
+  const grazerSupport = (env.veg * 0.82 + Math.max(0, env.staticCover - selfAllowance) * 0.105) * clamp(env.fert + 0.25, 0.15, 1.2);
   const recyclerSupport = env.detritus * 1.35 + env.ash * 0.55 + world.deathHeat[env.cells[0].i] * 0.80;
   const predatorSupport = Math.max(0, env.density - selfAllowance) * truePredatorScore(genome) * 0.42;
   const waterPenalty = Math.max(0, env.water - genome.waterTolerance) * 2.2 + env.fire * 3.0;
@@ -1442,20 +1500,21 @@ function applyLocalResourceUse(org, env, crowdPressure, dt) {
   const g = org.genome;
   const bodyN = Math.max(1, org.bodyCells.length);
   const role = trophicRole(g);
-  const consumerLoad = clamp((g.grazing || 0) * 0.75 + (g.feeding || 0) * 0.28 + truePredatorScore(g) * 0.18 + (role === 'decomposer' ? 0.18 : 0), 0.05, 1.9);
-  const producerLoad = clamp((g.photosynthesis || 0) * 0.55 + bodyN * 0.015, 0, 1.5);
-  const overuse = clamp(Math.max(0, env.density - localCarryingCapacity(env, g, org)) / 8, 0, 1.5);
+  const isStatic = org.strategy === STRATEGY.STATIC || (org.strategy === STRATEGY.SYMBIOTIC && g.mobilityType < 0.48);
+  const consumerLoad = clamp((g.grazing || 0) * 0.86 + (g.feeding || 0) * 0.32 + truePredatorScore(g) * 0.20 + (role === 'decomposer' ? 0.18 : 0), 0.05, 2.1);
+  const producerLoad = clamp((g.photosynthesis || 0) * (isStatic ? 0.86 : 0.50) + bodyN * (isStatic ? 0.030 : 0.014), 0, 2.1);
+  const overuse = clamp(Math.max(0, env.biomass - localCarryingCapacity(env, g, org)) / 7, 0, 1.8);
   if (crowdPressure <= 0.02 && consumerLoad < 0.18 && producerLoad < 0.18) return;
-  const vegUse = (0.00018 * consumerLoad + 0.00006 * overuse) * dt;
-  const fertUse = (0.00005 * producerLoad + 0.00004 * bodyN + 0.00008 * overuse) * dt;
-  const moistUse = (0.000035 * producerLoad + 0.000035 * overuse) * dt;
-  const detritusAdd = Math.max(0, crowdPressure - 0.45) * 0.00012 * dt;
+  const vegUse = (0.00025 * consumerLoad + 0.00009 * overuse + (isStatic ? 0.000055 * bodyN : 0)) * dt;
+  const fertUse = (0.00008 * producerLoad + 0.000055 * bodyN + 0.00011 * overuse) * dt;
+  const moistUse = (0.000070 * producerLoad + 0.000050 * overuse + (isStatic ? 0.000030 * bodyN : 0)) * dt;
+  const detritusAdd = Math.max(0, crowdPressure - 0.38) * 0.00018 * dt + (isStatic && crowdPressure > 0.7 ? 0.00010 * bodyN * dt : 0);
   for (const c of env.cells) {
     world.vegetation[c.i] = clamp(world.vegetation[c.i] - vegUse, 0, 1);
     world.fertility[c.i] = clamp(world.fertility[c.i] - fertUse, 0, 1);
     world.moisture[c.i] = clamp(world.moisture[c.i] - moistUse, 0, 1);
     world.detritus[c.i] = clamp(world.detritus[c.i] + detritusAdd, 0, 1);
-    world.selectionPressure[c.i] = clamp(world.selectionPressure[c.i] + crowdPressure * 0.030 + overuse * 0.020, 0, 1);
+    world.selectionPressure[c.i] = clamp(world.selectionPressure[c.i] + crowdPressure * 0.040 + overuse * 0.030 + (isStatic ? bodyN * 0.0008 : 0), 0, 1);
   }
 }
 
@@ -1482,6 +1541,17 @@ function pressureMutateGenome(genome, env, crowdPressure = 0) {
     child.migrationResponse = clamp((child.migrationResponse || 0) + randRange(0.04, 0.20) * resourceCrisis, 0, 1.2);
     child.avoidance = clamp((child.avoidance || 0) + randRange(0.02, 0.12) * resourceCrisis, 0, 1.2);
     child.seedDispersalWindUse = clamp((child.seedDispersalWindUse || 0) + randRange(0.02, 0.12) * resourceCrisis, 0, 1.2);
+    child.movementSpeed = clamp((child.movementSpeed || 0.4) + randRange(0.025, 0.14) * resourceCrisis, 0.02, 2.4);
+    child.mobilityType = clamp((child.mobilityType || 0.3) + randRange(0.018, 0.09) * resourceCrisis, 0, 1);
+    if (env.staticCover > 1.6 || env.veg > 0.28) {
+      child.grazing = clamp((child.grazing || 0) + randRange(0.025, 0.12) * resourceCrisis, 0, 1.3);
+      child.feeding = clamp((child.feeding || 0) + randRange(0.015, 0.08) * resourceCrisis, 0, 1.2);
+      child.photosynthesis = clamp((child.photosynthesis || 0) - randRange(0.0, 0.040) * resourceCrisis, 0, 1.4);
+      if (simTime - lastWeatherEvent.mobileGrazer > 240 && resourceCrisis > 0.55) {
+        addEvent('food web', 'Mobile grazer pressure increased: crowded producer mats are selecting organisms that move toward fresh food instead of staying rooted.', true);
+        lastWeatherEvent.mobileGrazer = simTime;
+      }
+    }
   }
   if (resourceCrisis > 0.58 && env.density > 3.5 && chance(clamp(child.mutationRate * 1.5 + resourceCrisis * 0.045, 0.012, 0.24))) {
     child.predationDrive = clamp((child.predationDrive || 0) + randRange(0.035, 0.14) * resourceCrisis, 0, 1.35);
@@ -1530,6 +1600,16 @@ const OrganismSystem = {
     for (let oi = organisms.length - 1; oi >= 0; oi--) {
       const o = organisms[oi], g = o.genome;
       o.age += dt; o.lastRepro += dt; o.lastGrow += dt;
+      const updateInterval = strategyUpdateInterval(o);
+      if (updateInterval > 1 && ((o.id + frameCounter) % updateInterval !== 0)) {
+        const ci = idx(clamp(Math.floor(o.x), 0, W - 1), clamp(Math.floor(o.y), 0, H - 1));
+        const gPassive = o.genome;
+        const passiveStatic = o.strategy === STRATEGY.STATIC || (o.strategy === STRATEGY.SYMBIOTIC && gPassive.mobilityType < 0.48);
+        o.energy -= (0.0038 * gPassive.metabolism * Math.pow(Math.max(1, o.bodyCells.length), 0.74) * (passiveStatic ? 1.35 : 1.0)) * dt;
+        o.health = clamp(o.health - (world.fire[ci] * (1 - fireAdaptationScore(gPassive)) * (passiveStatic ? 0.10 : 0.06) + Math.max(0, 0.17 - world.moisture[ci]) * (1 - gPassive.droughtResistance) * 0.010 + Math.max(0, world.water[ci] - gPassive.waterTolerance) * 0.012) * dt, 0, 1);
+        if (passiveStatic && world.staticCover[ci] > 3.0) world.selectionPressure[ci] = clamp(world.selectionPressure[ci] + 0.006 * dt, 0, 1);
+        continue;
+      }
       const strategyBefore = o.strategy;
       if (frameCounter % 23 === 0 && chance(0.18)) refreshBody(o);
       const env = footprintAverages(o);
@@ -1544,11 +1624,13 @@ const OrganismSystem = {
       const rootCells = (role.root || 0) + (role.store || 0) * 0.2;
       const moveCells = (role.move || 0) + (o.strategy === STRATEGY.MOBILE ? 1 : 0);
       const protectionCells = (role.protect || 0) + g.structuralStrength * 0.8;
-      const lightCompetition = 1 / (1 + Math.max(0, env.density - bodyN) * 0.10);
+      const lightCompetition = 1 / (1 + Math.max(0, env.staticCover - bodyN * 0.45) * 0.18 + Math.max(0, env.density - bodyN) * 0.06);
       const seasonalBoost = 1 + g.seasonalReproduction * Math.max(0, env.weather.rain + env.weather.cloud * 0.2 - env.weather.drought * 0.6) * 0.16;
-      const photoGain = g.photosynthesis * env.light * env.moist * tempFit * (0.072 + photoCells * 0.036) * dt * lightCompetition * (1 - env.weather.drought * 0.22) * seasonalBoost;
-      const staticFood = Math.max(0, env.staticCover - bodyN) * 0.045;
-      const grazeGain = g.grazing * (env.veg + staticFood) * env.fert * moistureFit * (0.076 + feedCells * 0.029) * dt * (1 - truePredatorScore(g) * 0.22);
+      const plantLimiter = (o.strategy === STRATEGY.STATIC || (o.strategy === STRATEGY.SYMBIOTIC && g.mobilityType < 0.48)) ? staticLightLimiter(o, env) * 0.78 : 1;
+      const photoGain = g.photosynthesis * env.light * env.moist * tempFit * (0.062 + photoCells * 0.030) * dt * lightCompetition * plantLimiter * (1 - env.weather.drought * 0.22) * seasonalBoost;
+      const staticFood = Math.max(0, env.staticCover - (o.strategy === STRATEGY.STATIC ? bodyN * 0.8 : bodyN * 0.18)) * 0.088;
+      const mobileForage = o.strategy === STRATEGY.MOBILE ? (1.18 + g.movementSpeed * 0.22 + mobileOpportunityScore(g, env) * 0.30) : 1;
+      const grazeGain = g.grazing * (env.veg + staticFood) * env.fert * moistureFit * (0.082 + feedCells * 0.032) * dt * mobileForage * (1 - truePredatorScore(g) * 0.22);
       const decompGain = g.decomposition * (env.ash + env.detritus * 0.85 + world.deathHeat[env.cells[0].i] * 0.25 + Math.max(0, env.density - bodyN) * 0.008) * (0.07 + rootCells * 0.03) * dt;
       const crowdPressure = crowdingPressure(env, g, o);
       const resourceLimiter = 1 / (1 + crowdPressure * (0.55 + (o.strategy === STRATEGY.SOLITARY ? 0.16 : 0.08)));
@@ -1584,8 +1666,8 @@ const OrganismSystem = {
       totalGain += this.handleSymbiosis(o, env, dt);
       o.energy += totalGain;
 
-      const bodyCostFactor = o.strategy === STRATEGY.STATIC ? 0.64 : o.strategy === STRATEGY.SYMBIOTIC ? 0.75 : o.strategy === STRATEGY.MOBILE ? 1.05 : 1;
-      const basalCost = (0.018 * g.metabolism * Math.pow(bodyN, 0.76) * bodyCostFactor + 0.004 * g.size + env.density * 0.0009 + crowdPressure * (0.009 + bodyN * 0.0012) + truePredatorScore(g) * 0.010 + (g.armor || 0) * 0.004) * dt;
+      const bodyCostFactor = o.strategy === STRATEGY.STATIC ? 0.88 : o.strategy === STRATEGY.SYMBIOTIC ? 0.84 : o.strategy === STRATEGY.MOBILE ? 0.96 : 1;
+      const basalCost = (0.018 * g.metabolism * Math.pow(bodyN, 0.76) * bodyCostFactor + 0.004 * g.size + env.density * 0.0009 + crowdPressure * (0.009 + bodyN * (o.strategy === STRATEGY.STATIC ? 0.0020 : 0.0011)) + truePredatorScore(g) * 0.010 + (g.armor || 0) * 0.004) * dt;
       o.energy -= basalCost;
       const protection = clamp(g.structuralStrength * 0.42 + protectionCells * 0.06 + (o.symbiosis.kind === 'defensive' ? o.symbiosis.strength * 0.25 : 0), 0, 0.82);
       const tempStress = Math.max(0, 1 - tempFit) * 0.016 * dt * (1 - protection * 0.35);
@@ -1593,7 +1675,7 @@ const OrganismSystem = {
       const floodStress = Math.max(0, env.water - g.waterTolerance) * 0.045 * dt * (1 - protection * 0.2);
       const fireStress = env.fire * (1 - fireAdaptationScore(g)) * (o.strategy === STRATEGY.STATIC ? 0.30 : 0.20) * dt * (1 - protection * 0.65);
       const weatherStress = (env.weather.drought * (1 - (g.droughtDormancy || 0)) * 0.007 + env.weather.heatwave * (1 - (g.heatShockResistance || 0)) * 0.006 + env.weather.cold * (1 - (g.coldShockResistance || 0)) * 0.005 + env.weather.storm * Math.max(0, 0.45 - (g.stormDispersal || 0) - g.adhesion * 0.12) * 0.004) * dt * (1 - protection * 0.25);
-      const crowdingStress = crowdPressure * (0.0016 + (o.strategy === STRATEGY.STATIC ? 0.0008 : 0.0014) + Math.max(0, o.hunger - 0.45) * 0.0022) * dt * (1 - protection * 0.18);
+      const crowdingStress = crowdPressure * (0.0016 + (o.strategy === STRATEGY.STATIC ? 0.0024 : o.strategy === STRATEGY.MOBILE ? 0.0010 : 0.0015) + Math.max(0, o.hunger - 0.45) * 0.0022) * dt * (1 - protection * 0.18);
       o.health = clamp(o.health - tempStress - dryStress - floodStress - fireStress - weatherStress - crowdingStress + tempFit * moistureFit * 0.0025 * dt, 0, 1);
       if (env.fire > 0.22 && (o.strategy === STRATEGY.STATIC || o.strategy === STRATEGY.SYMBIOTIC) && o.bodyCells.length > 1 && chance(env.fire * Math.max(0.04, 0.22 - fireAdaptationScore(g) * 0.14) * dt)) {
         o.bodyCells.pop();
@@ -1648,8 +1730,8 @@ const OrganismSystem = {
     const g = o.genome;
     o.lastHunt = (o.lastHunt || 0) + dt;
     const hungerNow = clamp(1 - o.energy / Math.max(1, g.energyStorage * (0.55 + o.bodyCells.length * 0.22)), 0, 1);
-    const conflictDrive = clamp(crowdPressure * 0.42 + hungerNow * 0.22 + (g.aggression || 0) * 0.18 + (g.predationDrive || 0) * 0.16 + (g.feeding || 0) * 0.06 - (g.photosynthesis || 0) * 0.035, 0, 1.2);
-    if (conflictDrive < 0.24 || crowdPressure < 0.32) return 0;
+    const conflictDrive = clamp(crowdPressure * 0.52 + hungerNow * 0.24 + (g.aggression || 0) * 0.20 + (g.predationDrive || 0) * 0.18 + (g.feeding || 0) * 0.07 + Math.max(0, env.staticCover - 1.5) * 0.025 - (g.photosynthesis || 0) * 0.030, 0, 1.25);
+    if (conflictDrive < 0.22 || crowdPressure < 0.28) return 0;
     const cooldown = Math.max(7, (g.huntingCooldown || 28) * (0.95 - conflictDrive * 0.28));
     if (o.lastHunt < cooldown || !chance(conflictDrive * 0.46 * dt)) return 0;
     const candidates = nearbyOrganisms(o, 2.8 + (g.preyDetection || 0) * 2.8).filter(p => {
@@ -1814,7 +1896,7 @@ const OrganismSystem = {
     const g = o.genome;
     const canMove = o.strategy === STRATEGY.SOLITARY || o.strategy === STRATEGY.MOBILE || (o.strategy === STRATEGY.SYMBIOTIC && g.mobilityType > 0.45);
     if (!canMove) return;
-    const moveFactor = o.strategy === STRATEGY.MOBILE ? 0.28 + (o.roleCounts.move || 0) * 0.045 : 0.18;
+    const moveFactor = o.strategy === STRATEGY.MOBILE ? 0.44 + (o.roleCounts.move || 0) * 0.060 : 0.20;
     const waterMobility = mobilityLabel(g) === 'swimming' ? clamp(env.water + 0.2, 0.35, 1.2) : mobilityLabel(g) === 'drifting' ? clamp(env.water + 0.1, 0.2, 1) : 1;
     const weatherMove = 1 + (env.weather.drought + env.weather.heatwave + env.fireRisk) * (g.migrationResponse || 0) * 0.35;
     const moveProb = clamp(g.movementSpeed * moveFactor * waterMobility * weatherMove * dt * (o.energy > g.energyStorage * 0.12 ? 1 : 0.2), 0, 0.95);
@@ -1830,9 +1912,15 @@ const OrganismSystem = {
       const prey = nearbyOrganisms(o, 7 + (g.preyDetection || 0) * 4).filter(p => p.speciesId !== o.speciesId && p.energy > 3 && preyDefenseScore(p) < truePredatorScore(g) + (g.defenseAvoidance || 0) * 0.8);
       if (prey.length) targetPrey = prey.sort((a,b)=>Math.hypot(a.x-o.x,a.y-o.y)-Math.hypot(b.x-o.x,b.y-o.y))[0];
     }
+    let targetFood = null;
+    if (!targetPrey && o.strategy === STRATEGY.MOBILE && ((g.grazing || 0) > 0.42 || (g.feeding || 0) > 0.64)) {
+      const foodBodies = nearbyOrganisms(o, 8 + g.movementSpeed * 3).filter(p => p.id !== o.id && (p.strategy === STRATEGY.STATIC || p.strategy === STRATEGY.SYMBIOTIC) && p.health > 0.12);
+      if (foodBodies.length) targetFood = foodBodies.sort((a,b)=>Math.hypot(a.x-o.x,a.y-o.y)-Math.hypot(b.x-o.x,b.y-o.y))[0];
+    }
     for (let s = 0; s < samples; s++) {
       let angle = randRange(0, Math.PI * 2);
       if (targetPrey && chance(0.55)) angle = Math.atan2(targetPrey.y - o.y, targetPrey.x - o.x) + randRange(-0.45, 0.45);
+      else if (targetFood && chance(0.48)) angle = Math.atan2(targetFood.y - o.y, targetFood.x - o.x) + randRange(-0.60, 0.60);
       else if (escapeVec && chance(clamp(0.48 + crowdPressure * 0.18 + g.migrationResponse * 0.18, 0.45, 0.88))) angle = Math.atan2(escapeVec.y, escapeVec.x) + randRange(-0.75, 0.75);
       const dist = randRange(0.8, 2.4 + g.movementSpeed * 1.7 + spreadPush);
       const nx = o.x + Math.cos(angle) * dist;
@@ -1840,12 +1928,14 @@ const OrganismSystem = {
       if (!inBounds(Math.floor(nx), Math.floor(ny))) continue;
       let score = habitatScore(g, nx, ny, o) + randRange(-0.08, 0.08);
       if (targetPrey) score += Math.max(0, 1 - Math.hypot(targetPrey.x - nx, targetPrey.y - ny) / 12) * truePredatorScore(g) * 0.6;
+      if (targetFood) score += Math.max(0, 1 - Math.hypot(targetFood.x - nx, targetFood.y - ny) / 12) * (g.grazing || 0) * 0.42;
+      if (o.strategy === STRATEGY.MOBILE && !targetPrey) { const ni = idx(clamp(Math.floor(nx),0,W-1), clamp(Math.floor(ny),0,H-1)); score += (world.vegetation[ni] * 0.32 + world.staticDensity[ni] * 0.060 - world.predatorDensity[ni] * 0.08) * (g.grazing || 0); }
       if (env.fire > 0.05 || env.weather.drought > 0.55) score += Math.hypot(nx - o.x, ny - o.y) * (g.migrationResponse || 0) * 0.015;
       if (crowdPressure > 0.10) score += Math.hypot(nx - o.x, ny - o.y) * crowdPressure * (g.migrationResponse || 0.35) * 0.018;
       if (score > bestScore) { bestScore = score; bestX = nx; bestY = ny; }
     }
     const dx = bestX - o.x, dy = bestY - o.y, len = Math.hypot(dx, dy) || 1;
-    const step = Math.min(len, g.movementSpeed * (o.strategy === STRATEGY.MOBILE ? 0.28 : 0.37) * dt + 0.12);
+    const step = Math.min(len, g.movementSpeed * (o.strategy === STRATEGY.MOBILE ? 0.42 : 0.34) * dt + 0.12);
     if (step > 0.02) {
       o.lastMovedFrom = { x: o.x, y: o.y };
       o.x = clamp(o.x + dx / len * step, 0.5, W - 1.5);
@@ -1857,31 +1947,48 @@ const OrganismSystem = {
 
   handleStaticGrowth(o, env, births, dt, popPressure) {
     const g = o.genome;
-    if (o.strategy !== STRATEGY.STATIC && !(o.strategy === STRATEGY.SYMBIOTIC && g.mobilityType < 0.48)) return;
+    const sessileSym = o.strategy === STRATEGY.SYMBIOTIC && g.mobilityType < 0.48;
+    if (o.strategy !== STRATEGY.STATIC && !sessileSym) return;
     const target = targetCellCount(g, o.strategy);
-    const good = env.fire < 0.03 && env.moist > 0.18 && env.water < g.waterTolerance + 0.22;
-    if (good && o.bodyCells.length < target && o.energy > g.energyStorage * (0.42 + o.bodyCells.length * 0.06) && o.lastGrow > 10 / Math.max(0.2, g.colonyGrowth)) {
+    const crowdPressure = crowdingPressure(env, g, o);
+    const lightLimit = staticLightLimiter(o, env);
+    const good = env.fire < 0.03 && env.moist > 0.22 && env.fert > 0.18 && env.water < g.waterTolerance + 0.18 && lightLimit > 0.20;
+    const growthCooldown = (28 + o.bodyCells.length * 7.5 + Math.max(0, env.staticCover - o.bodyCells.length * 0.55) * 8) / Math.max(0.18, g.colonyGrowth) * (1 + crowdPressure * 0.85);
+    const growthEnergy = g.energyStorage * (0.60 + o.bodyCells.length * 0.095 + (1 - lightLimit) * 0.22);
+    if (good && o.bodyCells.length < target && o.energy > growthEnergy && o.lastGrow > growthCooldown) {
       const newPlan = buildBodyPlan(g, o.strategy, o.bodyCells.length + 1);
       o.bodyCells = newPlan;
       o.roleCounts = roleCounts(newPlan);
-      o.energy -= 2.2 + o.bodyCells.length * 0.25;
+      o.energy -= 4.2 + o.bodyCells.length * 0.72 + g.structuralStrength * 1.1;
       o.lastGrow = 0;
       checkEvolutionMilestones(o);
     }
-    const crowdPressure = crowdingPressure(env, g, o);
-    const sporeReady = o.energy > g.energyStorage * (0.82 + o.bodyCells.length * 0.08) && o.lastRepro > 32 / Math.max(0.25, g.reproductionRate) && births.length < 120 && (popPressure < 0.995 || crowdPressure > 0.65);
+
+    const sporeCooldown = (96 + o.bodyCells.length * 12) / Math.max(0.22, g.reproductionRate) * (1 + Math.max(0, crowdPressure - 0.45) * 0.35);
+    const sporeReady = o.energy > g.energyStorage * (1.05 + o.bodyCells.length * 0.11) && o.lastRepro > sporeCooldown && births.length < 90 && (popPressure < 0.995 || crowdPressure > 0.8);
     if (good && sporeReady) {
       const windBoost = Math.hypot(env.weather.windX, env.weather.windY) * (g.seedDispersalWindUse || 0) * (1 + env.weather.storm);
-      const crowdDispersal = crowdPressure * randRange(4, 16) * (0.35 + (g.migrationResponse || 0.3));
-      const dist = (g.reproductiveStrategy < 0.25 ? randRange(1, 3) : g.reproductiveStrategy < 0.65 ? randRange(4, 12) : randRange(1, 6)) + windBoost * randRange(2, 8) + crowdDispersal;
-      const escapeVec = crowdPressure > 0.1 ? crowdEscapeVector(o, 7 + Math.floor(crowdPressure * 2)) : null;
-      const angle = escapeVec && chance(0.68) ? Math.atan2(escapeVec.y, escapeVec.x) + randRange(-0.7, 0.7) : (windBoost > 0.2 && chance(0.55) ? Math.atan2(env.weather.windY, env.weather.windX) + randRange(-0.8, 0.8) : randRange(0, Math.PI * 2));
-      const childGenome = pressureMutateGenome(mutateGenome(g, 0.95 + g.bodyPlanMutation * 4 + env.selection * 0.35 + crowdPressure * 0.22), env, crowdPressure);
-      o.energy *= 0.77;
+      const crowdDispersal = crowdPressure * randRange(6, 22) * (0.38 + (g.migrationResponse || 0.3));
+      const dist = (g.reproductiveStrategy < 0.25 ? randRange(2, 5) : g.reproductiveStrategy < 0.65 ? randRange(7, 18) : randRange(3, 8)) + windBoost * randRange(3, 12) + crowdDispersal;
+      const escapeVec = crowdPressure > 0.1 ? crowdEscapeVector(o, 8 + Math.floor(crowdPressure * 3)) : null;
+      const angle = escapeVec && chance(0.72) ? Math.atan2(escapeVec.y, escapeVec.x) + randRange(-0.62, 0.62) : (windBoost > 0.2 && chance(0.60) ? Math.atan2(env.weather.windY, env.weather.windX) + randRange(-0.8, 0.8) : randRange(0, Math.PI * 2));
+      const mutationBoost = 0.85 + g.bodyPlanMutation * 2.8 + env.selection * 0.30 + crowdPressure * 0.26;
+      const childGenome = pressureMutateGenome(mutateGenome(g, mutationBoost), env, crowdPressure);
+      if (crowdPressure > 0.65 && chance(0.30)) {
+        childGenome.movementSpeed = clamp(childGenome.movementSpeed + randRange(0.04, 0.18), 0.02, 2.4);
+        childGenome.migrationResponse = clamp(childGenome.migrationResponse + randRange(0.05, 0.20), 0, 1.2);
+        childGenome.colonyGrowth = clamp(childGenome.colonyGrowth - randRange(0.01, 0.08), 0, 1.5);
+      }
+      o.energy *= 0.64;
       o.lastRepro = 0;
-      births.push({ x: o.x + Math.cos(angle) * dist, y: o.y + Math.sin(angle) * dist, genome: childGenome, parentSpecies: o.speciesId, history: `${reproLabel(g)} from static body ${o.speciesId}`, options: { startSmall: true } });
+      births.push({ x: o.x + Math.cos(angle) * dist, y: o.y + Math.sin(angle) * dist, genome: childGenome, parentSpecies: o.speciesId, history: `${reproLabel(g)} from slow static body ${o.speciesId}`, options: { startSmall: true } });
+      if (simTime - lastWeatherEvent.plantThrottle > 360 && crowdPressure > 0.72) {
+        addEvent('plants', 'Static producer colony released distant spores after crowding instead of simply thickening the same patch.', false);
+        lastWeatherEvent.plantThrottle = simTime;
+      }
     }
   },
+
 
   handleReproduction(o, env, births, dt, popPressure) {
     if ((o.strategy === STRATEGY.STATIC || (o.strategy === STRATEGY.SYMBIOTIC && o.genome.mobilityType < 0.48)) && o.bodyCells.length > 1) return;
@@ -1889,9 +1996,10 @@ const OrganismSystem = {
     const tempFit = 1 - clamp(Math.abs(env.temp - g.preferredTemp) / g.tempTolerance, 0, 1);
     const moistureFit = 1 - clamp(Math.abs(env.moist - g.waterPref) / Math.max(0.08, g.waterTolerance), 0, 1);
     const goodHabitat = tempFit * moistureFit > 0.28 && env.fire < 0.04 && env.water < g.waterTolerance + 0.14;
-    const reproThreshold = g.energyStorage * (0.62 + g.size * 0.08 + o.bodyCells.length * 0.10);
+    const reproThreshold = g.energyStorage * (0.62 + g.size * 0.08 + o.bodyCells.length * 0.10) * (o.strategy === STRATEGY.MOBILE ? 0.86 : 1);
     const crowdPressure = crowdingPressure(env, g, o);
-    if (!goodHabitat || o.energy <= reproThreshold || o.lastRepro <= 22 / Math.max(0.2, g.reproductionRate) || births.length >= 120 || (popPressure >= 0.995 && crowdPressure < 0.65)) return;
+    const reproCooldown = (o.strategy === STRATEGY.MOBILE ? 16 : 22) / Math.max(0.2, g.reproductionRate) * (o.strategy === STRATEGY.MOBILE ? 0.82 : 1);
+    if (!goodHabitat || o.energy <= reproThreshold || o.lastRepro <= reproCooldown || births.length >= 120 || (popPressure >= 0.995 && crowdPressure < 0.65)) return;
     const wantsMating = g.meiosisDrive * 0.16 + g.reproductiveStrategy * 0.22 + env.density * 0.01;
     if (chance(clamp(wantsMating, 0.02, 0.52))) {
       const mates = nearbyOrganisms(o, 6.2).filter(m => m.energy > m.genome.energyStorage * 0.38 && ecologyDistance(g, species.find(s => s.id === m.speciesId) || { average: m.genome, representative: m.genome, dominantStrategy: m.strategy }) < CFG.compatibleThreshold && m.health > 0.42 && (g.kinRecognition < 0.6 || m.speciesId === o.speciesId || genomeDistance(g, m.genome) < 0.2));
@@ -1903,11 +2011,15 @@ const OrganismSystem = {
         return;
       }
     }
-    const childGenome = pressureMutateGenome(mutateGenome(g, 1 + env.selection * 0.18 + env.weather.storm * 0.08 + crowdPressure * 0.20), env, crowdPressure);
+    const childGenome = pressureMutateGenome(mutateGenome(g, 1 + env.selection * 0.18 + env.weather.storm * 0.08 + crowdPressure * 0.22 + (o.strategy === STRATEGY.MOBILE ? 0.08 : 0)), env, crowdPressure);
+    if (o.strategy === STRATEGY.MOBILE && crowdPressure > 0.30 && chance(0.22)) {
+      childGenome.movementSpeed = clamp(childGenome.movementSpeed + randRange(0.02, 0.10), 0.02, 2.4);
+      childGenome.migrationResponse = clamp(childGenome.migrationResponse + randRange(0.02, 0.12), 0, 1.2);
+    }
     o.energy *= (o.strategy === STRATEGY.SOLITARY ? 0.55 : 0.68);
     o.lastRepro = 0;
     const escapeVec = crowdPressure > 0.10 ? crowdEscapeVector(o, 6 + Math.floor(crowdPressure * 2)) : null;
-    const spread = (o.strategy === STRATEGY.MOBILE ? 2.5 : 1.8) + crowdPressure * randRange(2.5, 11.0) * (0.45 + (g.migrationResponse || 0.25));
+    const spread = (o.strategy === STRATEGY.MOBILE ? 4.2 : 1.8) + crowdPressure * randRange(3.5, 14.0) * (0.50 + (g.migrationResponse || 0.25));
     const angle = escapeVec && chance(0.72) ? Math.atan2(escapeVec.y, escapeVec.x) + randRange(-0.75, 0.75) : randRange(0, Math.PI * 2);
     births.push({ x: o.x + Math.cos(angle) * spread + randRange(-1, 1), y: o.y + Math.sin(angle) * spread + randRange(-1, 1), genome: childGenome, parentSpecies: o.speciesId, history: `${reproLabel(g)} clone from ${o.speciesId}`, options: { startSmall: true } });
   }
@@ -2354,12 +2466,14 @@ let simAccumulator = 0;
 function loop(now) {
   const realDt = Math.min(0.05, (now - last) / 1000); last = now; frameCounter++;
   if (!paused && speed > 0) {
-    simAccumulator += realDt * speed * 34;
+    simAccumulator += realDt * speed * 26;
     let steps = 0;
-    while (simAccumulator >= 1 && steps < 12) {
+    while (simAccumulator >= 1 && steps < 7) {
       const dt = 1; simTime += dt;
-      WeatherSystem.update(dt); WorldSystem.update(dt); OrganismSystem.update(dt); if (Math.floor(simTime) % 3 === 0) SpeciesSystem.updateStats();
-      terrainDirty = true; simAccumulator -= 1; steps++;
+      WeatherSystem.update(dt);
+      if (Math.floor(simTime) % 2 === 0) { WorldSystem.update(2); terrainDirty = true; }
+      OrganismSystem.update(dt); if (Math.floor(simTime) % 3 === 0) SpeciesSystem.updateStats();
+      simAccumulator -= 1; steps++;
       if (!worldStatsLoggedAt300 && simTime >= 300) { logWorldStats('after 300 ticks'); worldStatsLoggedAt300 = true; }
       if (Math.floor(simTime) % 40 === 0) updateGraph();
     }
