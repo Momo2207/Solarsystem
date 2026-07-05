@@ -146,6 +146,9 @@ varying vec2 vUv;
 uniform vec2 uRes;
 uniform float uTime,uZoom,uTemp,uActivity,uSlice,uGran,uExposure,uCorona,uMode,uSpin;
 uniform mat3 uRot;
+const int MAX_FLARES = 8;
+uniform vec4 uFlarePos[MAX_FLARES];
+uniform vec4 uFlareData[MAX_FLARES];
 
 float hash(float n){return fract(sin(n)*43758.5453123);} 
 float hash31(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453123);} 
@@ -233,37 +236,108 @@ vec3 renderInterior(vec3 pp, vec3 rd){
   return col;
 }
 
+
 vec4 renderSurface(vec3 p, vec3 n, vec3 rd){
-  vec3 q=rotateY(p,uTime*.07*uSpin);
+  vec3 spinP=rotateY(p,uTime*.07*uSpin);
+  vec3 advect=vec3(
+    fbm(spinP*3.6+vec3(0.0,uTime*.05,uTime*.03))-.5,
+    fbm(spinP*3.8+vec3(uTime*.04,0.0,-uTime*.02))-.5,
+    fbm(spinP*3.4+vec3(-uTime*.03,uTime*.02,0.0))-.5
+  );
+  vec3 q=normalize(spinP + advect*0.085*(0.55+uActivity));
   float mu=clamp(dot(n,-rd),0.0,1.0);
-  float cell=voronoi(q*(9.0+uActivity*2.5)+vec3(0.0,uTime*.10,0.0));
-  float gran=1.0-smoothstep(.05,.58,cell); // bright cell centers
-  float lanes=smoothstep(.36,.72,cell);    // darker borders / lanes
-  float boil=fbm(q*24.0+vec3(uTime*.22,-uTime*.08,uTime*.13));
-  float flow=fbm(q*5.0+vec3(uTime*.05,uTime*.03,0.0));
-  float tempVar=(gran*.46 - lanes*.26 + (boil-.5)*.22 + (flow-.5)*.14)*uGran;
+
+  float macro=fbm(q*3.4+vec3(uTime*.020,-uTime*.015,uTime*.010));
+  vec3 granCoords=q*(10.5+uActivity*3.5 + macro*1.8) + advect*1.4;
+  vec3 cellId=floor(granCoords*1.05);
+  float phase=fract(uTime*(0.11+0.045*macro) + hash31(cellId)*1.73);
+  float grow=smoothstep(0.0,0.16,phase) * (1.0-smoothstep(0.52,1.0,phase));
+  float cell=voronoi(granCoords + vec3(0.0,uTime*.12,0.0));
+  float effRadius=mix(0.10,0.34,grow);
+  float granCore=1.0-smoothstep(0.03,effRadius,cell);
+  float granHalo=1.0-smoothstep(effRadius*0.65,effRadius*1.65,cell);
+  float interLane=smoothstep(effRadius*0.78,effRadius*1.22,cell) * (1.0-smoothstep(effRadius*1.22,effRadius*2.05,cell));
+  float shimmer=fbm(q*24.0+vec3(uTime*.30,-uTime*.12,uTime*.22));
+  float boil=fbm(q*17.0+vec3(uTime*.46,uTime*.08,-uTime*.31));
+  float flow=fbm(q*5.3+vec3(uTime*.07,uTime*.03,0.0));
+
   float spot=spotMask(q);
   float active=activeMap(q);
+
+  float flareHeat=0.0;
+  float flareRing=0.0;
+  float flareDisturb=0.0;
+  for(int i=0;i<MAX_FLARES;i++){
+    vec3 fp = uFlarePos[i].xyz;
+    float fs = uFlarePos[i].w;
+    float age = uFlareData[i].x;
+    float amp = uFlareData[i].y;
+    if(fs>0.001 && amp>0.001){
+      float ang = acos(clamp(dot(q, normalize(fp)), -1.0, 1.0));
+      float rise = smoothstep(0.0,0.18,age);
+      float fade = 1.0 - smoothstep(0.55,1.0,age);
+      float patchR = mix(0.025, 0.17, rise) * (0.9 + 0.35*amp);
+      float core = exp(-pow(ang / max(0.012, patchR*(0.42 + 0.2*fade)), 2.0));
+      float ring = exp(-pow((ang - patchR) / (0.016 + 0.045*amp), 2.0));
+      flareHeat += fs * (core * (1.1 + fade*1.4) + ring * 0.45*fade);
+      flareRing += fs * ring * fade;
+      flareDisturb += fs * (core*0.75 + ring*0.95);
+    }
+  }
+
+  float expandMix = clamp(granCore*(0.55 + grow*1.15 + flareDisturb*0.35) + granHalo*0.30, 0.0, 1.0);
+  float laneMix = clamp(interLane*(0.85 + (1.0-grow)*0.65) * (1.0 - min(0.55, flareDisturb*0.22)), 0.0, 1.0);
+  float turbulence = (shimmer-.5)*0.24 + (boil-.5)*0.28 + (flow-.5)*0.18;
+  turbulence += (fbm(q*31.0+vec3(uTime*1.9,-uTime*.9,uTime*1.4))-.5) * flareDisturb * 0.28;
+  float tempVar=(expandMix*0.44 - laneMix*0.30 + turbulence)*uGran;
+  tempVar += active*0.14 + flareHeat*0.48;
+
   vec3 base=starColor(uTemp);
-  vec3 hot=mix(base,vec3(1.0,.97,.74),.48);
-  vec3 cool=mix(base,vec3(.35,.09,.025),.62);
-  vec3 col=mix(base,hot,clamp(tempVar+.25,0.0,1.0));
-  col=mix(col,cool,clamp(-tempVar*.8+.08,0.0,1.0));
-  col=mix(col,vec3(.055,.022,.012),spot*.92);
-  col+=vec3(1.0,.42,.12)*active*.75;
-  float limb=.36+.64*pow(mu,.45);
+  vec3 hot=mix(base,vec3(1.0,.97,.76),.52);
+  vec3 warmRim=mix(base,vec3(1.0,.70,.22),.60);
+  vec3 cool=mix(base,vec3(.33,.08,.022),.64);
+  vec3 col=mix(base,hot,clamp(tempVar+.34,0.0,1.0));
+  col=mix(col,cool,clamp(laneMix*0.85 - tempVar*0.35 + 0.05,0.0,1.0));
+  col += warmRim * clamp(expandMix*0.11 + flareRing*0.25, 0.0, 0.55);
+  col = mix(col,vec3(.045,.020,.012),spot*.92);
+  col += vec3(1.0,.40,.12)*active*.72;
+  col += vec3(1.0,.76,.30) * flareHeat * (0.55 + 0.45*shimmer);
+  col += vec3(1.0,.48,.12) * flareRing * 0.55;
+
+  float limb=.32+.68*pow(mu,.42);
   col*=limb;
-  col+=base*pow(1.0-mu,2.2)*(.12+.35*uActivity);
-  if(uMode>.5 && uMode<1.5){ col=mix(vec3(.23,.02,.01),vec3(1.0,.12,.035),.45+.55*(tempVar+.5)); col+=vec3(1.0,.38,.12)*active; }
-  else if(uMode>1.5 && uMode<2.5){ col=mix(vec3(.03,.02,.11),vec3(.45,.22,1.0),.35+.65*active); col+=vec3(.35,.75,1.0)*spot*.65; }
-  else if(uMode>2.5 && uMode<3.5){ col=vec3(.005,.02,.045)+vec3(.08,.72,1.0)*(active+spot*.6); col*=.25+uActivity*1.3; }
-  else if(uMode>3.5 && uMode<4.5){ float heat=clamp(.5+tempVar+active*.7-spot*.4,0.0,1.0); col=mix(vec3(.05,.02,.22),vec3(.2,.75,1.0),smoothstep(.0,.45,heat)); col=mix(col,vec3(1.0,.85,.15),smoothstep(.45,.75,heat)); col=mix(col,vec3(1.0,.08,.02),smoothstep(.75,1.0,heat)); }
-  else if(uMode>4.5 && uMode<5.5){ float b=sin(q.x*9.0+uTime*.4)+sin(q.z*8.0-uTime*.3)+spot*4.0-active*2.0; col=b>0.0?vec3(.95,.95,.95)+vec3(.18,.35,1.0)*min(b,.8):vec3(.08,.08,.10)+vec3(1.0,.15,.08)*min(-b,.8); }
+  col+=base*pow(1.0-mu,2.15)*(.14+.33*uActivity);
+  col += vec3(1.0,.72,.22) * flareHeat * pow(1.0-mu,1.7) * 0.18;
+
+  if(uMode>.5 && uMode<1.5){
+    vec3 ha = mix(vec3(.24,.02,.01),vec3(1.0,.12,.04),clamp(.46 + tempVar + flareHeat*0.25,0.0,1.0));
+    col = ha + vec3(1.0,.32,.11)*(active + flareHeat*0.7);
+  }
+  else if(uMode>1.5 && uMode<2.5){
+    col = mix(vec3(.03,.02,.11),vec3(.45,.22,1.0),clamp(.30 + active + flareHeat*0.35,0.0,1.0));
+    col += vec3(.35,.75,1.0)*(spot*.55 + flareHeat*.38);
+  }
+  else if(uMode>2.5 && uMode<3.5){
+    col = vec3(.005,.02,.045)+vec3(.08,.72,1.0)*(active+spot*.55+flareHeat*.85);
+    col*=.22+uActivity*1.35;
+  }
+  else if(uMode>3.5 && uMode<4.5){
+    float heat=clamp(.46+tempVar+active*.7+flareHeat*.65-spot*.35,0.0,1.0);
+    col=mix(vec3(.05,.02,.22),vec3(.2,.75,1.0),smoothstep(.0,.45,heat));
+    col=mix(col,vec3(1.0,.85,.15),smoothstep(.45,.75,heat));
+    col=mix(col,vec3(1.0,.08,.02),smoothstep(.75,1.0,heat));
+  }
+  else if(uMode>4.5 && uMode<5.5){
+    float b=sin(q.x*9.0+uTime*.4)+sin(q.z*8.0-uTime*.3)+spot*4.0-active*2.0-flareHeat*2.2;
+    col=b>0.0?vec3(.95,.95,.95)+vec3(.18,.35,1.0)*min(b,.8):vec3(.08,.08,.10)+vec3(1.0,.15,.08)*min(-b,.8);
+  }
+
   col*=uExposure;
   col=col/(col+vec3(.82));
   col=pow(col,vec3(.72));
   return vec4(col,1.0);
 }
+
 
 void main(){
   vec2 frag=gl_FragCoord.xy;
@@ -315,6 +389,8 @@ gl.useProgram(prog);
 const quad=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,quad); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1, -1,1,1,-1,1,1]),gl.STATIC_DRAW);
 const aPos=gl.getAttribLocation(prog,'aPos'); gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
 const U={}; ['uRes','uTime','uZoom','uTemp','uActivity','uSlice','uGran','uExposure','uCorona','uMode','uSpin','uRot'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+U.uFlarePos = Array.from({length:8}, (_,i)=>gl.getUniformLocation(prog, `uFlarePos[${i}]`));
+U.uFlareData = Array.from({length:8}, (_,i)=>gl.getUniformLocation(prog, `uFlareData[${i}]`));
 
 const state={time:0,zoom:1,rx:-0.20,ry:0.38,drag:false,lastX:0,lastY:0,flareOutput:0,cmeOutput:0,storm:0};
 const controls={preset:$('preset'),mode:$('mode'),mass:$('mass'),temp:$('temp'),rotation:$('rotation'),activity:$('activity'),age:$('age'),granulation:$('granulation'),particles:$('particles'),corona:$('corona'),exposure:$('exposure'),slice:$('slice')};
@@ -360,9 +436,11 @@ function sph(lat,lon,r=1){ const cl=Math.cos(lat); return [r*Math.cos(lon)*cl,r*
 function norm(v){ const l=Math.hypot(v[0],v[1],v[2])||1; return [v[0]/l,v[1]/l,v[2]/l]; }
 function cross(a,b){ return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
 function add(a,b,k=1){return [a[0]+b[0]*k,a[1]+b[1]*k,a[2]+b[2]*k];}
+function makeBasis(n){ const ref=Math.abs(n[1])>0.92?[1,0,0]:[0,1,0]; const t=norm(cross(ref,n)); const b=norm(cross(n,t)); return {t,b}; }
+function pickVisibleSurfacePoint(range=.7, tries=18){ let best=null; for(let i=0;i<tries;i++){ const lat=(Math.random()-.5)*range; const lon=Math.random()*Math.PI*2; const p=sph(lat,lon,1); const pr=project(p); if(!best || pr.z>best.pr.z) best={lat,lon,p,pr}; if(pr.z>0.18) return {lat,lon,p}; } return best?{lat:best.lat,lon:best.lon,p:best.p}:{lat:0,lon:0,p:[1,0,0]}; }
 
-function spawnFlare(strength=1){ const lat=(Math.random()-.5)*.7, lon=Math.random()*Math.PI*2; const p=sph(lat,lon,1); flares.push({p,age:0,life:1.2+Math.random()*.8,strength,seed:Math.random()*1000,particles:Array.from({length:90+Math.floor(90*strength)},()=>({r:Math.random(),a:Math.random()*Math.PI*2,v:.35+Math.random()*1.1,off:(Math.random()-.5)*.2}))}); state.flareOutput=Math.min(1,state.flareOutput+.35*strength); }
-function spawnCME(strength=1){ const lat=(Math.random()-.5)*.55, lon=Math.random()*Math.PI*2; const p=sph(lat,lon,1); cmes.push({p,age:0,life:2.4+Math.random()*1.2,strength,particles:Array.from({length:220+Math.floor(240*strength)},()=>({r:Math.random()*.2,a:Math.random()*Math.PI*2,v:.35+Math.random()*1.25,spread:(Math.random()-.5)*.35}))}); state.cmeOutput=Math.min(1,state.cmeOutput+.45*strength); }
+function spawnFlare(strength=1){ const pick=pickVisibleSurfacePoint(.7, 22); const p=pick.p; flares.push({p,age:0,life:1.4+Math.random()*.9,strength,seed:Math.random()*1000,particles:Array.from({length:120+Math.floor(120*strength)},()=>({r:Math.random(),a:Math.random()*Math.PI*2,v:.30+Math.random()*1.25,off:(Math.random()-.5)*.2}))}); state.flareOutput=Math.min(1,state.flareOutput+.35*strength); }
+function spawnCME(strength=1){ const pick=pickVisibleSurfacePoint(.55, 20); const p=pick.p; cmes.push({p,age:0,life:2.6+Math.random()*1.2,strength,particles:Array.from({length:260+Math.floor(260*strength)},()=>({r:Math.random()*.2,a:Math.random()*Math.PI*2,v:.35+Math.random()*1.25,spread:(Math.random()-.5)*.35}))}); state.cmeOutput=Math.min(1,state.cmeOutput+.45*strength); }
 $('flareBtn').onclick=()=>spawnFlare(1.15); $('cmeBtn').onclick=()=>spawnCME(1.2); $('stormBtn').onclick=()=>{for(let i=0;i<5;i++)setTimeout(()=>spawnFlare(.75+Math.random()*.5),i*130); setTimeout(()=>spawnCME(1),550);};
 
 function drawOverlay(dt){
@@ -402,7 +480,7 @@ function drawOverlay(dt){
   }
   // thick magnetic loops
   for(const loop of loops){
-    const baseLon=loop.lon+state.time*.00006*parseFloat(controls.rotation.value); const base=sph(loop.lat,baseLon,1.01); const n=norm(base); const t=norm(cross(n,[0,1,0])); const b=norm(cross(t,n));
+    const baseLon=loop.lon+state.time*.00006*parseFloat(controls.rotation.value); const base=sph(loop.lat,baseLon,1.01); const n=norm(base); const basis=makeBasis(n); const t=basis.t; const b=basis.b;
     const pts=[]; const width=loop.w*(.8+act*.7), height=loop.h*(.55+act*.9);
     for(let k=0;k<=38;k++){ const u=k/38; const side=(u-.5)*2; let p=add(base,t,side*width); p=add(p,n,Math.sin(Math.PI*u)*height); p=norm(p); const amp=1+Math.sin(Math.PI*u)*height; p=[p[0]*amp,p[1]*amp,p[2]*amp]; pts.push(project(p)); }
     const front=pts.some(p=>p.z>-0.1); if(!front) continue;
@@ -413,13 +491,57 @@ function drawOverlay(dt){
     for(let j=0;j<8;j++){ const u=(j/8+state.time*.0004+loop.phase)%1; const p=pts[Math.floor(u*(pts.length-1))]; if(!p||p.z<-0.2)continue; const rr=(2.5+6*act)*devicePixelRatio; const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rr*4); g.addColorStop(0,`rgba(255,240,170,${.25+act*.35})`); g.addColorStop(1,'rgba(255,120,35,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(p.x,p.y,rr*4,0,Math.PI*2); ctx.fill(); }
   }
   // flares
-  for(const f of flares){ f.age+=dt/1000; const life=f.age/f.life; const base=norm(f.p); const up=base; const side=norm(cross(up,[0,1,0])); const p0=project(add(base,up,.02)); if(life<1){
-    const glow=Rpx*(.035+.18*(1-life)*f.strength); const grad=ctx.createRadialGradient(p0.x,p0.y,0,p0.x,p0.y,glow); grad.addColorStop(0,`rgba(255,245,185,${.62*(1-life)})`); grad.addColorStop(.35,`rgba(255,110,35,${.32*(1-life)})`); grad.addColorStop(1,'rgba(255,70,10,0)'); ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(p0.x,p0.y,glow,0,Math.PI*2); ctx.fill();
-    for(const pa of f.particles){ const out=pa.v*life*.75*f.strength; const swirl=add(add(base,up,out),side,Math.sin(pa.a+life*7)*pa.r*.24); const pp=project(swirl); if(pp.z<-0.3)continue; ctx.fillStyle=`rgba(255,${120+Math.round(120*(1-pa.r))},45,${(1-life)*(.08+.20*pa.r)})`; ctx.beginPath(); ctx.arc(pp.x,pp.y,(1.2+5*pa.r)*devicePixelRatio,0,Math.PI*2); ctx.fill(); }
-  }}
+  for(const f of flares){
+    f.age+=dt/1000;
+    const life=f.age/f.life;
+    const base=norm(f.p);
+    const basis=makeBasis(base);
+    const up=base, t=basis.t, b=basis.b;
+    const surfP=project(base);
+    if(life<1 && surfP.z>-0.02){
+      const rise=Math.min(1, life/0.28);
+      const fade=1-Math.max(0,(life-0.55)/0.45);
+      const patch=Rpx*(0.018 + 0.11*rise*f.strength);
+      const grad=ctx.createRadialGradient(surfP.x,surfP.y,0,surfP.x,surfP.y,patch*1.8);
+      grad.addColorStop(0,`rgba(255,250,210,${0.48*fade})`);
+      grad.addColorStop(.38,`rgba(255,138,48,${0.26*fade})`);
+      grad.addColorStop(1,'rgba(255,80,15,0)');
+      ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(surfP.x,surfP.y,patch*1.8,0,Math.PI*2); ctx.fill();
+
+      const plumePts=[];
+      const steps=18;
+      for(let i=0;i<=steps;i++){
+        const u=i/steps;
+        const lift=(0.01 + Math.sin(u*Math.PI)*0.16 + u*0.24) * rise * f.strength;
+        const sideAmt=Math.sin(u*Math.PI) * 0.08 * (0.6+0.4*Math.sin(f.seed+life*6));
+        let p=add(base, up, lift);
+        p=add(p, t, sideAmt);
+        p=add(p, b, Math.sin(u*4.2 + f.seed)*0.015*rise);
+        plumePts.push(project(p));
+      }
+      for(let pass=0;pass<3;pass++){
+        ctx.beginPath();
+        plumePts.forEach((pp,i)=>{ if(i===0) ctx.moveTo(pp.x,pp.y); else ctx.lineTo(pp.x,pp.y); });
+        ctx.strokeStyle=`rgba(255,${180+pass*18},${50+pass*12},${(0.08 + 0.08*fade)*(3-pass)})`;
+        ctx.lineWidth=(10-pass*3)*devicePixelRatio*(0.45+0.35*f.strength);
+        ctx.lineCap='round'; ctx.stroke();
+      }
+
+      for(const pa of f.particles){
+        const burst=rise*(0.08 + pa.v*0.42)*f.strength;
+        let p=add(base, up, burst);
+        p=add(p, t, Math.cos(pa.a+life*8.0)*pa.r*0.18*rise);
+        p=add(p, b, Math.sin(pa.a+life*7.3)*pa.r*0.18*rise + pa.off*0.08*rise);
+        const pp=project(p);
+        if(pp.z<-0.25) continue;
+        ctx.fillStyle=`rgba(255,${130+Math.round(110*(1-pa.r))},55,${fade*(0.08+0.24*pa.r)})`;
+        ctx.beginPath(); ctx.arc(pp.x,pp.y,(1.2+5.2*pa.r)*devicePixelRatio,0,Math.PI*2); ctx.fill();
+      }
+    }
+  }
   flares=flares.filter(f=>f.age<f.life);
   // CMEs
-  for(const c of cmes){ c.age+=dt/1000; const life=c.age/c.life; const base=norm(c.p); const e1=norm(cross(base,[0,1,0])); const e2=norm(cross(e1,base)); if(life<1){
+  for(const c of cmes){ c.age+=dt/1000; const life=c.age/c.life; const base=norm(c.p); const basis=makeBasis(base); const e1=basis.t; const e2=basis.b; if(life<1){
     for(const pa of c.particles){ const spread=.04+life*.55*pa.r; const outward=life*1.25*pa.v*c.strength; let p=add(base,base,outward); p=add(p,e1,Math.cos(pa.a)*spread+pa.spread*life*.1); p=add(p,e2,Math.sin(pa.a)*spread+pa.spread*life*.1); const pp=project(p); if(pp.z<-0.5)continue; const alpha=(1-life)*(.018+.07*pa.r); ctx.fillStyle=`rgba(255,${120+Math.round(90*pa.r)},55,${alpha})`; ctx.beginPath(); ctx.arc(pp.x,pp.y,(.9+3.8*pa.r)*devicePixelRatio,0,Math.PI*2); ctx.fill(); }
   }}
   cmes=cmes.filter(c=>c.age<c.life); ctx.restore();
@@ -431,7 +553,20 @@ window.addEventListener('resize',resize); resize();
 
 let last=performance.now();
 function frame(now){ const dt=Math.min(50,now-last); last=now; state.time+=dt; const act=parseFloat(controls.activity.value); if(Math.random()<act*dt/9000) spawnFlare(.35+Math.random()*.45); if(Math.random()<Math.max(0,act-.65)*dt/18000) spawnCME(.45+Math.random()*.35);
-  const R=rotationMatrix(); gl.useProgram(prog); gl.uniform2f(U.uRes,glCanvas.width,glCanvas.height); gl.uniform1f(U.uTime,state.time/1000); gl.uniform1f(U.uZoom,state.zoom); gl.uniform1f(U.uTemp,parseFloat(controls.temp.value)); gl.uniform1f(U.uActivity,act); gl.uniform1f(U.uSlice,parseFloat(controls.slice.value)); gl.uniform1f(U.uGran,parseFloat(controls.granulation.value)); gl.uniform1f(U.uExposure,parseFloat(controls.exposure.value)); gl.uniform1f(U.uCorona,parseFloat(controls.corona.value)); gl.uniform1f(U.uMode,parseFloat(controls.mode.value)); gl.uniform1f(U.uSpin,parseFloat(controls.rotation.value)); gl.uniformMatrix3fv(U.uRot,false,new Float32Array(R)); gl.drawArrays(gl.TRIANGLES,0,6);
+  const R=rotationMatrix(); gl.useProgram(prog); gl.uniform2f(U.uRes,glCanvas.width,glCanvas.height); gl.uniform1f(U.uTime,state.time/1000); gl.uniform1f(U.uZoom,state.zoom); gl.uniform1f(U.uTemp,parseFloat(controls.temp.value)); gl.uniform1f(U.uActivity,act); gl.uniform1f(U.uSlice,parseFloat(controls.slice.value)); gl.uniform1f(U.uGran,parseFloat(controls.granulation.value)); gl.uniform1f(U.uExposure,parseFloat(controls.exposure.value)); gl.uniform1f(U.uCorona,parseFloat(controls.corona.value)); gl.uniform1f(U.uMode,parseFloat(controls.mode.value)); gl.uniform1f(U.uSpin,parseFloat(controls.rotation.value)); gl.uniformMatrix3fv(U.uRot,false,new Float32Array(R));
+  const activeFlares=flares.filter(f=>f.age<f.life).slice(0,8);
+  for(let i=0;i<8;i++){
+    const f=activeFlares[i];
+    if(f){
+      const age01=Math.max(0, Math.min(1, f.age/f.life));
+      gl.uniform4f(U.uFlarePos[i], f.p[0], f.p[1], f.p[2], f.strength||1);
+      gl.uniform4f(U.uFlareData[i], age01, f.strength||1, 0, 0);
+    } else {
+      gl.uniform4f(U.uFlarePos[i], 0,0,1, 0);
+      gl.uniform4f(U.uFlareData[i], 1,0,0,0);
+    }
+  }
+  gl.drawArrays(gl.TRIANGLES,0,6);
   drawOverlay(dt);
   state.flareOutput*=.94; state.cmeOutput*=.965; historyA.push(act*(.85+.15*Math.sin(state.time*.003))); historyF.push(state.flareOutput); historyC.push(state.cmeOutput); if(historyA.length>100){historyA.shift();historyF.shift();historyC.shift();}
   drawSpark($('sparkA'),historyA,'rgba(84,184,255,.9)'); drawSpark($('sparkF'),historyF,'rgba(255,150,65,.9)'); drawSpark($('sparkC'),historyC,'rgba(210,120,255,.9)'); requestAnimationFrame(frame); }
