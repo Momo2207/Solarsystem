@@ -3,652 +3,1470 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>StarLab Rethink v2 - Procedural Stellar Laboratory</title>
+<title>Square Cell Evolution Sandbox</title>
 <style>
-  :root{
-    --bg:#050609;--panel:#0d1118;--panel2:#131a24;--text:#e5edf8;--muted:#8ea0b8;
-    --blue:#54b8ff;--orange:#ff9f38;--red:#ff4f58;--green:#6ee7a6;--line:#273447;
+  :root {
+    --bg: #0d1117;
+    --panel: rgba(18, 24, 32, 0.92);
+    --panel2: rgba(26, 34, 46, 0.92);
+    --line: rgba(255,255,255,0.12);
+    --text: #e8edf3;
+    --muted: #9aa7b6;
+    --accent: #8bd3ff;
+    --danger: #ff6b55;
+    --good: #85df8c;
+    --warn: #ffd56b;
   }
-  *{box-sizing:border-box} html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--bg);font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;color:var(--text)}
-  body{display:flex}
-  #controls{width:330px;height:100vh;overflow:auto;background:linear-gradient(180deg,#0e131c,#090d13);border-right:1px solid var(--line);box-shadow:5px 0 30px rgba(0,0,0,.55);padding:14px;z-index:20}
-  body.presentation #controls{position:absolute;transform:translateX(-335px);transition:.25s transform}
-  #stage{position:relative;flex:1;height:100vh;background:radial-gradient(circle at center,#0a0d12,#020304 80%)}
-  #gl,#overlay{position:absolute;inset:0;width:100%;height:100%;display:block}
-  #gl{z-index:1}#overlay{z-index:2;pointer-events:none}
-  h1{font-size:15px;letter-spacing:1.5px;margin:0 0 4px;text-transform:uppercase;color:#fff}
-  .sub{font-size:11px;color:var(--muted);line-height:1.35;margin-bottom:14px}
-  .group{border:1px solid var(--line);border-radius:12px;background:rgba(255,255,255,.025);padding:10px;margin-bottom:10px}
-  .group h2{font-size:11px;color:var(--blue);letter-spacing:1.3px;text-transform:uppercase;margin:0 0 10px}
-  label{display:flex;justify-content:space-between;gap:10px;margin:10px 0 5px;font-size:12px;color:#cbd6e6}
-  label span{font-variant-numeric:tabular-nums;color:#fff;font-weight:700}
-  input[type=range],select{width:100%}
-  input[type=range]{accent-color:var(--blue)}
-  select,button{background:#111a26;border:1px solid var(--line);color:#fff;border-radius:8px;padding:9px;font-size:13px;width:100%;margin:3px 0 6px}
-  button{cursor:pointer;font-weight:700;letter-spacing:.2px;transition:.12s;background:#1d2a3a}
-  button:hover{background:#27384e} button:active{transform:scale(.985)}
-  .row{display:grid;grid-template-columns:1fr 1fr;gap:7px}.warn{background:#523216!important;border-color:#8a5a22!important}.danger{background:#52202a!important;border-color:#84313e!important}.good{background:#174632!important;border-color:#267b58!important}.blue{background:#173957!important;border-color:#276b9e!important}
-  .tiny{font-size:10px;color:var(--muted);line-height:1.3;margin:3px 0 8px}
-  #hud{position:absolute;z-index:5;top:14px;left:18px;right:18px;display:flex;gap:9px;flex-wrap:wrap;pointer-events:none}
-  .card{background:rgba(5,8,12,.58);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(8px);border-radius:10px;padding:7px 10px;box-shadow:0 8px 22px rgba(0,0,0,.35)}
-  .card b{display:block;font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);font-weight:600}.card span{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
-  #hint{position:absolute;z-index:5;left:50%;bottom:22px;transform:translateX(-50%);padding:8px 14px;border-radius:999px;background:rgba(0,0,0,.55);border:1px solid rgba(255,255,255,.12);color:#d8e2f0;font-size:12px;pointer-events:none}
-  body.presentation #hud{opacity:.25} body.presentation #hint{opacity:0}
-  #exit{display:none;position:absolute;top:16px;right:18px;z-index:30;width:auto;padding:10px 16px;background:rgba(0,0,0,.55)} body.presentation #exit{display:block}
-  #monitor{position:absolute;z-index:5;right:22px;bottom:80px;width:310px;background:rgba(5,8,12,.58);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(8px);border-radius:14px;padding:12px;pointer-events:none}
-  #monitor h3{margin:0 0 8px;color:var(--blue);font-size:13px;text-transform:uppercase;letter-spacing:1px}.metric{height:40px;margin:4px 0;position:relative}.metric label{font-size:11px;margin:0 0 2px;color:var(--muted)}.spark{width:100%;height:22px;border-bottom:1px solid rgba(255,255,255,.08)}
-  .pill{display:inline-block;border:1px solid rgba(255,255,255,.14);border-radius:999px;padding:2px 7px;background:rgba(255,255,255,.05);color:#dfe8f5}
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  #game {
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    height: 100vh;
+    display: block;
+    background: #090d12;
+    cursor: crosshair;
+  }
+  .panel {
+    position: fixed;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+    user-select: none;
+  }
+  #toolbar {
+    left: 14px;
+    top: 14px;
+    width: 286px;
+    padding: 12px;
+  }
+  h1, h2, h3 { margin: 0; }
+  h1 { font-size: 16px; letter-spacing: 0.3px; }
+  h2 { font-size: 13px; color: var(--accent); margin: 12px 0 7px; }
+  h3 { font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+  .sub { font-size: 11px; color: var(--muted); line-height: 1.35; margin-top: 4px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+  button, select, input[type="range"] {
+    width: 100%;
+  }
+  button {
+    border: 1px solid var(--line);
+    color: var(--text);
+    background: rgba(255,255,255,0.055);
+    border-radius: 10px;
+    padding: 8px 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  button:hover { background: rgba(255,255,255,0.1); }
+  button.active { border-color: var(--accent); background: rgba(139,211,255,0.18); color: #dff6ff; }
+  button.warn { border-color: rgba(255,213,107,0.5); }
+  button.danger { border-color: rgba(255,107,85,0.5); }
+  .row { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+  .row label { min-width: 72px; font-size: 11px; color: var(--muted); }
+  .value { font-variant-numeric: tabular-nums; color: var(--text); font-size: 11px; min-width: 42px; text-align: right; }
+  #rightPanel {
+    right: 14px;
+    top: 14px;
+    width: 340px;
+    max-height: calc(100vh - 28px);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  #inspect {
+    padding: 12px 12px 8px;
+    border-bottom: 1px solid var(--line);
+  }
+  #speciesPanel {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+    min-height: 160px;
+    max-height: 34vh;
+    overflow: auto;
+  }
+  #chartsPanel {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  #logPanel {
+    padding: 10px 12px;
+    overflow: auto;
+    min-height: 100px;
+  }
+  #minimapBox {
+    position: fixed;
+    left: 14px;
+    bottom: 14px;
+    width: 222px;
+    padding: 10px;
+  }
+  #minimap {
+    width: 200px;
+    height: 200px;
+    display: block;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    image-rendering: pixelated;
+  }
+  #statusBar {
+    position: fixed;
+    left: 250px;
+    bottom: 14px;
+    right: 370px;
+    padding: 9px 12px;
+    min-height: 42px;
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 8px;
+    font-size: 11px;
+    color: var(--muted);
+    background: rgba(255,255,255,0.04);
+    font-variant-numeric: tabular-nums;
+  }
+  .kv {
+    display: grid;
+    grid-template-columns: 122px 1fr;
+    gap: 3px 8px;
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--muted);
+  }
+  .kv b { color: var(--text); font-weight: 600; }
+  .bar {
+    height: 5px;
+    background: rgba(255,255,255,0.10);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .bar > span { display: block; height: 100%; width: 40%; background: var(--accent); }
+  .species {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 7px;
+    margin-bottom: 7px;
+    background: rgba(255,255,255,0.035);
+    font-size: 11px;
+  }
+  .speciesTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; margin-right: 6px; border: 1px solid rgba(255,255,255,0.25); vertical-align: -2px; }
+  .species small { color: var(--muted); }
+  #chart {
+    width: 314px;
+    height: 130px;
+    display: block;
+    border-radius: 10px;
+    border: 1px solid var(--line);
+    background: rgba(0,0,0,0.14);
+  }
+  .logEntry {
+    font-size: 11px;
+    line-height: 1.35;
+    color: var(--muted);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding: 5px 0;
+  }
+  .logEntry b { color: var(--text); font-weight: 600; }
+  .hint {
+    position: fixed;
+    left: 315px;
+    top: 14px;
+    padding: 9px 12px;
+    color: var(--muted);
+    font-size: 12px;
+    pointer-events: none;
+  }
+  @media (max-width: 900px) {
+    #rightPanel { width: 305px; }
+    #statusBar { display: none; }
+    #toolbar { width: 250px; }
+  }
 </style>
 </head>
 <body>
-<aside id="controls">
-  <h1>StarLab Rethink v2</h1>
-  <div class="sub">One star, rebuilt as a procedural plasma object: shader surface, layered cutaway, particle corona, thick magnetic loops and real outbursts.</div>
+<canvas id="game"></canvas>
 
-  <div class="group">
-    <h2>Star Preset</h2>
-    <select id="preset">
-      <option value="sun">Sun-like main sequence</option>
-      <option value="redDwarf">Red dwarf</option>
-      <option value="blueGiant">Blue giant</option>
-      <option value="redGiant">Red giant</option>
-      <option value="protostar">Protostar</option>
-      <option value="whiteDwarf">White dwarf</option>
-    </select>
-    <label>Observation mode <span id="modeName">Visible</span></label>
-    <select id="mode">
-      <option value="0">Visible photosphere</option>
-      <option value="1">H-alpha chromosphere</option>
-      <option value="2">Ultraviolet active regions</option>
-      <option value="3">X-ray corona</option>
-      <option value="4">Thermal false color</option>
-      <option value="5">Magnetogram</option>
-      <option value="6">Interior cross-section</option>
-    </select>
+<div id="toolbar" class="panel">
+  <h1>Square Cell Evolution Sandbox</h1>
+  <div class="sub">Paint the world. Life adapts by mutation, selection, mitosis-like splitting and meiosis-like recombination.</div>
+
+  <h2>World tools</h2>
+  <div class="grid2" id="toolButtons">
+    <button data-tool="water">Add water</button>
+    <button data-tool="dry">Dry area</button>
+    <button data-tool="fire" class="danger">Add fire</button>
+    <button data-tool="heat" class="warn">Heat</button>
+    <button data-tool="cool">Cool</button>
+    <button data-tool="fertile">Fertility +</button>
+    <button data-tool="barren">Fertility -</button>
+    <button data-tool="barrier">Raise barrier</button>
+    <button data-tool="lower">Lower terrain</button>
+    <button data-tool="life">Seed life</button>
   </div>
 
-  <div class="group">
-    <h2>Physical Controls</h2>
-    <label>Mass <span id="massVal">1.00 M☉</span></label><input id="mass" type="range" min="0.08" max="20" step="0.01" value="1">
-    <label>Surface temp <span id="tempVal">5778 K</span></label><input id="temp" type="range" min="2600" max="22000" step="10" value="5778">
-    <label>Rotation <span id="rotVal">1.0x</span></label><input id="rotation" type="range" min="0" max="10" step="0.1" value="1">
-    <label>Magnetic activity <span id="actVal">42%</span></label><input id="activity" type="range" min="0" max="1" step="0.01" value="0.42">
-    <label>Age <span id="ageVal">4.6 Gyr</span></label><input id="age" type="range" min="0" max="12" step="0.1" value="4.6">
-  </div>
+  <div class="row"><label>Brush</label><input id="brush" type="range" min="2" max="24" value="8" /><span class="value" id="brushVal">8</span></div>
+  <div class="row"><label>Strength</label><input id="strength" type="range" min="1" max="100" value="42" /><span class="value" id="strengthVal">42</span></div>
 
-  <div class="group">
-    <h2>Surface & Plasma</h2>
-    <label>Granulation contrast <span id="granVal">1.35</span></label><input id="granulation" type="range" min="0.4" max="2.5" step="0.01" value="1.35">
-    <label>Surface particles <span id="partVal">1.00</span></label><input id="particles" type="range" min="0" max="2.5" step="0.01" value="1.00">
-    <label>Corona / flame size <span id="coronaVal">1.10</span></label><input id="corona" type="range" min="0" max="3" step="0.01" value="1.10">
-    <label>Exposure <span id="expVal">0.82</span></label><input id="exposure" type="range" min="0.25" max="2" step="0.01" value="0.82">
-    <div class="tiny">The star is deliberately not rendered as a clean sphere. Surface color comes from dynamic cell texture plus plasma spark particles.</div>
+  <h2>Time</h2>
+  <div class="grid3">
+    <button id="pauseBtn">Pause</button>
+    <button id="slowBtn">0.5×</button>
+    <button id="fastBtn">4×</button>
   </div>
+  <div class="row"><label>Speed</label><input id="speed" type="range" min="0" max="12" step="0.25" value="1" /><span class="value" id="speedVal">1×</span></div>
 
-  <div class="group">
-    <h2>Cutaway</h2>
-    <label>Slice depth <span id="sliceVal">0%</span></label><input id="slice" type="range" min="0" max="1" step="0.001" value="0">
-    <div class="tiny">This is now a front cutaway, not a hidden offset plane. Moving the slider immediately removes the front shell and exposes the layers.</div>
-    <div class="row"><button id="cutBtn" class="blue">Open Cutaway</button><button id="closeBtn">Close</button></div>
+  <h2>View</h2>
+  <div class="grid2">
+    <button id="viewBiome" class="active">Biomes</button>
+    <button id="viewHeat">Heat map</button>
+    <button id="viewMoist">Moisture</button>
+    <button id="viewFert">Fertility</button>
   </div>
+  <div class="sub">Drag to pan. Wheel to zoom. Click an organism or tile to inspect. Hold a tool and paint with the mouse.</div>
+</div>
 
-  <div class="group">
-    <h2>Events</h2>
-    <button id="flareBtn" class="warn">Trigger flare</button>
-    <button id="cmeBtn" class="danger">Trigger CME</button>
-    <button id="stormBtn" class="good">Magnetic storm burst</button>
-  </div>
+<div class="hint panel">World is 256×256 tiles. Separate lakes, deserts, forests and cold regions can evolve independent square-cell lineages.</div>
 
-  <div class="group">
-    <h2>View / Export</h2>
-    <div class="row"><button id="presentBtn">Presentation</button><button id="resetBtn">Reset view</button></div>
-    <button id="shotBtn">Save PNG snapshot</button>
+<div id="rightPanel" class="panel">
+  <div id="inspect">
+    <h2 style="margin-top:0">Inspector</h2>
+    <div id="selectedInfo" class="kv"></div>
   </div>
-</aside>
+  <div id="speciesPanel">
+    <h2 style="margin-top:0">Species / strains</h2>
+    <div id="speciesList"></div>
+  </div>
+  <div id="chartsPanel">
+    <h2 style="margin-top:0">Trends</h2>
+    <canvas id="chart" width="314" height="130"></canvas>
+    <div class="sub">Lines: population, biodiversity, average moisture, average temperature.</div>
+  </div>
+  <div id="logPanel">
+    <h2 style="margin-top:0">Event log</h2>
+    <div id="eventLog"></div>
+  </div>
+</div>
 
-<main id="stage">
-  <canvas id="gl"></canvas>
-  <canvas id="overlay"></canvas>
-  <button id="exit">Exit presentation</button>
-  <div id="hud">
-    <div class="card"><b>Radius</b><span id="hudR">0.99 R☉</span></div>
-    <div class="card"><b>Luminosity</b><span id="hudL">0.99 L☉</span></div>
-    <div class="card"><b>Activity</b><span id="hudA" style="color:#ff747e">42%</span></div>
-    <div class="card"><b>Flare risk</b><span id="hudRisk" style="color:#6ee7a6">Low</span></div>
-    <div class="card"><b>View</b><span id="hudMode">Visible</span></div>
-  </div>
-  <div id="monitor">
-    <h3>Activity monitor</h3>
-    <div class="metric"><label>magnetic activity</label><canvas class="spark" id="sparkA"></canvas></div>
-    <div class="metric"><label>flare output</label><canvas class="spark" id="sparkF"></canvas></div>
-    <div class="metric"><label>mass ejection</label><canvas class="spark" id="sparkC"></canvas></div>
-  </div>
-  <div id="hint">Drag = rotate, wheel = zoom, slice slider = live cutaway</div>
-</main>
+<div id="minimapBox" class="panel">
+  <canvas id="minimap" width="200" height="200"></canvas>
+  <div class="sub">Minimap: biome state and current camera.</div>
+</div>
+
+<div id="statusBar" class="panel"></div>
 
 <script>
 'use strict';
-const $ = id => document.getElementById(id);
-const glCanvas = $('gl');
-const overlay = $('overlay');
-const ctx = overlay.getContext('2d', { alpha:true });
-const gl = glCanvas.getContext('webgl', {alpha:false, antialias:false, preserveDrawingBuffer:true, powerPreference:'high-performance'});
-if(!gl){ alert('WebGL could not start. Try another browser or enable hardware acceleration.'); throw new Error('No WebGL'); }
 
-const vs = `
-attribute vec2 aPos;
-varying vec2 vUv;
-void main(){ vUv=aPos*0.5+0.5; gl_Position=vec4(aPos,0.0,1.0); }
-`;
-const fs = `
-precision highp float;
-varying vec2 vUv;
-uniform vec2 uRes;
-uniform float uTime,uZoom,uTemp,uActivity,uSlice,uGran,uExposure,uCorona,uMode,uSpin;
-uniform mat3 uRot;
-const int MAX_FLARES = 8;
-uniform vec4 uFlarePos[MAX_FLARES];
-uniform vec4 uFlareData[MAX_FLARES];
-
-float hash(float n){return fract(sin(n)*43758.5453123);} 
-float hash31(vec3 p){return fract(sin(dot(p,vec3(127.1,311.7,74.7)))*43758.5453123);} 
-vec3 hash33(vec3 p){return fract(sin(vec3(dot(p,vec3(127.1,311.7,74.7)),dot(p,vec3(269.5,183.3,246.1)),dot(p,vec3(113.5,271.9,124.6))))*43758.5453);} 
-float noise(vec3 p){
-  vec3 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
-  float n=dot(i,vec3(1.0,57.0,113.0));
-  return mix(mix(mix(hash(n+0.0),hash(n+1.0),f.x),mix(hash(n+57.0),hash(n+58.0),f.x),f.y),mix(mix(hash(n+113.0),hash(n+114.0),f.x),mix(hash(n+170.0),hash(n+171.0),f.x),f.y),f.z);
-}
-float fbm(vec3 p){float v=0.0,a=.5; for(int i=0;i<5;i++){v+=a*noise(p); p*=2.03; a*=.5;} return v;}
-float voronoi(vec3 x){
-  vec3 p=floor(x); vec3 f=fract(x); float res=9.0;
-  for(int k=-1;k<=1;k++) for(int j=-1;j<=1;j++) for(int i=-1;i<=1;i++){
-    vec3 b=vec3(float(i),float(j),float(k)); vec3 r=b-f+hash33(p+b);
-    float d=dot(r,r); res=min(res,d);
-  }
-  return sqrt(res);
-}
-mat2 rot2(float a){float c=cos(a),s=sin(a);return mat2(c,-s,s,c);} 
-mat3 transpose3(mat3 m){
-  return mat3(
-    m[0][0], m[1][0], m[2][0],
-    m[0][1], m[1][1], m[2][1],
-    m[0][2], m[1][2], m[2][2]
-  );
-}
-vec3 rotateY(vec3 p,float a){float c=cos(a),s=sin(a);return vec3(c*p.x+s*p.z,p.y,-s*p.x+c*p.z);} 
-float smoothPulse(float x,float c,float w){return exp(-pow((x-c)/w,2.0));}
-
-vec3 starColor(float t){
-  float x=clamp((t-2600.0)/(22000.0-2600.0),0.0,1.0);
-  vec3 red=vec3(1.00,0.22,0.055), orange=vec3(1.0,0.52,0.16), yellow=vec3(1.0,0.86,0.46), white=vec3(1.0,0.96,0.88), blue=vec3(0.58,0.72,1.0);
-  vec3 c=mix(red,orange,smoothstep(0.0,.16,x));
-  c=mix(c,yellow,smoothstep(.10,.24,x));
-  c=mix(c,white,smoothstep(.20,.42,x));
-  c=mix(c,blue,smoothstep(.45,1.0,x));
-  return c;
-}
-float spotMask(vec3 p){
-  float m=0.0; float belt=1.0-smoothstep(.10,.78,abs(p.y));
-  for(int i=0;i<13;i++){
-    float fi=float(i);
-    float a=hash(fi*12.33)*6.28318 + uTime*0.025*uSpin*(0.7+hash(fi)*.7);
-    float lat=(hash(fi*4.7)-.5)*0.75;
-    vec3 c=normalize(vec3(cos(a)*cos(lat),sin(lat),sin(a)*cos(lat)));
-    float sz=mix(.035,.115,hash(fi*9.2))*(.45+uActivity*1.35);
-    float d=acos(clamp(dot(p,c),-1.0,1.0));
-    m=max(m,exp(-(d*d)/(sz*sz))*belt);
-  }
-  return clamp(m*uActivity*1.4,0.0,1.0);
-}
-float activeMap(vec3 p){
-  float bands=pow(max(0.0,1.0-abs(p.y)*1.45),1.7);
-  float knots=fbm(p*8.0+vec3(uTime*.05,0.0,uTime*.02));
-  return clamp(bands*(knots-.35)*1.8*uActivity,0.0,1.0);
-}
-
-vec3 renderInterior(vec3 pp, vec3 rd){
-  float cutZ=mix(1.12,-0.42,uSlice);
-  float maxR=sqrt(max(0.001,1.0-cutZ*cutZ));
-  float rr=length(pp.xy)/maxR;
-  float n1=fbm(vec3(pp.xy*5.0,uTime*.08));
-  float n2=fbm(vec3(pp.xy*15.0,uTime*.15));
-  vec3 col;
-  if(rr<.23){
-    col=mix(vec3(1.0,.80,.28),vec3(1.0,.97,.78),smoothstep(0.0,.23,rr));
-    col*=1.35+.35*n2;
-  }else if(rr<.55){
-    col=mix(vec3(1.0,.50,.10),vec3(1.0,.73,.22),n1);
-    col*=1.0+.15*sin(rr*80.0-uTime*1.6);
-  }else if(rr<.86){
-    float cell=voronoi(vec3(pp.xy*7.5,uTime*.18));
-    float lanes=smoothstep(.18,.55,cell);
-    col=mix(vec3(.55,.10,.035),vec3(1.0,.42,.08),lanes);
-    col*=.85+.35*n2;
-  }else{
-    col=vec3(1.0,.68,.24)*(1.0+.2*n2);
-  }
-  float rings=max(max(smoothPulse(rr,.23,.005),smoothPulse(rr,.55,.006)),smoothPulse(rr,.86,.007));
-  col=mix(col,vec3(1.0,.95,.62),rings*.65);
-  float rim=smoothstep(.98,.82,rr);
-  col*=.55+.45*rim;
-  float grid=.08*sin((atan(pp.y,pp.x)+uTime*.25)*22.0)*(1.0-smoothstep(.1,.95,rr));
-  col+=vec3(1.0,.45,.08)*grid;
-  return col;
-}
-
-
-vec4 renderSurface(vec3 p, vec3 n, vec3 rd){
-  vec3 spinP=rotateY(p,uTime*.07*uSpin);
-  vec3 advect=vec3(
-    fbm(spinP*3.6+vec3(0.0,uTime*.05,uTime*.03))-.5,
-    fbm(spinP*3.8+vec3(uTime*.04,0.0,-uTime*.02))-.5,
-    fbm(spinP*3.4+vec3(-uTime*.03,uTime*.02,0.0))-.5
-  );
-  vec3 q=normalize(spinP + advect*0.085*(0.55+uActivity));
-  float mu=clamp(dot(n,-rd),0.0,1.0);
-
-  float macro=fbm(q*3.4+vec3(uTime*.020,-uTime*.015,uTime*.010));
-  vec3 granCoords=q*(10.5+uActivity*3.5 + macro*1.8) + advect*1.4;
-  vec3 cellId=floor(granCoords*1.05);
-  float phase=fract(uTime*(0.11+0.045*macro) + hash31(cellId)*1.73);
-  float grow=smoothstep(0.0,0.16,phase) * (1.0-smoothstep(0.52,1.0,phase));
-  float cell=voronoi(granCoords + vec3(0.0,uTime*.12,0.0));
-  float effRadius=mix(0.10,0.34,grow);
-  float granCore=1.0-smoothstep(0.03,effRadius,cell);
-  float granHalo=1.0-smoothstep(effRadius*0.65,effRadius*1.65,cell);
-  float interLane=smoothstep(effRadius*0.78,effRadius*1.22,cell) * (1.0-smoothstep(effRadius*1.22,effRadius*2.05,cell));
-  float shimmer=fbm(q*24.0+vec3(uTime*.30,-uTime*.12,uTime*.22));
-  float boil=fbm(q*17.0+vec3(uTime*.46,uTime*.08,-uTime*.31));
-  float flow=fbm(q*5.3+vec3(uTime*.07,uTime*.03,0.0));
-
-  float spot=spotMask(q);
-  float active=activeMap(q);
-
-  float flareHeat=0.0;
-  float flareRing=0.0;
-  float flareDisturb=0.0;
-  for(int i=0;i<MAX_FLARES;i++){
-    vec3 fp = uFlarePos[i].xyz;
-    float fs = uFlarePos[i].w;
-    float age = uFlareData[i].x;
-    float amp = uFlareData[i].y;
-    if(fs>0.001 && amp>0.001){
-      float ang = acos(clamp(dot(q, normalize(fp)), -1.0, 1.0));
-      float rise = smoothstep(0.0,0.18,age);
-      float fade = 1.0 - smoothstep(0.55,1.0,age);
-      float patchR = mix(0.018, 0.105, rise) * (0.82 + 0.28*amp);
-      float core = exp(-pow(ang / max(0.012, patchR*(0.42 + 0.2*fade)), 2.0));
-      float ring = exp(-pow((ang - patchR) / (0.016 + 0.045*amp), 2.0));
-      flareHeat += fs * (core * (1.1 + fade*1.4) + ring * 0.45*fade);
-      flareRing += fs * ring * fade;
-      flareDisturb += fs * (core*0.75 + ring*0.95);
-    }
-  }
-
-  float expandMix = clamp(granCore*(0.55 + grow*1.15 + flareDisturb*0.35) + granHalo*0.30, 0.0, 1.0);
-  float laneMix = clamp(interLane*(0.85 + (1.0-grow)*0.65) * (1.0 - min(0.55, flareDisturb*0.22)), 0.0, 1.0);
-  float turbulence = (shimmer-.5)*0.24 + (boil-.5)*0.28 + (flow-.5)*0.18;
-  turbulence += (fbm(q*31.0+vec3(uTime*1.9,-uTime*.9,uTime*1.4))-.5) * flareDisturb * 0.28;
-  float tempVar=(expandMix*0.44 - laneMix*0.30 + turbulence)*uGran;
-  tempVar += active*0.14 + flareHeat*0.32;
-
-  vec3 base=starColor(uTemp);
-  vec3 hot=mix(base,vec3(1.0,.97,.76),.52);
-  vec3 warmRim=mix(base,vec3(1.0,.70,.22),.60);
-  vec3 cool=mix(base,vec3(.33,.08,.022),.64);
-  vec3 col=mix(base,hot,clamp(tempVar+.34,0.0,1.0));
-  col=mix(col,cool,clamp(laneMix*0.85 - tempVar*0.35 + 0.05,0.0,1.0));
-  col += warmRim * clamp(expandMix*0.11 + flareRing*0.25, 0.0, 0.55);
-  col = mix(col,vec3(.045,.020,.012),spot*.92);
-  col += vec3(1.0,.40,.12)*active*.72;
-  col += vec3(1.0,.66,.22) * flareHeat * (0.36 + 0.32*shimmer);
-  col += vec3(1.0,.48,.12) * flareRing * 0.55;
-
-  float relief = clamp(expandMix*1.12 - laneMix*0.92 + (boil-.5)*0.38 + (shimmer-.5)*0.18, -1.0, 1.0);
-  float occlusion = 1.0 - laneMix*0.18 - spot*0.12;
-  float volume = 0.92 + 0.11*pow(mu,0.55) + 0.10*relief;
-  col *= occlusion * volume;
-
-  float limb=.28+.72*pow(mu,.40);
-  col*=limb;
-  col+=base*pow(1.0-mu,2.0)*(.16+.36*uActivity);
-  col += warmRim * pow(1.0-mu,3.1) * (.24 + .26*uCorona + .18*active);
-  col += vec3(1.0,.58,.18) * flareHeat * pow(1.0-mu,1.7) * 0.11;
-
-  if(uMode>.5 && uMode<1.5){
-    vec3 ha = mix(vec3(.24,.02,.01),vec3(1.0,.12,.04),clamp(.46 + tempVar + flareHeat*0.25,0.0,1.0));
-    col = ha + vec3(1.0,.32,.11)*(active + flareHeat*0.7);
-  }
-  else if(uMode>1.5 && uMode<2.5){
-    col = mix(vec3(.03,.02,.11),vec3(.45,.22,1.0),clamp(.30 + active + flareHeat*0.35,0.0,1.0));
-    col += vec3(.35,.75,1.0)*(spot*.55 + flareHeat*.38);
-  }
-  else if(uMode>2.5 && uMode<3.5){
-    col = vec3(.005,.02,.045)+vec3(.08,.72,1.0)*(active+spot*.55+flareHeat*.85);
-    col*=.22+uActivity*1.35;
-  }
-  else if(uMode>3.5 && uMode<4.5){
-    float heat=clamp(.46+tempVar+active*.7+flareHeat*.65-spot*.35,0.0,1.0);
-    col=mix(vec3(.05,.02,.22),vec3(.2,.75,1.0),smoothstep(.0,.45,heat));
-    col=mix(col,vec3(1.0,.85,.15),smoothstep(.45,.75,heat));
-    col=mix(col,vec3(1.0,.08,.02),smoothstep(.75,1.0,heat));
-  }
-  else if(uMode>4.5 && uMode<5.5){
-    float b=sin(q.x*9.0+uTime*.4)+sin(q.z*8.0-uTime*.3)+spot*4.0-active*2.0-flareHeat*2.2;
-    col=b>0.0?vec3(.95,.95,.95)+vec3(.18,.35,1.0)*min(b,.8):vec3(.08,.08,.10)+vec3(1.0,.15,.08)*min(-b,.8);
-  }
-
-  col*=uExposure;
-  col=col/(col+vec3(.82));
-  col=pow(col,vec3(.72));
-  return vec4(col,1.0);
-}
-
-
-void main(){
-  vec2 frag=gl_FragCoord.xy;
-  vec2 uv=(frag-.5*uRes)/min(uRes.x,uRes.y);
-  float d2=length(uv);
-  float camZ=3.1/uZoom;
-  vec3 roCam=vec3(0.0,0.0,camZ);
-  vec3 rdCam=normalize(vec3(uv*1.82,-2.25));
-  mat3 invR=transpose3(uRot);
-  vec3 ro=invR*roCam;
-  vec3 rd=invR*rdCam;
-  float B=dot(ro,rd), C=dot(ro,ro)-1.0, H=B*B-C;
-  vec3 bg=vec3(.004,.006,.010);
-  float edge=max(0.0,d2-.50);
-  float ang=atan(uv.y,uv.x);
-  float coronaNoise=fbm(vec3(cos(ang)*2.4,sin(ang)*2.4,uTime*.045));
-  float filamentNoise=fbm(vec3(cos(ang)*7.0,sin(ang)*7.0,uTime*.11));
-  float innerCorona=exp(-edge*11.5)*(.11+.14*uCorona)*(0.62+0.38*coronaNoise);
-  float outerCorona=exp(-edge*4.5)*.040*uCorona*(0.45+0.55*coronaNoise);
-  float softFilaments=pow(max(0.0,filamentNoise-.56),2.0)*exp(-edge*7.5)*.070*uCorona*(.25+uActivity*.75);
-  float bloomSkirt=exp(-edge*16.0)*(.055+.05*uCorona);
-  bg+=starColor(uTemp)*(innerCorona+outerCorona+softFilaments+bloomSkirt);
-  if(H<0.0){ gl_FragColor=vec4(pow(bg,vec3(.85)),1.0); return; }
-  float sq=sqrt(H); float t0=-B-sq; float t1=-B+sq;
-  if(t1<0.0){ gl_FragColor=vec4(bg,1.0); return; }
-  float t=t0>0.0?t0:t1;
-  vec3 p=ro+rd*t;
-  bool cut=(uSlice>.004 || (uMode>5.5 && uMode<6.5));
-  if(cut){
-    float s=max(uSlice,.42*(uMode>5.5?1.0:0.0));
-    float cutZ=mix(1.12,-0.42,s);
-    bool frontRemoved=p.z>cutZ;
-    if(frontRemoved){
-      float denom=rd.z;
-      float tp=(cutZ-ro.z)/denom;
-      vec3 pp=ro+rd*tp;
-      if(tp>t0 && tp<t1 && dot(pp,pp)<=1.0){
-        vec3 c=renderInterior(pp,rd);
-        float edge=1.0-smoothstep(.93,1.0,length(pp.xy)/sqrt(max(.001,1.0-cutZ*cutZ)));
-        c*=.82+.18*edge;
-        gl_FragColor=vec4(pow(c*uExposure,vec3(.78)),1.0); return;
-      }else{
-        gl_FragColor=vec4(pow(bg,vec3(.85)),1.0); return;
-      }
-    }
-  }
-  vec3 n=normalize(p);
-  vec4 surf=renderSurface(p,n,rd);
-  gl_FragColor=surf;
-}`;
-
-function compile(type,src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s); if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){console.error(gl.getShaderInfoLog(s)); throw new Error(gl.getShaderInfoLog(s));} return s; }
-const prog=gl.createProgram(); gl.attachShader(prog,compile(gl.VERTEX_SHADER,vs)); gl.attachShader(prog,compile(gl.FRAGMENT_SHADER,fs)); gl.linkProgram(prog); if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){throw new Error(gl.getProgramInfoLog(prog));}
-gl.useProgram(prog);
-const quad=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,quad); gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1, -1,1,1,-1,1,1]),gl.STATIC_DRAW);
-const aPos=gl.getAttribLocation(prog,'aPos'); gl.enableVertexAttribArray(aPos); gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
-const U={}; ['uRes','uTime','uZoom','uTemp','uActivity','uSlice','uGran','uExposure','uCorona','uMode','uSpin','uRot'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
-U.uFlarePos = Array.from({length:8}, (_,i)=>gl.getUniformLocation(prog, `uFlarePos[${i}]`));
-U.uFlareData = Array.from({length:8}, (_,i)=>gl.getUniformLocation(prog, `uFlareData[${i}]`));
-
-const state={time:0,zoom:1,rx:-0.20,ry:0.38,drag:false,lastX:0,lastY:0,flareOutput:0,cmeOutput:0,storm:0};
-const controls={preset:$('preset'),mode:$('mode'),mass:$('mass'),temp:$('temp'),rotation:$('rotation'),activity:$('activity'),age:$('age'),granulation:$('granulation'),particles:$('particles'),corona:$('corona'),exposure:$('exposure'),slice:$('slice')};
-const modeNames=['Visible','H-alpha','UV','X-ray','Thermal','Magnetogram','Cross-section'];
-const presets={
-  sun:{mass:1,temp:5778,rotation:1,activity:.42,age:4.6,corona:1.1,granulation:1.35,exposure:.82},
-  redDwarf:{mass:.22,temp:3200,rotation:2.6,activity:.72,age:7.8,corona:.95,granulation:1.55,exposure:1.0},
-  blueGiant:{mass:12,temp:17000,rotation:3.8,activity:.58,age:.04,corona:1.8,granulation:1.05,exposure:.62},
-  redGiant:{mass:1.4,temp:3800,rotation:.35,activity:.35,age:10.2,corona:1.5,granulation:1.9,exposure:.9},
-  protostar:{mass:.8,temp:4200,rotation:4.6,activity:.88,age:.01,corona:2.2,granulation:2.0,exposure:.72},
-  whiteDwarf:{mass:.65,temp:12000,rotation:1.5,activity:.18,age:11.5,corona:.45,granulation:.75,exposure:.86}
+const CFG = {
+  worldW: 256,
+  worldH: 256,
+  maxOrganisms: 6500,
+  initialOrganisms: 160,
+  tileSize: 8,
+  speciesThreshold: 0.185,
+  compatibleThreshold: 0.34,
+  graphMax: 240,
+  maxEvents: 70,
+  simSubSteps: 1,
+  binSize: 8
 };
-function applyPreset(p){ const v=presets[p]; for(const k in v) if(controls[k]) controls[k].value=v[k]; updateUI(); }
-controls.preset.addEventListener('change',e=>applyPreset(e.target.value));
-controls.mode.addEventListener('change',updateUI);
-Object.values(controls).forEach(el=>el&&el.addEventListener('input',()=>{ if(el===controls.slice && parseFloat(el.value)>0.01 && parseInt(controls.mode.value)!==6){ controls.mode.value=6; } updateUI(); }));
-$('cutBtn').onclick=()=>{controls.mode.value=6; controls.slice.value=.55; updateUI();};
-$('closeBtn').onclick=()=>{controls.slice.value=0; if(parseInt(controls.mode.value)===6) controls.mode.value=0; updateUI();};
-$('resetBtn').onclick=()=>{state.rx=-0.20;state.ry=0.38;state.zoom=1;};
-$('presentBtn').onclick=()=>document.body.classList.add('presentation'); $('exit').onclick=()=>document.body.classList.remove('presentation');
-window.addEventListener('keydown',e=>{ if(e.key==='Escape')document.body.classList.remove('presentation'); if(e.key==='p'||e.key==='P')document.body.classList.toggle('presentation'); });
 
-function updateUI(){
-  const mass=parseFloat(controls.mass.value), temp=parseFloat(controls.temp.value), act=parseFloat(controls.activity.value), age=parseFloat(controls.age.value);
-  $('massVal').textContent=mass.toFixed(mass<2?2:1)+' M☉'; $('tempVal').textContent=Math.round(temp)+' K'; $('rotVal').textContent=parseFloat(controls.rotation.value).toFixed(1)+'x'; $('actVal').textContent=Math.round(act*100)+'%'; $('ageVal').textContent=age.toFixed(1)+' Gyr';
-  $('granVal').textContent=parseFloat(controls.granulation.value).toFixed(2); $('partVal').textContent=parseFloat(controls.particles.value).toFixed(2); $('coronaVal').textContent=parseFloat(controls.corona.value).toFixed(2); $('expVal').textContent=parseFloat(controls.exposure.value).toFixed(2); $('sliceVal').textContent=Math.round(parseFloat(controls.slice.value)*100)+'%';
-  const mode=modeNames[parseInt(controls.mode.value)]; $('modeName').textContent=mode; $('hudMode').textContent=mode;
-  const radius=Math.pow(mass,.78)*(temp<4500?1.15:1.0)*(age>8?1+(age-8)*.18:1); const lum=Math.pow(mass,3.45)*Math.pow(temp/5778,1.3);
-  $('hudR').textContent=radius.toFixed(radius<3?2:1)+' R☉'; $('hudL').textContent=lum<99?lum.toFixed(lum<2?2:1)+' L☉':lum.toExponential(1)+' L☉'; $('hudA').textContent=Math.round(act*100)+'%';
-  const risk=act>.78?'Extreme':act>.58?'High':act>.34?'Low':'Quiet'; $('hudRisk').textContent=risk; $('hudRisk').style.color=act>.78?'#ff5966':act>.58?'#ffad49':'#6ee7a6';
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d', { alpha: false });
+const miniCanvas = document.getElementById('minimap');
+const miniCtx = miniCanvas.getContext('2d');
+const chartCanvas = document.getElementById('chart');
+const chartCtx = chartCanvas.getContext('2d');
+
+const ui = {
+  selectedInfo: document.getElementById('selectedInfo'),
+  speciesList: document.getElementById('speciesList'),
+  eventLog: document.getElementById('eventLog'),
+  statusBar: document.getElementById('statusBar'),
+  speed: document.getElementById('speed'),
+  speedVal: document.getElementById('speedVal'),
+  brush: document.getElementById('brush'),
+  brushVal: document.getElementById('brushVal'),
+  strength: document.getElementById('strength'),
+  strengthVal: document.getElementById('strengthVal'),
+  toolButtons: document.getElementById('toolButtons')
+};
+
+let W = CFG.worldW;
+let H = CFG.worldH;
+let N = W * H;
+let rngSeed = Math.floor(Math.random() * 9999999);
+let simTime = 0;
+let frameCounter = 0;
+let paused = false;
+let speed = 1;
+let activeTool = 'water';
+let viewMode = 'biome';
+let mouse = { x: 0, y: 0, worldX: 0, worldY: 0, tileX: 0, tileY: 0, down: false, painting: false, panning: false, lastX: 0, lastY: 0 };
+let camera = { x: W / 2, y: H / 2, zoom: 4.5 };
+let selected = { type: 'none', organismId: null, tileX: 0, tileY: 0 };
+
+const world = {
+  elevation: new Float32Array(N),
+  water: new Float32Array(N),
+  moisture: new Float32Array(N),
+  fertility: new Float32Array(N),
+  vegetation: new Float32Array(N),
+  ash: new Float32Array(N),
+  fire: new Float32Array(N),
+  temp: new Float32Array(N),
+  baseTemp: new Float32Array(N),
+  barrier: new Float32Array(N),
+  biome: new Uint8Array(N),
+  occupancy: new Uint16Array(N)
+};
+
+const BIOME = {
+  OCEAN: 0,
+  LAKE: 1,
+  WETLAND: 2,
+  DESERT: 3,
+  GRASS: 4,
+  FOREST: 5,
+  BURNED: 6,
+  COLD: 7,
+  BARREN: 8,
+  FIRE: 9
+};
+
+const biomeNames = ['Ocean', 'Lake', 'Wetland', 'Desert', 'Grassland', 'Forest', 'Burned land', 'Cold zone', 'Barren land', 'Fire front'];
+const baseBiomeColors = [
+  [22, 70, 120],
+  [36, 110, 160],
+  [44, 118, 105],
+  [158, 125, 70],
+  [92, 142, 62],
+  [34, 95, 45],
+  [92, 72, 58],
+  [130, 156, 168],
+  [92, 86, 72],
+  [226, 68, 28]
+];
+
+const organisms = [];
+let nextOrgId = 1;
+let species = [];
+let nextSpeciesId = 1;
+let events = [];
+let graph = { pop: [], species: [], moisture: [], temp: [], diversity: [] };
+let bins = [];
+let binCols = Math.ceil(W / CFG.binSize);
+let binRows = Math.ceil(H / CFG.binSize);
+
+function srand() {
+  rngSeed = (rngSeed * 1664525 + 1013904223) >>> 0;
+  return rngSeed / 4294967296;
 }
-updateUI();
+function rand(a = 1, b = 0) { return b + srand() * (a - b); }
+function randRange(min, max) { return min + srand() * (max - min); }
+function chance(p) { return srand() < p; }
+function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+function lerp(a, b, t) { return a + (b - a) * t; }
+function idx(x, y) { return y * W + x; }
+function inBounds(x, y) { return x >= 0 && y >= 0 && x < W && y < H; }
+function smoothstep(t) { return t * t * (3 - 2 * t); }
+function hsl(h, s, l) { return `hsl(${Math.round(h)} ${Math.round(s)}% ${Math.round(l)}%)`; }
+function fmt(v, d = 2) { return Number.isFinite(v) ? v.toFixed(d) : 'n/a'; }
 
-let sparks=[], loops=[], flares=[], cmes=[], historyA=[],historyF=[],historyC=[];
-function rand(a){ return Math.sin(a*127.1+311.7)*43758.5453123%1; }
-function makeSparks(){ sparks=[]; for(let i=0;i<2100;i++){ const u=Math.random()*2-1; const th=Math.random()*Math.PI*2; const r=Math.sqrt(1-u*u); sparks.push({p:[r*Math.cos(th),u,r*Math.sin(th)],b:Math.pow(Math.random(),2.2),s:.4+Math.random()*1.8,seed:Math.random()*1000}); }}
-function makeLoops(){ loops=[]; for(let i=0;i<26;i++){ const lat=(Math.random()-.5)*1.12; const lon=Math.random()*Math.PI*2; loops.push({lat,lon,w:.055+Math.random()*.13,h:.10+Math.random()*.34,phase:Math.random()*10,life:1}); }}
-makeSparks(); makeLoops();
-
-function rotationMatrix(){ const cx=Math.cos(state.rx),sx=Math.sin(state.rx),cy=Math.cos(state.ry),sy=Math.sin(state.ry); return [cy, sx*sy, -cx*sy, 0, cx, sx, sy, -sx*cy, cx*cy]; }
-function project(p){ const R=rotationMatrix(); const x=R[0]*p[0]+R[3]*p[1]+R[6]*p[2]; const y=R[1]*p[0]+R[4]*p[1]+R[7]*p[2]; const z=R[2]*p[0]+R[5]*p[1]+R[8]*p[2]; const cam=3.1/state.zoom; const f=overlay.height/2.25; const s=f/(cam-z); return {x:overlay.width/2+x*s,y:overlay.height/2-y*s,z,scale:s,front:z>-.15}; }
-function sph(lat,lon,r=1){ const cl=Math.cos(lat); return [r*Math.cos(lon)*cl,r*Math.sin(lat),r*Math.sin(lon)*cl]; }
-function norm(v){ const l=Math.hypot(v[0],v[1],v[2])||1; return [v[0]/l,v[1]/l,v[2]/l]; }
-function cross(a,b){ return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
-function add(a,b,k=1){return [a[0]+b[0]*k,a[1]+b[1]*k,a[2]+b[2]*k];}
-function makeBasis(n){ const ref=Math.abs(n[1])>0.92?[1,0,0]:[0,1,0]; const t=norm(cross(ref,n)); const b=norm(cross(n,t)); return {t,b}; }
-function pickVisibleSurfacePoint(range=.7, tries=18){ let best=null; for(let i=0;i<tries;i++){ const lat=(Math.random()-.5)*range; const lon=Math.random()*Math.PI*2; const p=sph(lat,lon,1); const pr=project(p); if(!best || pr.z>best.pr.z) best={lat,lon,p,pr}; if(pr.z>0.18) return {lat,lon,p}; } return best?{lat:best.lat,lon:best.lon,p:best.p}:{lat:0,lon:0,p:[1,0,0]}; }
-function qPoint(x1,y1,mx,my,x2,y2,u){ const iu=1-u; return {x:iu*iu*x1 + 2*iu*u*mx + u*u*x2, y:iu*iu*y1 + 2*iu*u*my + u*u*y2}; }
-function drawGlowBlob(x,y,r,alpha,stretch=1.0){ ctx.save(); ctx.translate(x,y); ctx.scale(1,stretch); const g=ctx.createRadialGradient(0,0,0,0,0,r); g.addColorStop(0,`rgba(255,248,210,${alpha*0.95})`); g.addColorStop(0.22,`rgba(255,196,92,${alpha*0.70})`); g.addColorStop(0.58,`rgba(255,112,28,${alpha*0.34})`); g.addColorStop(1,'rgba(255,70,14,0)'); ctx.fillStyle=g; ctx.beginPath(); ctx.arc(0,0,r,0,Math.PI*2); ctx.fill(); ctx.restore(); }
-
-function spawnFlare(strength=1){ const pick=pickVisibleSurfacePoint(.7, 22); const p=pick.p; flares.push({p,age:0,life:1.4+Math.random()*.9,strength,seed:Math.random()*1000,particles:Array.from({length:120+Math.floor(120*strength)},()=>({r:Math.random(),a:Math.random()*Math.PI*2,v:.30+Math.random()*1.25,off:(Math.random()-.5)*.2}))}); state.flareOutput=Math.min(1,state.flareOutput+.35*strength); }
-function spawnCME(strength=1){ const pick=pickVisibleSurfacePoint(.55, 20); const p=pick.p; cmes.push({p,age:0,life:2.6+Math.random()*1.2,strength,particles:Array.from({length:260+Math.floor(260*strength)},()=>({r:Math.random()*.2,a:Math.random()*Math.PI*2,v:.35+Math.random()*1.25,spread:(Math.random()-.5)*.35}))}); state.cmeOutput=Math.min(1,state.cmeOutput+.45*strength); }
-$('flareBtn').onclick=()=>spawnFlare(1.15); $('cmeBtn').onclick=()=>spawnCME(1.2); $('stormBtn').onclick=()=>{for(let i=0;i<5;i++)setTimeout(()=>spawnFlare(.75+Math.random()*.5),i*130); setTimeout(()=>spawnCME(1),550);};
-
-function drawOverlay(dt){
-  ctx.clearRect(0,0,overlay.width,overlay.height);
-  const act=parseFloat(controls.activity.value), part=parseFloat(controls.particles.value), corona=parseFloat(controls.corona.value), mode=parseInt(controls.mode.value), slice=parseFloat(controls.slice.value);
-  const Rpx=Math.min(overlay.width,overlay.height)*0.365*state.zoom;
-  const cx=overlay.width/2, cy=overlay.height/2;
-  ctx.save(); ctx.globalCompositeOperation='lighter';
-  // limb chromosphere / small flame tongues: blob-built plumes instead of simple lines
-  if(corona>0){
-    const count=88;
-    for(let i=0;i<count;i++){
-      const baseA=i/count*Math.PI*2;
-      const seed=Math.sin(i*91.17)*43758.5453;
-      const jitter=Math.sin(state.time*.00055+i*1.37)*.010;
-      const a=baseA+jitter;
-      const cluster=.5+.5*Math.sin(i*.41+Math.sin(i*2.7)*1.6+state.time*.0007);
-      const activeTongue=Math.max(0, cluster-.52)/.48;
-      const wob=.5+.5*Math.sin(i*12.17+state.time*.006);
-      const len=(10+26*wob*(.25+act*.55)+36*activeTongue*act)*corona*devicePixelRatio;
-      const r=Rpx*(.994+.004*Math.sin(i+state.time*.002));
-      const bend=(Math.sin(seed*12.0+state.time*.003)*.34)*(0.55+activeTongue);
-      const ca=Math.cos(a), sa=Math.sin(a);
-      const tx=-sa, ty=ca;
-      const x1=cx+ca*r, y1=cy+sa*r;
-      const x2=cx+ca*(r+len), y2=cy+sa*(r+len);
-      const mx=cx+ca*(r+len*.46)+tx*len*bend*.42;
-      const my=cy+sa*(r+len*.46)+ty*len*bend*.42;
-      const density = activeTongue>0.20 ? 7 : 4;
-      for(let j=0;j<density;j++){
-        const u=j/(density-1 || 1);
-        const pt=qPoint(x1,y1,mx,my,x2,y2,u);
-        const size=(2.6 + (1.0-u)*(6.5 + 16.0*activeTongue) + wob*3.0) * devicePixelRatio * (0.65+corona*0.38);
-        const alpha=(0.028 + 0.065*(1.0-u) + activeTongue*0.13) * (0.6 + 0.4*wob);
-        drawGlowBlob(pt.x, pt.y, size, alpha, 1.15 + (1.0-u)*0.85);
-      }
-      if(activeTongue>0.18){
-        drawGlowBlob(x1, y1, (6.0+8.0*activeTongue)*devicePixelRatio, 0.12+activeTongue*0.08, 1.0);
-      }
-    }
-    const limbGlow=ctx.createRadialGradient(cx,cy,Rpx*.985,cx,cy,Rpx*(1.14+corona*.03));
-    limbGlow.addColorStop(0,'rgba(255,210,110,0.0)');
-    limbGlow.addColorStop(0.16,`rgba(255,185,90,${0.10+0.05*corona})`);
-    limbGlow.addColorStop(0.42,`rgba(255,105,32,${0.035+0.02*corona})`);
-    limbGlow.addColorStop(1,'rgba(255,70,20,0)');
-    ctx.fillStyle=limbGlow; ctx.beginPath(); ctx.arc(cx,cy,Rpx*(1.14+corona*.03),0,Math.PI*2); ctx.fill();
-  }
-  // surface glimmer particles on front hemisphere  // surface glimmer particles on front hemisphere
-  if(part>0 && mode!==3){
-    for(const sp of sparks){
-      const flow=state.time*.00008*parseFloat(controls.rotation.value); const q=[sp.p[0]*Math.cos(flow)-sp.p[2]*Math.sin(flow),sp.p[1],sp.p[0]*Math.sin(flow)+sp.p[2]*Math.cos(flow)];
-      const pr=project(q); if(pr.z<0.05) continue; const edge=Math.max(0,pr.z); const tw=.55+.45*Math.sin(state.time*.006+sp.seed); const alpha=(.018+.045*sp.b*tw)*part*edge; if(alpha<.01) continue;
-      const size=(sp.s+.9*sp.b)*devicePixelRatio*state.zoom; ctx.fillStyle=`rgba(255,${Math.round(150+70*sp.b)},${Math.round(35+80*sp.b)},${alpha})`;
-      ctx.beginPath(); ctx.arc(pr.x,pr.y,size,0,Math.PI*2); ctx.fill();
-    }
-  }
-  // cutaway labels and energy arrows
-  if(slice>.02 || mode===6){
-    ctx.globalCompositeOperation='source-over';
-    ctx.strokeStyle='rgba(255,210,90,.55)'; ctx.lineWidth=1.5*devicePixelRatio; ctx.setLineDash([8*devicePixelRatio,6*devicePixelRatio]);
-    ctx.beginPath(); ctx.arc(cx,cy,Rpx*(.22+.42*Math.max(slice,.42)),0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
-    const labels=[['CORE',0,-.12,'#fff2a0'],['RADIATIVE ZONE',.24,.03,'#ffc560'],['CONVECTIVE ZONE',.47,.19,'#ff7a2b'],['PHOTOSPHERE',.67,.34,'#ffe2a0']];
-    ctx.font=`${11*devicePixelRatio}px Arial`; ctx.textAlign='left';
-    labels.forEach((l,idx)=>{ const x=cx+Rpx*.43, y=cy+Rpx*l[2]; ctx.fillStyle='rgba(0,0,0,.55)'; ctx.fillRect(x-5,y-13*devicePixelRatio,135*devicePixelRatio,18*devicePixelRatio); ctx.fillStyle=l[3]; ctx.fillText(l[0],x,y); });
-    ctx.globalCompositeOperation='lighter';
-  }
-  // limb prominences: render as stacked glowing plasma blobs for a more volumetric look
-  for(const loop of loops){
-    const baseLon=loop.lon+state.time*.00006*parseFloat(controls.rotation.value);
-    const base=sph(loop.lat,baseLon,1.01);
-    const n=norm(base);
-    const basePr=project(base);
-    const baseScreenR=Math.hypot(basePr.x-cx,basePr.y-cy);
-    if(baseScreenR < Rpx*.84 || basePr.z < -0.35) continue;
-
-    const basis=makeBasis(n); const t=basis.t; const b=basis.b;
-    const pts=[]; const width=loop.w*(.68+act*.36), height=loop.h*(.75+act*.55);
-    for(let k=0;k<=34;k++){
-      const u=k/34; const side=(u-.5)*2;
-      let p=add(base,t,side*width);
-      p=add(p,n,Math.sin(Math.PI*u)*height);
-      p=add(p,b,Math.sin(u*Math.PI*2+loop.phase)*width*.12);
-      p=norm(p);
-      const amp=1+Math.sin(Math.PI*u)*height;
-      p=[p[0]*amp,p[1]*amp,p[2]*amp];
-      const pr=project(p);
-      pr.outsideDisk = Math.hypot(pr.x-cx,pr.y-cy) > Rpx*.968;
-      pr.u=u;
-      pts.push(pr);
-    }
-    const visible = pts.filter(p=>p.outsideDisk && p.z>-0.58);
-    if(visible.length<6) continue;
-
-    for(const p of visible){
-      const arch=Math.sin(p.u*Math.PI);
-      const size=(2.2 + 10.0*arch + 5.0*act)*devicePixelRatio;
-      const alpha=(0.045 + 0.10*arch)*(0.45 + act*0.55);
-      drawGlowBlob(p.x,p.y,size,alpha,1.12 + arch*0.6);
-    }
-
-    for(let j=0;j<5;j++){
-      const u=(j/5+state.time*.00035+loop.phase)%1;
-      const p=pts[Math.floor(u*(pts.length-1))];
-      if(!p||!p.outsideDisk||p.z<-0.55) continue;
-      drawGlowBlob(p.x,p.y,(3.0+5.2*act)*devicePixelRatio,0.14+act*0.10,1.0);
-    }
-  }
-  // flares  // flares
-  for(const f of flares){
-    f.age+=dt/1000;
-    const life=f.age/f.life;
-    const base=norm(f.p);
-    const basis=makeBasis(base);
-    const up=base, t=basis.t, b=basis.b;
-    const surfP=project(base);
-    if(life<1 && surfP.z>-0.02){
-      const rise=Math.min(1, life/0.28);
-      const fade=1-Math.max(0,(life-0.55)/0.45);
-      const patch=Rpx*(0.010 + 0.052*rise*f.strength);
-      const grad=ctx.createRadialGradient(surfP.x,surfP.y,0,surfP.x,surfP.y,patch*1.8);
-      grad.addColorStop(0,`rgba(255,230,160,${0.34*fade})`);
-      grad.addColorStop(.38,`rgba(255,105,34,${0.18*fade})`);
-      grad.addColorStop(1,'rgba(255,80,15,0)');
-      ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(surfP.x,surfP.y,patch*1.8,0,Math.PI*2); ctx.fill();
-
-      const plumePts=[];
-      const steps=18;
-      for(let i=0;i<=steps;i++){
-        const u=i/steps;
-        const lift=(0.01 + Math.sin(u*Math.PI)*0.16 + u*0.24) * rise * f.strength;
-        const sideAmt=Math.sin(u*Math.PI) * 0.08 * (0.6+0.4*Math.sin(f.seed+life*6));
-        let p=add(base, up, lift);
-        p=add(p, t, sideAmt);
-        p=add(p, b, Math.sin(u*4.2 + f.seed)*0.015*rise);
-        plumePts.push(project(p));
-      }
-      for(let j=0;j<plumePts.length;j++){
-        const pp=plumePts[j];
-        const u=j/Math.max(1,plumePts.length-1);
-        drawGlowBlob(pp.x, pp.y, (3.0 + (1.0-u)*10.0 + f.strength*3.0)*devicePixelRatio, (0.08 + (1.0-u)*0.12)*fade, 1.0 + (1.0-u)*0.75);
-      }
-
-      for(const pa of f.particles){
-        const burst=rise*(0.08 + pa.v*0.42)*f.strength;
-        let p=add(base, up, burst);
-        p=add(p, t, Math.cos(pa.a+life*8.0)*pa.r*0.18*rise);
-        p=add(p, b, Math.sin(pa.a+life*7.3)*pa.r*0.18*rise + pa.off*0.08*rise);
-        const pp=project(p);
-        if(pp.z<-0.25) continue;
-        ctx.fillStyle=`rgba(255,${130+Math.round(110*(1-pa.r))},55,${fade*(0.08+0.24*pa.r)})`;
-        ctx.beginPath(); ctx.arc(pp.x,pp.y,(1.2+5.2*pa.r)*devicePixelRatio,0,Math.PI*2); ctx.fill();
-      }
-    }
-  }
-  flares=flares.filter(f=>f.age<f.life);
-  // CMEs
-  for(const c of cmes){ c.age+=dt/1000; const life=c.age/c.life; const base=norm(c.p); const basis=makeBasis(base); const e1=basis.t; const e2=basis.b; if(life<1){
-    for(const pa of c.particles){ const spread=.04+life*.55*pa.r; const outward=life*1.25*pa.v*c.strength; let p=add(base,base,outward); p=add(p,e1,Math.cos(pa.a)*spread+pa.spread*life*.1); p=add(p,e2,Math.sin(pa.a)*spread+pa.spread*life*.1); const pp=project(p); if(pp.z<-0.5)continue; const alpha=(1-life)*(.018+.07*pa.r); ctx.fillStyle=`rgba(255,${120+Math.round(90*pa.r)},55,${alpha})`; ctx.beginPath(); ctx.arc(pp.x,pp.y,(.9+3.8*pa.r)*devicePixelRatio,0,Math.PI*2); ctx.fill(); }
-  }}
-  cmes=cmes.filter(c=>c.age<c.life); ctx.restore();
+function hashNoise(ix, iy, seed = 0) {
+  let n = ix * 374761393 + iy * 668265263 + seed * 1442695041;
+  n = (n ^ (n >>> 13)) * 1274126177;
+  return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
+}
+function valueNoise(x, y, scale, seed) {
+  const fx = x / scale;
+  const fy = y / scale;
+  const x0 = Math.floor(fx);
+  const y0 = Math.floor(fy);
+  const tx = smoothstep(fx - x0);
+  const ty = smoothstep(fy - y0);
+  const a = hashNoise(x0, y0, seed);
+  const b = hashNoise(x0 + 1, y0, seed);
+  const c = hashNoise(x0, y0 + 1, seed);
+  const d = hashNoise(x0 + 1, y0 + 1, seed);
+  return lerp(lerp(a, b, tx), lerp(c, d, tx), ty);
+}
+function fbm(x, y, seed) {
+  return valueNoise(x, y, 72, seed) * 0.52 + valueNoise(x, y, 34, seed + 4) * 0.28 + valueNoise(x, y, 15, seed + 8) * 0.14 + valueNoise(x, y, 7, seed + 12) * 0.06;
 }
 
-function drawSpark(canvas,arr,color){ const c=canvas.getContext('2d'), w=canvas.width, h=canvas.height; c.clearRect(0,0,w,h); c.strokeStyle=color; c.lineWidth=2*devicePixelRatio; c.beginPath(); arr.forEach((v,i)=>{ const x=i/(arr.length-1)*w, y=h-(v*h*.9+h*.05); i?c.lineTo(x,y):c.moveTo(x,y); }); c.stroke(); }
-function resize(){ const dpr=Math.min(2.5,window.devicePixelRatio||1); const rect=glCanvas.parentElement.getBoundingClientRect(); [glCanvas,overlay].forEach(c=>{c.width=Math.round(rect.width*dpr); c.height=Math.round(rect.height*dpr); c.style.width=rect.width+'px'; c.style.height=rect.height+'px';}); gl.viewport(0,0,glCanvas.width,glCanvas.height); document.querySelectorAll('.spark').forEach(c=>{c.width=260*dpr;c.height=22*dpr;}); }
-window.addEventListener('resize',resize); resize();
+function addEvent(kind, message, important = false) {
+  const entry = { time: simTime, kind, message, important };
+  events.unshift(entry);
+  if (events.length > CFG.maxEvents) events.length = CFG.maxEvents;
+}
 
-let last=performance.now();
-function frame(now){ const dt=Math.min(50,now-last); last=now; state.time+=dt; const act=parseFloat(controls.activity.value); if(Math.random()<act*dt/9000) spawnFlare(.35+Math.random()*.45); if(Math.random()<Math.max(0,act-.65)*dt/18000) spawnCME(.45+Math.random()*.35);
-  const R=rotationMatrix(); gl.useProgram(prog); gl.uniform2f(U.uRes,glCanvas.width,glCanvas.height); gl.uniform1f(U.uTime,state.time/1000); gl.uniform1f(U.uZoom,state.zoom); gl.uniform1f(U.uTemp,parseFloat(controls.temp.value)); gl.uniform1f(U.uActivity,act); gl.uniform1f(U.uSlice,parseFloat(controls.slice.value)); gl.uniform1f(U.uGran,parseFloat(controls.granulation.value)); gl.uniform1f(U.uExposure,parseFloat(controls.exposure.value)); gl.uniform1f(U.uCorona,parseFloat(controls.corona.value)); gl.uniform1f(U.uMode,parseFloat(controls.mode.value)); gl.uniform1f(U.uSpin,parseFloat(controls.rotation.value)); gl.uniformMatrix3fv(U.uRot,false,new Float32Array(R));
-  const activeFlares=flares.filter(f=>f.age<f.life).slice(0,8);
-  for(let i=0;i<8;i++){
-    const f=activeFlares[i];
-    if(f){
-      const age01=Math.max(0, Math.min(1, f.age/f.life));
-      gl.uniform4f(U.uFlarePos[i], f.p[0], f.p[1], f.p[2], f.strength||1);
-      gl.uniform4f(U.uFlareData[i], age01, f.strength||1, 0, 0);
+function biomeAt(i) {
+  const w = world.water[i];
+  const m = world.moisture[i];
+  const f = world.fertility[i];
+  const v = world.vegetation[i];
+  const t = world.temp[i];
+  const fire = world.fire[i];
+  if (fire > 0.08) return BIOME.FIRE;
+  if (w > 0.72) return world.elevation[i] < 0.33 ? BIOME.OCEAN : BIOME.LAKE;
+  if (w > 0.34 || (m > 0.72 && f > 0.35)) return BIOME.WETLAND;
+  if (world.ash[i] > 0.22 && v < 0.22) return BIOME.BURNED;
+  if (t < 1) return BIOME.COLD;
+  if (t > 27 && m < 0.24 && v < 0.2) return BIOME.DESERT;
+  if (v > 0.68 && m > 0.46 && f > 0.35) return BIOME.FOREST;
+  if (v > 0.2 && m > 0.25 && f > 0.22) return BIOME.GRASS;
+  return BIOME.BARREN;
+}
+
+const WorldSystem = {
+  generate() {
+    rngSeed = Math.floor(Math.random() * 9999999);
+    addEvent('world', 'New world generated with oceans, lakes, dry basins, fertile plains and cold margins.', true);
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        const i = idx(x, y);
+        const n = fbm(x, y, 11);
+        const ridge = Math.abs(valueNoise(x, y, 48, 61) - 0.5) * 0.25;
+        const edgeWater = Math.min(x, W - 1 - x, y, H - 1 - y) / Math.min(W, H);
+        let elevation = clamp(n * 0.95 + ridge - (1 - clamp(edgeWater * 10, 0, 1)) * 0.22, 0, 1);
+        world.elevation[i] = elevation;
+        world.barrier[i] = 0;
+
+        const lat = Math.abs((y / (H - 1)) * 2 - 1);
+        const localHeat = (valueNoise(x, y, 80, 101) - 0.5) * 8 + (valueNoise(x, y, 28, 102) - 0.5) * 4;
+        const temp = clamp(34 - lat * 34 + localHeat, -10, 42);
+        world.baseTemp[i] = temp;
+        world.temp[i] = temp;
+
+        let water = 0;
+        if (elevation < 0.31) water = clamp((0.34 - elevation) * 5.2, 0.2, 1);
+        if (valueNoise(x, y, 26, 222) > 0.78 && elevation < 0.48) water = Math.max(water, randRange(0.45, 0.75));
+        world.water[i] = water;
+
+        const rain = clamp(1 - lat * 0.55 + valueNoise(x, y, 56, 91) * 0.5 - elevation * 0.25, 0, 1);
+        const moisture = clamp(water * 0.75 + rain * 0.55 - Math.max(0, temp - 24) * 0.015, 0, 1);
+        world.moisture[i] = moisture;
+        world.fertility[i] = clamp(valueNoise(x, y, 42, 202) * 0.65 + moisture * 0.45 - water * 0.15, 0, 1);
+        world.ash[i] = 0;
+        world.fire[i] = 0;
+        world.vegetation[i] = clamp((moisture * 0.75 + world.fertility[i] * 0.65 - Math.max(0, temp - 29) * 0.025 - water * 0.3) * randRange(0.65, 1.15), 0, 1);
+        world.biome[i] = biomeAt(i);
+      }
+    }
+  },
+
+  update(dt) {
+    const iterations = Math.floor(N * 0.24 * dt) + 800;
+    const windX = Math.sin(simTime * 0.013) * 0.65 + Math.sin(simTime * 0.003) * 0.35;
+    const windY = Math.cos(simTime * 0.011) * 0.65;
+
+    for (let k = 0; k < iterations; k++) {
+      const x = Math.floor(srand() * W);
+      const y = Math.floor(srand() * H);
+      const i = idx(x, y);
+      let water = world.water[i];
+      let temp = world.temp[i];
+      let moisture = world.moisture[i];
+      const elev = world.elevation[i] + world.barrier[i];
+
+      // Water flow toward lower combined terrain/water. Barriers matter.
+      if (water > 0.015) {
+        const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+        for (let d = 0; d < 2; d++) {
+          const dir = dirs[Math.floor(srand() * 4)];
+          const nx = x + dir[0], ny = y + dir[1];
+          if (!inBounds(nx, ny)) continue;
+          const ni = idx(nx, ny);
+          const hereLevel = elev + water * 0.52;
+          const thereLevel = world.elevation[ni] + world.barrier[ni] + world.water[ni] * 0.52;
+          const diff = hereLevel - thereLevel;
+          if (diff > 0.006) {
+            const flow = Math.min(water, diff * 0.10 * dt + 0.006 * dt);
+            world.water[i] -= flow;
+            world.water[ni] += flow;
+            water -= flow;
+          }
+        }
+      }
+
+      // Evaporation, condensation and soil moisture.
+      const evap = clamp((temp - 8) / 40, 0, 1) * (0.0013 + world.fire[i] * 0.01) * dt;
+      world.water[i] = clamp(world.water[i] - evap, 0, 1.4);
+      const desiredMoisture = clamp(world.water[i] * 0.95 + world.vegetation[i] * 0.18 + world.ash[i] * 0.07 - Math.max(0, temp - 25) * 0.015, 0, 1);
+      world.moisture[i] = clamp(lerp(moisture, desiredMoisture, 0.055 * dt), 0, 1);
+
+      // Moisture spreads slowly through soil.
+      if (chance(0.35)) {
+        const nx = clamp(x + (chance(0.5) ? 1 : -1), 0, W - 1);
+        const ny = clamp(y + (chance(0.5) ? 1 : -1), 0, H - 1);
+        const ni = idx(nx, ny);
+        const diff = (world.moisture[i] - world.moisture[ni]) * 0.015 * dt;
+        world.moisture[i] -= diff;
+        world.moisture[ni] += diff;
+      }
+
+      // Temperature returns to base, fire heats locally, water cools.
+      world.temp[i] = clamp(world.temp[i] + (world.baseTemp[i] - world.temp[i]) * 0.012 * dt + world.fire[i] * 0.08 * dt - world.water[i] * 0.004 * dt, -18, 52);
+
+      // Fertility and vegetation growth.
+      const tempGrowth = 1 - clamp(Math.abs(world.temp[i] - 18) / 28, 0, 1);
+      const wetFit = 1 - clamp(Math.abs(world.moisture[i] - 0.52) / 0.7, 0, 1);
+      const growth = Math.max(0, tempGrowth * 0.55 + wetFit * 0.55 - 0.18) * world.fertility[i] * (1 - world.water[i] * 0.8);
+      world.vegetation[i] = clamp(world.vegetation[i] + growth * 0.006 * dt - Math.max(0, 0.18 - world.moisture[i]) * 0.006 * dt - Math.max(0, world.temp[i] - 32) * 0.0015 * dt, 0, 1);
+      world.fertility[i] = clamp(world.fertility[i] + world.ash[i] * 0.0008 * dt - Math.max(0, world.water[i] - 0.92) * 0.001 * dt, 0, 1);
+      world.ash[i] = clamp(world.ash[i] * (1 - 0.0008 * dt), 0, 1);
+
+      // Fire behavior: dry vegetation burns, spreads with wind and moisture.
+      if (world.fire[i] > 0.01) {
+        const burn = clamp(world.fire[i] * (0.02 + world.vegetation[i] * 0.065) * dt, 0, world.vegetation[i]);
+        world.vegetation[i] -= burn;
+        world.ash[i] = clamp(world.ash[i] + burn * 0.85, 0, 1);
+        world.fertility[i] = clamp(world.fertility[i] + burn * 0.12, 0, 1);
+        world.moisture[i] = clamp(world.moisture[i] - world.fire[i] * 0.01 * dt, 0, 1);
+        world.fire[i] = clamp(world.fire[i] + (world.vegetation[i] * 0.005 - world.moisture[i] * 0.016 - world.water[i] * 0.04 - 0.008) * dt, 0, 1);
+        const spreadChance = clamp((0.12 + world.vegetation[i] * 0.45 - world.moisture[i] * 0.5 + Math.max(0, world.temp[i] - 22) * 0.01) * dt, 0, 0.4);
+        if (chance(spreadChance)) {
+          const sx = x + Math.sign(windX + randRange(-0.7, 0.7));
+          const sy = y + Math.sign(windY + randRange(-0.7, 0.7));
+          if (inBounds(sx, sy)) {
+            const si = idx(sx, sy);
+            if (world.vegetation[si] > 0.16 && world.moisture[si] < 0.62 && world.water[si] < 0.25) {
+              world.fire[si] = Math.max(world.fire[si], randRange(0.15, 0.55));
+            }
+          }
+        }
+      }
+
+      world.biome[i] = biomeAt(i);
+    }
+  }
+};
+
+function randomGenome(x = W / 2, y = H / 2) {
+  const i = idx(clamp(Math.floor(x), 0, W - 1), clamp(Math.floor(y), 0, H - 1));
+  const t = world.temp[i];
+  const m = world.moisture[i];
+  const feeding = srand();
+  return {
+    preferredTemp: clamp(t + randRange(-5, 5), -10, 42),
+    tempTolerance: randRange(7, 17),
+    waterPref: clamp(m + randRange(-0.18, 0.18), 0, 1),
+    waterTolerance: randRange(0.22, 0.75),
+    droughtResistance: randRange(0.15, 0.85),
+    fireResistance: randRange(0.02, 0.35),
+    metabolism: randRange(0.55, 1.25),
+    movementSpeed: randRange(0.25, 1.2),
+    energyStorage: randRange(36, 95),
+    reproductionRate: randRange(0.35, 1.25),
+    mutationRate: randRange(0.012, 0.055),
+    lifespan: randRange(480, 1550),
+    size: randRange(0.55, 1.25),
+    hue: randRange(70, 250),
+    photosynthesis: feeding < 0.48 ? randRange(0.35, 0.95) : randRange(0.0, 0.45),
+    decomposition: feeding > 0.72 ? randRange(0.38, 1.0) : randRange(0.0, 0.35),
+    feeding: feeding < 0.48 ? randRange(0.1, 0.42) : randRange(0.42, 0.92),
+    aggression: randRange(0.0, 0.38),
+    avoidance: randRange(0.25, 0.9),
+    attractionWater: randRange(0.1, 1.0),
+    attractionFertility: randRange(0.1, 1.0),
+    attractionHeat: randRange(0, 0.65),
+    attractionCold: randRange(0, 0.65),
+    meiosisDrive: randRange(0.08, 0.52)
+  };
+}
+
+const geneKeys = Object.keys(randomGenome());
+const geneRanges = {
+  preferredTemp: [-12, 45], tempTolerance: [2, 28], waterPref: [0, 1], waterTolerance: [0.05, 1], droughtResistance: [0, 1], fireResistance: [0, 1], metabolism: [0.25, 2.5], movementSpeed: [0.02, 2.4], energyStorage: [15, 160], reproductionRate: [0.05, 2.6], mutationRate: [0.002, 0.14], lifespan: [140, 3000], size: [0.35, 2.2], hue: [0, 360], photosynthesis: [0, 1.4], decomposition: [0, 1.4], feeding: [0, 1.2], aggression: [0, 1.1], avoidance: [0, 1.2], attractionWater: [0, 1.2], attractionFertility: [0, 1.2], attractionHeat: [0, 1.2], attractionCold: [0, 1.2], meiosisDrive: [0, 1]
+};
+
+function mutateGenome(g, multiplier = 1) {
+  const child = { ...g };
+  const rate = clamp(g.mutationRate * multiplier, 0.001, 0.25);
+  for (const key of geneKeys) {
+    if (chance(rate)) {
+      const [min, max] = geneRanges[key];
+      const span = max - min;
+      let strength = span * randRange(0.006, 0.055) * (chance(0.08) ? 3.5 : 1);
+      if (key === 'hue') strength = randRange(3, 24) * (chance(0.06) ? 3 : 1);
+      child[key] = clamp(child[key] + randRange(-strength, strength), min, max);
+    }
+  }
+  if (chance(rate * 0.45)) {
+    // Trade-offs prevent every gene from simply improving forever.
+    child.metabolism = clamp(child.metabolism + child.movementSpeed * 0.015 + child.size * 0.012, geneRanges.metabolism[0], geneRanges.metabolism[1]);
+    child.reproductionRate = clamp(child.reproductionRate - child.energyStorage * 0.0007 + randRange(-0.015, 0.015), geneRanges.reproductionRate[0], geneRanges.reproductionRate[1]);
+  }
+  return child;
+}
+
+function recombineGenome(a, b) {
+  const g = {};
+  for (const key of geneKeys) {
+    const source = chance(0.5) ? a : b;
+    const other = source === a ? b : a;
+    g[key] = chance(0.18) ? (source[key] + other[key]) * 0.5 : source[key];
+  }
+  g.mutationRate = clamp((a.mutationRate + b.mutationRate) * 0.5 + randRange(-0.006, 0.006), geneRanges.mutationRate[0], geneRanges.mutationRate[1]);
+  g.hue = (a.hue + b.hue) * 0.5 + randRange(-12, 12);
+  if (g.hue < 0) g.hue += 360;
+  if (g.hue > 360) g.hue -= 360;
+  return mutateGenome(g, 1.35);
+}
+
+function genomeDistance(a, b) {
+  let sum = 0;
+  let count = 0;
+  for (const key of geneKeys) {
+    const [min, max] = geneRanges[key];
+    const d = Math.abs(a[key] - b[key]) / (max - min);
+    sum += d * d;
+    count++;
+  }
+  return Math.sqrt(sum / count);
+}
+
+function feedingLabel(g) {
+  const photo = g.photosynthesis;
+  const decomp = g.decomposition;
+  if (photo > decomp && photo > g.feeding) return 'photo-cell';
+  if (decomp > photo && decomp > g.feeding * 0.8) return 'decomposer';
+  return g.aggression > 0.58 ? 'competitive grazer' : 'grazer';
+}
+
+function makeOrganism(x, y, genome, parentSpecies = null, history = '') {
+  if (organisms.length >= CFG.maxOrganisms) return null;
+  const g = genome || randomGenome(x, y);
+  const org = {
+    id: nextOrgId++,
+    x: clamp(x, 1, W - 2),
+    y: clamp(y, 1, H - 2),
+    vx: 0,
+    vy: 0,
+    genome: g,
+    energy: clamp(g.energyStorage * randRange(0.42, 0.82), 8, g.energyStorage),
+    age: 0,
+    health: 1,
+    hunger: 0,
+    ready: 0,
+    speciesId: 0,
+    mutationHistory: history || 'ancestor',
+    lastRepro: 0,
+    selectedPulse: 0
+  };
+  org.speciesId = SpeciesSystem.assignSpecies(org, parentSpecies);
+  organisms.push(org);
+  return org;
+}
+
+const SpeciesSystem = {
+  create(genome, parentId = null, origin = 'emergent') {
+    const id = nextSpeciesId++;
+    const s = {
+      id,
+      label: `S-${String(id).padStart(3, '0')}`,
+      representative: { ...genome },
+      ancestor: parentId,
+      origin,
+      created: simTime,
+      extinctAt: null,
+      population: 0,
+      peak: 0,
+      hue: genome.hue,
+      average: { ...genome },
+      dominantBiome: 'Unknown',
+      distanceFromAncestor: parentId ? genomeDistance(genome, species.find(v => v.id === parentId)?.representative || genome) : 0,
+      lastBoomLogged: 0
+    };
+    species.push(s);
+    addEvent('species', `New strain ${s.label} emerged (${feedingLabel(genome)}, preferred ${fmt(genome.preferredTemp, 1)}°C).`, true);
+    return s;
+  },
+  assignSpecies(org, parentSpecies) {
+    if (species.length === 0) return SpeciesSystem.create(org.genome, null, 'initial').id;
+    let best = null;
+    let bestDist = Infinity;
+    for (const s of species) {
+      if (s.extinctAt) continue;
+      const d = genomeDistance(org.genome, s.representative);
+      if (d < bestDist) { bestDist = d; best = s; }
+    }
+    if (!best || bestDist > CFG.speciesThreshold) {
+      return SpeciesSystem.create(org.genome, parentSpecies || (best ? best.id : null), 'mutation split').id;
+    }
+    return best.id;
+  },
+  updateStats() {
+    const stats = new Map();
+    for (const s of species) {
+      stats.set(s.id, { count: 0, sums: {}, biomes: new Map() });
+      for (const key of geneKeys) stats.get(s.id).sums[key] = 0;
+    }
+    for (const o of organisms) {
+      const st = stats.get(o.speciesId);
+      if (!st) continue;
+      st.count++;
+      for (const key of geneKeys) st.sums[key] += o.genome[key];
+      const bi = world.biome[idx(Math.floor(o.x), Math.floor(o.y))];
+      st.biomes.set(bi, (st.biomes.get(bi) || 0) + 1);
+    }
+    for (const s of species) {
+      const st = stats.get(s.id);
+      const previous = s.population;
+      s.population = st.count;
+      s.peak = Math.max(s.peak, s.population);
+      if (s.population > 0) {
+        s.extinctAt = null;
+        for (const key of geneKeys) s.average[key] = st.sums[key] / s.population;
+        let bestBiome = 8;
+        let bestBiomeCount = 0;
+        st.biomes.forEach((count, bi) => { if (count > bestBiomeCount) { bestBiomeCount = count; bestBiome = bi; } });
+        s.dominantBiome = biomeNames[bestBiome];
+        s.hue = lerp(s.hue, s.average.hue, 0.02);
+        if (s.population > 120 && previous < 60 && simTime - s.lastBoomLogged > 250) {
+          addEvent('boom', `${s.label} population boom in ${s.dominantBiome}: ${s.population} cells.`, false);
+          s.lastBoomLogged = simTime;
+        }
+      } else if (!s.extinctAt && previous > 0) {
+        s.extinctAt = simTime;
+        addEvent('extinction', `${s.label} went extinct after ${Math.floor(simTime - s.created)} simulation ticks.`, true);
+      }
+    }
+  }
+};
+
+function buildBins() {
+  bins = Array.from({ length: binCols * binRows }, () => []);
+  world.occupancy.fill(0);
+  for (const o of organisms) {
+    const tx = clamp(Math.floor(o.x), 0, W - 1);
+    const ty = clamp(Math.floor(o.y), 0, H - 1);
+    world.occupancy[idx(tx, ty)]++;
+    const bx = Math.floor(tx / CFG.binSize);
+    const by = Math.floor(ty / CFG.binSize);
+    bins[by * binCols + bx].push(o);
+  }
+}
+
+function nearbyOrganisms(o, radiusTiles = 5) {
+  const out = [];
+  const bx0 = clamp(Math.floor((o.x - radiusTiles) / CFG.binSize), 0, binCols - 1);
+  const by0 = clamp(Math.floor((o.y - radiusTiles) / CFG.binSize), 0, binRows - 1);
+  const bx1 = clamp(Math.floor((o.x + radiusTiles) / CFG.binSize), 0, binCols - 1);
+  const by1 = clamp(Math.floor((o.y + radiusTiles) / CFG.binSize), 0, binRows - 1);
+  const r2 = radiusTiles * radiusTiles;
+  for (let by = by0; by <= by1; by++) {
+    for (let bx = bx0; bx <= bx1; bx++) {
+      for (const other of bins[by * binCols + bx]) {
+        if (other === o) continue;
+        const dx = other.x - o.x;
+        const dy = other.y - o.y;
+        if (dx * dx + dy * dy <= r2) out.push(other);
+      }
+    }
+  }
+  return out;
+}
+
+function habitatScore(genome, x, y) {
+  x = clamp(Math.floor(x), 0, W - 1);
+  y = clamp(Math.floor(y), 0, H - 1);
+  const i = idx(x, y);
+  const tempFit = 1 - clamp(Math.abs(world.temp[i] - genome.preferredTemp) / genome.tempTolerance, 0, 1);
+  const moistFit = 1 - clamp(Math.abs(world.moisture[i] - genome.waterPref) / Math.max(0.08, genome.waterTolerance), 0, 1);
+  const waterDanger = Math.max(0, world.water[i] - genome.waterTolerance) * 1.6;
+  const dryDanger = Math.max(0, 0.22 - world.moisture[i]) * (1 - genome.droughtResistance) * 2.4;
+  const fireDanger = world.fire[i] * (1 - genome.fireResistance) * 2.8;
+  const food = world.vegetation[i] * genome.feeding * 0.45 + world.fertility[i] * genome.attractionFertility * 0.25 + world.ash[i] * genome.decomposition * 0.22 + world.moisture[i] * genome.photosynthesis * 0.2;
+  const tempPull = genome.attractionHeat * clamp((world.temp[i] - genome.preferredTemp) / 20, -1, 1) - genome.attractionCold * clamp((genome.preferredTemp - world.temp[i]) / 20, -1, 1);
+  return tempFit * 0.75 + moistFit * 0.55 + food + tempPull * 0.06 - waterDanger - dryDanger - fireDanger - world.barrier[i] * 1.5;
+}
+
+const OrganismSystem = {
+  seedInitial() {
+    organisms.length = 0;
+    species.length = 0;
+    nextOrgId = 1;
+    nextSpeciesId = 1;
+    for (let n = 0; n < CFG.initialOrganisms; n++) {
+      let x = randRange(20, W - 20);
+      let y = randRange(20, H - 20);
+      for (let tries = 0; tries < 80; tries++) {
+        const tx = Math.floor(randRange(8, W - 8));
+        const ty = Math.floor(randRange(8, H - 8));
+        const i = idx(tx, ty);
+        if (world.water[i] < 0.45 && world.fertility[i] > 0.18 && world.fire[i] < 0.01) { x = tx; y = ty; break; }
+      }
+      makeOrganism(x + randRange(-1, 1), y + randRange(-1, 1), randomGenome(x, y), null, 'seed organism');
+    }
+    addEvent('life', `${CFG.initialOrganisms} primitive square cells seeded into multiple regions.`, true);
+  },
+
+  update(dt) {
+    buildBins();
+    let births = [];
+    let deaths = 0;
+    const popPressure = organisms.length / CFG.maxOrganisms;
+
+    for (let oi = organisms.length - 1; oi >= 0; oi--) {
+      const o = organisms[oi];
+      const g = o.genome;
+      o.age += dt;
+      o.lastRepro += dt;
+      const tx = clamp(Math.floor(o.x), 0, W - 1);
+      const ty = clamp(Math.floor(o.y), 0, H - 1);
+      const i = idx(tx, ty);
+      const tempFit = 1 - clamp(Math.abs(world.temp[i] - g.preferredTemp) / g.tempTolerance, 0, 1);
+      const moistureFit = 1 - clamp(Math.abs(world.moisture[i] - g.waterPref) / Math.max(0.08, g.waterTolerance), 0, 1);
+      const density = world.occupancy[i];
+
+      // Energy from environment. Traits choose different survival strategies.
+      const light = clamp(1 - world.water[i] * 0.2 - world.fire[i], 0, 1);
+      const photoGain = g.photosynthesis * light * world.moisture[i] * tempFit * 0.19 * dt;
+      const grazeGain = g.feeding * world.vegetation[i] * world.fertility[i] * moistureFit * 0.28 * dt;
+      const decompGain = g.decomposition * (world.ash[i] + Math.max(0, density - 1) * 0.02) * 0.24 * dt;
+      const totalGain = (photoGain + grazeGain + decompGain) / (1 + Math.max(0, density - 2) * 0.23);
+      o.energy += totalGain;
+      if (grazeGain > 0.004) world.vegetation[i] = clamp(world.vegetation[i] - grazeGain * 0.012, 0, 1);
+      if (decompGain > 0.003) world.ash[i] = clamp(world.ash[i] - decompGain * 0.01, 0, 1);
+
+      // Costs and damage.
+      const basalCost = (0.027 * g.metabolism + 0.004 * g.size + density * 0.0018) * dt;
+      o.energy -= basalCost;
+      const tempStress = Math.max(0, 1 - tempFit) * 0.018 * dt;
+      const dryStress = Math.max(0, 0.26 - world.moisture[i]) * (1 - g.droughtResistance) * 0.055 * dt;
+      const floodStress = Math.max(0, world.water[i] - g.waterTolerance) * 0.05 * dt;
+      const fireStress = world.fire[i] * (1 - g.fireResistance) * 0.22 * dt;
+      o.health = clamp(o.health - tempStress - dryStress - floodStress - fireStress + tempFit * moistureFit * 0.0025 * dt, 0, 1);
+      o.hunger = clamp(1 - o.energy / g.energyStorage, 0, 1);
+      o.ready = clamp(o.energy / (g.energyStorage * 0.72), 0, 1);
+
+      // Movement: sample nearby tiles and bias by genome. Low-energy cells conserve energy.
+      const moveProb = clamp(g.movementSpeed * 0.18 * dt * (o.energy > g.energyStorage * 0.16 ? 1 : 0.2), 0, 0.95);
+      if (chance(moveProb)) {
+        let bestX = o.x;
+        let bestY = o.y;
+        let bestScore = habitatScore(g, o.x, o.y) + randRange(-0.05, 0.05);
+        const spreadPush = density > 4 ? randRange(0.8, 1.8) : 0;
+        const samples = 5 + Math.floor(g.avoidance * 3);
+        for (let s = 0; s < samples; s++) {
+          const angle = randRange(0, Math.PI * 2);
+          const dist = randRange(0.8, 2.6 + g.movementSpeed * 1.6 + spreadPush);
+          const nx = o.x + Math.cos(angle) * dist;
+          const ny = o.y + Math.sin(angle) * dist;
+          if (!inBounds(Math.floor(nx), Math.floor(ny))) continue;
+          const score = habitatScore(g, nx, ny) + randRange(-0.08, 0.08);
+          if (score > bestScore) { bestScore = score; bestX = nx; bestY = ny; }
+        }
+        const dx = bestX - o.x;
+        const dy = bestY - o.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const step = Math.min(len, g.movementSpeed * 0.37 * dt + 0.16);
+        o.x = clamp(o.x + dx / len * step, 0.5, W - 1.5);
+        o.y = clamp(o.y + dy / len * step, 0.5, H - 1.5);
+        o.energy -= step * (0.025 + g.size * 0.012);
+      }
+
+      // Competition under scarcity. Aggressive genomes steal a little energy but pay cost.
+      if (density > 3 && o.energy < g.energyStorage * 0.34 && g.aggression > 0.35 && chance(g.aggression * 0.04 * dt)) {
+        const neighbors = nearbyOrganisms(o, 2.4);
+        const target = neighbors.find(n => n.energy > o.energy && n.speciesId !== o.speciesId);
+        if (target) {
+          const stolen = Math.min(target.energy * 0.08, 4);
+          target.energy -= stolen;
+          target.health -= g.aggression * 0.01;
+          o.energy += stolen * 0.72;
+        }
+      }
+
+      // Reproduction: mitosis-like fast copy or meiosis-like recombination.
+      const goodHabitat = tempFit * moistureFit > 0.32 && world.fire[i] < 0.04 && world.water[i] < g.waterTolerance + 0.12;
+      const reproThreshold = g.energyStorage * (0.64 + g.size * 0.08);
+      if (goodHabitat && o.energy > reproThreshold && o.lastRepro > 22 / Math.max(0.2, g.reproductionRate) && births.length < 90 && popPressure < 0.995) {
+        const meiosisChance = clamp(g.meiosisDrive * 0.18 + density * 0.012, 0.02, 0.45);
+        if (chance(meiosisChance)) {
+          const mates = nearbyOrganisms(o, 5.5).filter(m => m.energy > m.genome.energyStorage * 0.42 && genomeDistance(g, m.genome) < CFG.compatibleThreshold && m.health > 0.45);
+          if (mates.length > 0) {
+            const mate = mates[Math.floor(srand() * mates.length)];
+            const childGenome = recombineGenome(g, mate.genome);
+            o.energy *= 0.68;
+            mate.energy *= 0.82;
+            o.lastRepro = 0;
+            mate.lastRepro = 0;
+            births.push({ x: (o.x + mate.x) * 0.5 + randRange(-1.5, 1.5), y: (o.y + mate.y) * 0.5 + randRange(-1.5, 1.5), genome: childGenome, parentSpecies: o.speciesId, history: `meiosis mix: ${o.speciesId}/${mate.speciesId}` });
+          }
+        } else {
+          const childGenome = mutateGenome(g, 1);
+          o.energy *= 0.55;
+          o.lastRepro = 0;
+          births.push({ x: o.x + randRange(-2, 2), y: o.y + randRange(-2, 2), genome: childGenome, parentSpecies: o.speciesId, history: `mitosis from ${o.speciesId}` });
+        }
+      }
+
+      // Death returns nutrients and ash.
+      if (o.health <= 0 || o.energy <= -4 || o.age > g.lifespan * randRange(0.92, 1.14)) {
+        world.fertility[i] = clamp(world.fertility[i] + 0.018 + g.size * 0.006, 0, 1);
+        world.ash[i] = clamp(world.ash[i] + 0.025 + o.energy * 0.0005, 0, 1);
+        organisms.splice(oi, 1);
+        deaths++;
+      } else {
+        o.energy = clamp(o.energy, -8, g.energyStorage * 1.15);
+      }
+    }
+
+    for (const b of births) makeOrganism(b.x, b.y, b.genome, b.parentSpecies, b.history);
+    if (deaths > 180) addEvent('collapse', `Mass die-off: ${deaths} cells died during a harsh selection pulse.`, true);
+    if (births.length > 70) addEvent('boom', `Rapid mitosis/recombination wave: ${births.length} new square cells born.`, false);
+  }
+};
+
+function applyTool(cx, cy, tool, radius, strength) {
+  const r2 = radius * radius;
+  const s = strength / 100;
+  const minX = clamp(Math.floor(cx - radius), 0, W - 1);
+  const maxX = clamp(Math.floor(cx + radius), 0, W - 1);
+  const minY = clamp(Math.floor(cy - radius), 0, H - 1);
+  const maxY = clamp(Math.floor(cy + radius), 0, H - 1);
+  for (let y = minY; y <= maxY; y++) {
+    for (let x = minX; x <= maxX; x++) {
+      const dx = x - cx;
+      const dy = y - cy;
+      const d2 = dx * dx + dy * dy;
+      if (d2 > r2) continue;
+      const falloff = 1 - Math.sqrt(d2) / radius;
+      const amount = s * falloff;
+      const i = idx(x, y);
+      if (tool === 'water') {
+        world.water[i] = clamp(world.water[i] + amount * 0.085, 0, 1.4);
+        world.moisture[i] = clamp(world.moisture[i] + amount * 0.09, 0, 1);
+        world.fire[i] = Math.max(0, world.fire[i] - amount * 0.25);
+      } else if (tool === 'dry') {
+        world.water[i] = clamp(world.water[i] - amount * 0.11, 0, 1.4);
+        world.moisture[i] = clamp(world.moisture[i] - amount * 0.07, 0, 1);
+      } else if (tool === 'fire') {
+        if (world.vegetation[i] > 0.08 && world.water[i] < 0.45) world.fire[i] = clamp(world.fire[i] + amount * 0.55, 0, 1);
+        world.temp[i] = clamp(world.temp[i] + amount * 2.2, -18, 52);
+      } else if (tool === 'heat') {
+        world.baseTemp[i] = clamp(world.baseTemp[i] + amount * 0.75, -18, 52);
+        world.temp[i] = clamp(world.temp[i] + amount * 1.1, -18, 52);
+      } else if (tool === 'cool') {
+        world.baseTemp[i] = clamp(world.baseTemp[i] - amount * 0.75, -18, 52);
+        world.temp[i] = clamp(world.temp[i] - amount * 1.1, -18, 52);
+      } else if (tool === 'fertile') {
+        world.fertility[i] = clamp(world.fertility[i] + amount * 0.06, 0, 1);
+        world.ash[i] = clamp(world.ash[i] + amount * 0.015, 0, 1);
+      } else if (tool === 'barren') {
+        world.fertility[i] = clamp(world.fertility[i] - amount * 0.08, 0, 1);
+        world.vegetation[i] = clamp(world.vegetation[i] - amount * 0.06, 0, 1);
+      } else if (tool === 'barrier') {
+        world.barrier[i] = clamp(world.barrier[i] + amount * 0.08, 0, 0.8);
+        world.water[i] = clamp(world.water[i] - amount * 0.025, 0, 1.4);
+      } else if (tool === 'lower') {
+        world.barrier[i] = clamp(world.barrier[i] - amount * 0.09, -0.35, 0.8);
+        world.elevation[i] = clamp(world.elevation[i] - amount * 0.006, 0, 1);
+      } else if (tool === 'life' && chance(0.0025 * amount)) {
+        makeOrganism(x + randRange(-0.2, 0.2), y + randRange(-0.2, 0.2), randomGenome(x, y), null, 'player seeded');
+      }
+      world.biome[i] = biomeAt(i);
+    }
+  }
+}
+
+function worldToScreen(wx, wy) {
+  return { x: (wx - camera.x) * camera.zoom + canvas.width / 2, y: (wy - camera.y) * camera.zoom + canvas.height / 2 };
+}
+function screenToWorld(sx, sy) {
+  return { x: (sx - canvas.width / 2) / camera.zoom + camera.x, y: (sy - canvas.height / 2) / camera.zoom + camera.y };
+}
+function resize() {
+  canvas.width = Math.floor(window.innerWidth * devicePixelRatio);
+  canvas.height = Math.floor(window.innerHeight * devicePixelRatio);
+  canvas.style.width = window.innerWidth + 'px';
+  canvas.style.height = window.innerHeight + 'px';
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+function tileColor(i) {
+  if (viewMode === 'temp') {
+    const t = clamp((world.temp[i] + 14) / 62, 0, 1);
+    const r = Math.round(40 + t * 210);
+    const g = Math.round(80 + Math.sin(t * Math.PI) * 95);
+    const b = Math.round(175 - t * 145);
+    return [r, g, b];
+  }
+  if (viewMode === 'moist') {
+    const m = world.moisture[i];
+    return [Math.round(62 - m * 30), Math.round(74 + m * 92), Math.round(78 + m * 142)];
+  }
+  if (viewMode === 'fert') {
+    const f = world.fertility[i];
+    return [Math.round(62 + f * 75), Math.round(64 + f * 130), Math.round(50 + f * 35)];
+  }
+  const b = world.biome[i];
+  const base = baseBiomeColors[b];
+  const veg = world.vegetation[i];
+  const water = world.water[i];
+  const fire = world.fire[i];
+  const elevShade = (world.elevation[i] + world.barrier[i]) * 30 - 10;
+  if (fire > 0.05) return [Math.round(190 + fire * 65), Math.round(52 + fire * 78), Math.round(15 + fire * 30)];
+  return [
+    clamp(Math.round(base[0] + veg * 10 - water * 6 + elevShade), 0, 255),
+    clamp(Math.round(base[1] + veg * 25 + world.fertility[i] * 10 + elevShade * 0.4), 0, 255),
+    clamp(Math.round(base[2] + water * 30 - veg * 4 + elevShade * 0.15), 0, 255)
+  ];
+}
+
+const renderBuffer = document.createElement('canvas');
+renderBuffer.width = W;
+renderBuffer.height = H;
+const renderBufferCtx = renderBuffer.getContext('2d');
+const imageData = renderBufferCtx.createImageData(W, H);
+let terrainDirty = true;
+
+function updateTerrainTexture() {
+  const data = imageData.data;
+  for (let i = 0; i < N; i++) {
+    const c = tileColor(i);
+    const p = i * 4;
+    data[p] = c[0];
+    data[p + 1] = c[1];
+    data[p + 2] = c[2];
+    data[p + 3] = 255;
+  }
+  renderBufferCtx.putImageData(imageData, 0, 0);
+  terrainDirty = false;
+}
+
+function render() {
+  const cssW = canvas.width / devicePixelRatio;
+  const cssH = canvas.height / devicePixelRatio;
+  ctx.save();
+  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  ctx.fillStyle = '#090d12';
+  ctx.fillRect(0, 0, cssW, cssH);
+
+  if (terrainDirty || frameCounter % 10 === 0) updateTerrainTexture();
+  const topLeft = worldToScreen(0, 0);
+  ctx.imageSmoothingEnabled = camera.zoom < 3;
+  ctx.drawImage(renderBuffer, topLeft.x, topLeft.y, W * camera.zoom, H * camera.zoom);
+
+  // Organic overlay for water shimmer and fire glow.
+  const minX = clamp(Math.floor(camera.x - cssW / camera.zoom / 2 - 2), 0, W - 1);
+  const maxX = clamp(Math.ceil(camera.x + cssW / camera.zoom / 2 + 2), 0, W - 1);
+  const minY = clamp(Math.floor(camera.y - cssH / camera.zoom / 2 - 2), 0, H - 1);
+  const maxY = clamp(Math.ceil(camera.y + cssH / camera.zoom / 2 + 2), 0, H - 1);
+  if (camera.zoom > 3.2) {
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        const i = idx(x, y);
+        if (world.water[i] > 0.45) {
+          const p = worldToScreen(x, y);
+          const shimmer = 0.15 + Math.sin((x * 2.2 + y * 1.7 + simTime * 0.06)) * 0.07;
+          ctx.fillStyle = `rgba(130, 210, 255, ${shimmer * clamp(world.water[i], 0, 1)})`;
+          ctx.fillRect(p.x, p.y, camera.zoom + 0.5, camera.zoom + 0.5);
+        }
+        if (world.fire[i] > 0.04) {
+          const p = worldToScreen(x, y);
+          ctx.fillStyle = `rgba(255, 130, 30, ${clamp(world.fire[i] * 0.55, 0, 0.7)})`;
+          ctx.fillRect(p.x - camera.zoom * 0.15, p.y - camera.zoom * 0.15, camera.zoom * 1.3, camera.zoom * 1.3);
+        }
+      }
+    }
+  }
+
+  // Organisms: always abstract squares.
+  ctx.imageSmoothingEnabled = false;
+  for (const o of organisms) {
+    const p = worldToScreen(o.x, o.y);
+    if (p.x < -20 || p.y < -20 || p.x > cssW + 20 || p.y > cssH + 20) continue;
+    const g = o.genome;
+    const sp = species.find(s => s.id === o.speciesId);
+    const energyRatio = clamp(o.energy / g.energyStorage, 0, 1);
+    const size = clamp(camera.zoom * (0.52 + g.size * 0.35), 2, 12);
+    const light = 30 + energyRatio * 30 + o.health * 18;
+    ctx.fillStyle = hsl(sp ? sp.hue : g.hue, 65, light);
+    ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
+    if (camera.zoom > 5.2) {
+      ctx.strokeStyle = `rgba(0,0,0,${0.35 + o.hunger * 0.35})`;
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.x - size / 2, p.y - size / 2, size, size);
+      if (g.photosynthesis > g.decomposition && g.photosynthesis > g.feeding) {
+        ctx.fillStyle = 'rgba(255,255,255,0.28)';
+        ctx.fillRect(p.x - size * 0.18, p.y - size * 0.18, size * 0.36, size * 0.36);
+      } else if (g.decomposition > g.feeding) {
+        ctx.fillStyle = 'rgba(0,0,0,0.35)';
+        ctx.fillRect(p.x - size * 0.32, p.y - size * 0.32, size * 0.64, size * 0.22);
+      }
+    }
+    if (selected.type === 'organism' && selected.organismId === o.id) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(p.x - size / 2 - 4, p.y - size / 2 - 4, size + 8, size + 8);
+    }
+  }
+
+  // Brush outline.
+  const wp = worldToScreen(mouse.tileX, mouse.tileY);
+  const radius = Number(ui.brush.value) * camera.zoom;
+  ctx.strokeStyle = activeTool === 'fire' ? 'rgba(255,120,70,0.75)' : 'rgba(255,255,255,0.55)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(wp.x, wp.y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function renderMinimap() {
+  const img = miniCtx.createImageData(200, 200);
+  for (let py = 0; py < 200; py++) {
+    for (let px = 0; px < 200; px++) {
+      const x = Math.floor(px / 200 * W);
+      const y = Math.floor(py / 200 * H);
+      const c = tileColor(idx(x, y));
+      const p = (py * 200 + px) * 4;
+      img.data[p] = c[0]; img.data[p + 1] = c[1]; img.data[p + 2] = c[2]; img.data[p + 3] = 255;
+    }
+  }
+  miniCtx.putImageData(img, 0, 0);
+  miniCtx.strokeStyle = 'rgba(255,255,255,0.9)';
+  miniCtx.lineWidth = 1;
+  const cssW = canvas.width / devicePixelRatio;
+  const cssH = canvas.height / devicePixelRatio;
+  const vx = (camera.x - cssW / camera.zoom / 2) / W * 200;
+  const vy = (camera.y - cssH / camera.zoom / 2) / H * 200;
+  const vw = cssW / camera.zoom / W * 200;
+  const vh = cssH / camera.zoom / H * 200;
+  miniCtx.strokeRect(vx, vy, vw, vh);
+
+  for (const o of organisms) {
+    if (chance(0.09)) {
+      miniCtx.fillStyle = 'rgba(255,255,255,0.9)';
+      miniCtx.fillRect(Math.floor(o.x / W * 200), Math.floor(o.y / H * 200), 1, 1);
+    }
+  }
+}
+
+function renderChart() {
+  const w = chartCanvas.width;
+  const h = chartCanvas.height;
+  chartCtx.clearRect(0, 0, w, h);
+  chartCtx.fillStyle = 'rgba(0,0,0,0.16)';
+  chartCtx.fillRect(0, 0, w, h);
+  chartCtx.strokeStyle = 'rgba(255,255,255,0.08)';
+  chartCtx.lineWidth = 1;
+  for (let y = 20; y < h; y += 25) { chartCtx.beginPath(); chartCtx.moveTo(0, y); chartCtx.lineTo(w, y); chartCtx.stroke(); }
+
+  const lines = [
+    { key: 'pop', max: CFG.maxOrganisms, color: 'rgba(139,211,255,0.95)' },
+    { key: 'diversity', max: 42, color: 'rgba(255,213,107,0.92)' },
+    { key: 'moisture', max: 1, color: 'rgba(90,170,255,0.78)' },
+    { key: 'temp', max: 42, min: -12, color: 'rgba(255,110,90,0.78)' }
+  ];
+  for (const line of lines) {
+    const arr = graph[line.key];
+    if (arr.length < 2) continue;
+    chartCtx.strokeStyle = line.color;
+    chartCtx.lineWidth = 1.5;
+    chartCtx.beginPath();
+    arr.forEach((v, j) => {
+      const x = j / (CFG.graphMax - 1) * w;
+      const min = line.min || 0;
+      const y = h - clamp((v - min) / (line.max - min), 0, 1) * (h - 10) - 5;
+      if (j === 0) chartCtx.moveTo(x, y); else chartCtx.lineTo(x, y);
+    });
+    chartCtx.stroke();
+  }
+}
+
+function updateGraph() {
+  let m = 0;
+  let t = 0;
+  for (let k = 0; k < 900; k++) {
+    const i = Math.floor(srand() * N);
+    m += world.moisture[i];
+    t += world.temp[i];
+  }
+  const aliveSpecies = species.filter(s => s.population > 0).length;
+  graph.pop.push(organisms.length);
+  graph.species.push(aliveSpecies);
+  graph.diversity.push(aliveSpecies);
+  graph.moisture.push(m / 900);
+  graph.temp.push(t / 900);
+  for (const key of Object.keys(graph)) while (graph[key].length > CFG.graphMax) graph[key].shift();
+}
+
+function inspectHTML() {
+  if (selected.type === 'organism') {
+    const o = organisms.find(v => v.id === selected.organismId);
+    if (!o) { selected.type = 'none'; return '<b>Nothing selected</b><span>Click a square cell or terrain tile.</span>'; }
+    const g = o.genome;
+    const sp = species.find(s => s.id === o.speciesId);
+    return `
+      <span>Selection</span><b>Square cell #${o.id}</b>
+      <span>Species</span><b>${sp ? sp.label : 'Unknown'}</b>
+      <span>Energy</span><b>${fmt(o.energy,1)} / ${fmt(g.energyStorage,1)}</b>
+      <span>Health</span><b>${fmt(o.health * 100,0)}%</b>
+      <span>Age</span><b>${fmt(o.age,0)} / ${fmt(g.lifespan,0)}</b>
+      <span>Feeding mode</span><b>${feedingLabel(g)}</b>
+      <span>Preferred temp</span><b>${fmt(g.preferredTemp,1)}°C ±${fmt(g.tempTolerance,1)}</b>
+      <span>Water preference</span><b>${fmt(g.waterPref,2)} / tol ${fmt(g.waterTolerance,2)}</b>
+      <span>Drought resistance</span><b>${fmt(g.droughtResistance,2)}</b>
+      <span>Fire resistance</span><b>${fmt(g.fireResistance,2)}</b>
+      <span>Metabolism</span><b>${fmt(g.metabolism,2)}</b>
+      <span>Move speed</span><b>${fmt(g.movementSpeed,2)}</b>
+      <span>Reproduction rate</span><b>${fmt(g.reproductionRate,2)}</b>
+      <span>Mutation rate</span><b>${fmt(g.mutationRate,3)}</b>
+      <span>Mitosis/meiosis</span><b>${fmt(1 - g.meiosisDrive,2)} / ${fmt(g.meiosisDrive,2)}</b>
+      <span>Size gene</span><b>${fmt(g.size,2)}</b>
+      <span>Photosynthesis</span><b>${fmt(g.photosynthesis,2)}</b>
+      <span>Decomposition</span><b>${fmt(g.decomposition,2)}</b>
+      <span>Aggression</span><b>${fmt(g.aggression,2)}</b>
+      <span>Mutation history</span><b>${o.mutationHistory}</b>`;
+  }
+  const x = clamp(selected.tileX || mouse.tileX, 0, W - 1);
+  const y = clamp(selected.tileY || mouse.tileY, 0, H - 1);
+  const i = idx(x, y);
+  return `
+    <span>Selection</span><b>Tile ${x}, ${y}</b>
+    <span>Biome</span><b>${biomeNames[world.biome[i]]}</b>
+    <span>Temperature</span><b>${fmt(world.temp[i],1)}°C</b>
+    <span>Moisture</span><b>${fmt(world.moisture[i],2)}</b>
+    <span>Water level</span><b>${fmt(world.water[i],2)}</b>
+    <span>Fertility</span><b>${fmt(world.fertility[i],2)}</b>
+    <span>Vegetation</span><b>${fmt(world.vegetation[i],2)}</b>
+    <span>Fire</span><b>${fmt(world.fire[i],2)}</b>
+    <span>Ash / nutrients</span><b>${fmt(world.ash[i],2)}</b>
+    <span>Elevation</span><b>${fmt(world.elevation[i] + world.barrier[i],2)}</b>
+    <span>Local cells</span><b>${world.occupancy[i] || 0}</b>`;
+}
+
+function updateSpeciesList() {
+  const alive = [...species].sort((a, b) => b.population - a.population).slice(0, 16);
+  ui.speciesList.innerHTML = alive.map(s => {
+    const extinct = s.population === 0;
+    const age = Math.floor((s.extinctAt || simTime) - s.created);
+    const pct = clamp(s.population / Math.max(1, organisms.length), 0, 1) * 100;
+    return `<div class="species">
+      <div class="speciesTop"><div><span class="swatch" style="background:${hsl(s.hue,65,52)}"></span><b>${s.label}</b> <small>${extinct ? 'extinct' : s.dominantBiome}</small></div><b>${s.population}</b></div>
+      <div class="bar" style="margin:6px 0"><span style="width:${pct}%; background:${hsl(s.hue,65,58)}"></span></div>
+      <small>age ${age}, peak ${s.peak}, ${feedingLabel(s.average)}, temp ${fmt(s.average.preferredTemp,1)}°C, water ${fmt(s.average.waterPref,2)}, mutation distance ${fmt(s.distanceFromAncestor,3)}</small>
+    </div>`;
+  }).join('');
+}
+
+function updateEventLog() {
+  ui.eventLog.innerHTML = events.map(e => `<div class="logEntry"><b>${Math.floor(e.time)}</b> · ${e.message}</div>`).join('');
+}
+
+function updateStatusBar() {
+  const aliveSpecies = species.filter(s => s.population > 0).length;
+  let fireTiles = 0;
+  let avgTemp = 0;
+  let avgMoist = 0;
+  for (let k = 0; k < 1000; k++) {
+    const i = Math.floor(srand() * N);
+    if (world.fire[i] > 0.05) fireTiles++;
+    avgTemp += world.temp[i];
+    avgMoist += world.moisture[i];
+  }
+  if (fireTiles > 45 && frameCounter % 130 === 0) addEvent('fire', `Large fire outbreak: roughly ${Math.round(fireTiles / 1000 * N)} burning tiles.`, true);
+  ui.statusBar.innerHTML = `
+    <span class="pill">time ${Math.floor(simTime)}</span>
+    <span class="pill">speed ${paused ? 'paused' : speed.toFixed(2) + '×'}</span>
+    <span class="pill">cells ${organisms.length}/${CFG.maxOrganisms}</span>
+    <span class="pill">living species ${aliveSpecies}</span>
+    <span class="pill">avg temp ${fmt(avgTemp / 1000,1)}°C</span>
+    <span class="pill">avg moisture ${fmt(avgMoist / 1000,2)}</span>
+    <span class="pill">tool ${activeTool}</span>`;
+}
+
+function syncUI() {
+  ui.speedVal.textContent = paused ? 'paused' : `${Number(ui.speed.value).toFixed(Number(ui.speed.value) % 1 ? 2 : 0)}×`;
+  ui.brushVal.textContent = ui.brush.value;
+  ui.strengthVal.textContent = ui.strength.value;
+  ui.selectedInfo.innerHTML = inspectHTML();
+  if (frameCounter % 30 === 0) updateSpeciesList();
+  if (frameCounter % 18 === 0) updateEventLog();
+  if (frameCounter % 20 === 0) updateStatusBar();
+}
+
+function selectAt(wx, wy) {
+  let best = null;
+  let bestD = Infinity;
+  const radius = Math.max(2.5, 8 / camera.zoom);
+  const fake = { x: wx, y: wy };
+  for (const o of nearbyOrganisms(fake, radius + 4)) {
+    const d = Math.hypot(o.x - wx, o.y - wy);
+    if (d < bestD && d < radius) { bestD = d; best = o; }
+  }
+  if (best) {
+    selected = { type: 'organism', organismId: best.id, tileX: Math.floor(best.x), tileY: Math.floor(best.y) };
+  } else {
+    selected = { type: 'tile', organismId: null, tileX: clamp(Math.floor(wx), 0, W - 1), tileY: clamp(Math.floor(wy), 0, H - 1) };
+  }
+  syncUI();
+}
+
+function initUI() {
+  ui.toolButtons.querySelectorAll('button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      activeTool = btn.dataset.tool;
+      ui.toolButtons.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+  ui.toolButtons.querySelector('[data-tool="water"]').classList.add('active');
+
+  ui.speed.addEventListener('input', () => { speed = Number(ui.speed.value); paused = speed === 0; syncUI(); });
+  ui.brush.addEventListener('input', syncUI);
+  ui.strength.addEventListener('input', syncUI);
+  document.getElementById('pauseBtn').addEventListener('click', () => { paused = !paused; if (!paused && speed === 0) { speed = 1; ui.speed.value = 1; } syncUI(); });
+  document.getElementById('slowBtn').addEventListener('click', () => { speed = 0.5; paused = false; ui.speed.value = 0.5; syncUI(); });
+  document.getElementById('fastBtn').addEventListener('click', () => { speed = 4; paused = false; ui.speed.value = 4; syncUI(); });
+  document.getElementById('viewBiome').addEventListener('click', () => setView('biome'));
+  document.getElementById('viewHeat').addEventListener('click', () => setView('temp'));
+  document.getElementById('viewMoist').addEventListener('click', () => setView('moist'));
+  document.getElementById('viewFert').addEventListener('click', () => setView('fert'));
+
+  canvas.addEventListener('contextmenu', e => e.preventDefault());
+  canvas.addEventListener('pointerdown', e => {
+    const rect = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - rect.left;
+    mouse.y = e.clientY - rect.top;
+    mouse.lastX = mouse.x;
+    mouse.lastY = mouse.y;
+    const wpos = screenToWorld(mouse.x, mouse.y);
+    mouse.worldX = wpos.x; mouse.worldY = wpos.y; mouse.tileX = Math.floor(wpos.x); mouse.tileY = Math.floor(wpos.y);
+    mouse.down = true;
+    if (e.button === 1 || e.button === 2 || e.shiftKey || e.spaceKey) {
+      mouse.panning = true;
+    } else if (e.altKey) {
+      selectAt(wpos.x, wpos.y);
     } else {
-      gl.uniform4f(U.uFlarePos[i], 0,0,1, 0);
-      gl.uniform4f(U.uFlareData[i], 1,0,0,0);
+      mouse.painting = true;
+      applyTool(wpos.x, wpos.y, activeTool, Number(ui.brush.value), Number(ui.strength.value));
+    }
+  });
+  canvas.addEventListener('pointerup', e => {
+    if (mouse.painting && Math.hypot(mouse.x - mouse.lastX, mouse.y - mouse.lastY) < 3 && activeTool !== 'life') {
+      const wpos = screenToWorld(mouse.x, mouse.y);
+      selectAt(wpos.x, wpos.y);
+    }
+    mouse.down = false;
+    mouse.painting = false;
+    mouse.panning = false;
+  });
+  canvas.addEventListener('pointermove', e => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const dx = x - mouse.x;
+    const dy = y - mouse.y;
+    mouse.x = x; mouse.y = y;
+    const wpos = screenToWorld(mouse.x, mouse.y);
+    mouse.worldX = wpos.x; mouse.worldY = wpos.y; mouse.tileX = clamp(Math.floor(wpos.x), 0, W - 1); mouse.tileY = clamp(Math.floor(wpos.y), 0, H - 1);
+    if (mouse.panning) {
+      camera.x = clamp(camera.x - dx / camera.zoom, 0, W);
+      camera.y = clamp(camera.y - dy / camera.zoom, 0, H);
+    }
+    if (mouse.painting) {
+      applyTool(wpos.x, wpos.y, activeTool, Number(ui.brush.value), Number(ui.strength.value));
+    }
+  });
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const before = screenToWorld(mouse.x, mouse.y);
+    const factor = Math.exp(-e.deltaY * 0.001);
+    camera.zoom = clamp(camera.zoom * factor, 1.4, 18);
+    const after = screenToWorld(mouse.x, mouse.y);
+    camera.x += before.x - after.x;
+    camera.y += before.y - after.y;
+  }, { passive: false });
+
+  miniCanvas.addEventListener('click', e => {
+    const rect = miniCanvas.getBoundingClientRect();
+    camera.x = clamp((e.clientX - rect.left) / rect.width * W, 0, W);
+    camera.y = clamp((e.clientY - rect.top) / rect.height * H, 0, H);
+  });
+}
+
+function setView(mode) {
+  viewMode = mode;
+  terrainDirty = true;
+  document.getElementById('viewBiome').classList.toggle('active', mode === 'biome');
+  document.getElementById('viewHeat').classList.toggle('active', mode === 'temp');
+  document.getElementById('viewMoist').classList.toggle('active', mode === 'moist');
+  document.getElementById('viewFert').classList.toggle('active', mode === 'fert');
+}
+
+let last = performance.now();
+let simAccumulator = 0;
+function loop(now) {
+  const realDt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  frameCounter++;
+
+  if (!paused && speed > 0) {
+    simAccumulator += realDt * speed * 34;
+    let steps = 0;
+    while (simAccumulator >= 1 && steps < 12) {
+      const dt = 1;
+      simTime += dt;
+      WorldSystem.update(dt);
+      OrganismSystem.update(dt);
+      SpeciesSystem.updateStats();
+      terrainDirty = true;
+      simAccumulator -= 1;
+      steps++;
+      if (Math.floor(simTime) % 40 === 0) updateGraph();
     }
   }
-  gl.drawArrays(gl.TRIANGLES,0,6);
-  drawOverlay(dt);
-  state.flareOutput*=.94; state.cmeOutput*=.965; historyA.push(act*(.85+.15*Math.sin(state.time*.003))); historyF.push(state.flareOutput); historyC.push(state.cmeOutput); if(historyA.length>100){historyA.shift();historyF.shift();historyC.shift();}
-  drawSpark($('sparkA'),historyA,'rgba(84,184,255,.9)'); drawSpark($('sparkF'),historyF,'rgba(255,150,65,.9)'); drawSpark($('sparkC'),historyC,'rgba(210,120,255,.9)'); requestAnimationFrame(frame); }
-requestAnimationFrame(frame);
 
-function pointerPos(e){const r=overlay.getBoundingClientRect(); return {x:(e.clientX-r.left),y:(e.clientY-r.top)};}
-overlay.parentElement.addEventListener('pointerdown',e=>{state.drag=true;const p=pointerPos(e);state.lastX=p.x;state.lastY=p.y;});
-window.addEventListener('pointerup',()=>state.drag=false);
-window.addEventListener('pointermove',e=>{ if(!state.drag)return; const p=pointerPos(e); const dx=p.x-state.lastX, dy=p.y-state.lastY; state.lastX=p.x; state.lastY=p.y; state.ry+=dx*.006; state.rx+=dy*.006; state.rx=Math.max(-1.35,Math.min(1.35,state.rx)); });
-overlay.parentElement.addEventListener('wheel',e=>{e.preventDefault(); state.zoom*=Math.exp(-e.deltaY*.001); state.zoom=Math.max(.55,Math.min(2.2,state.zoom));},{passive:false});
-overlay.parentElement.addEventListener('dblclick',()=>{state.rx=-.20;state.ry=.38;state.zoom=1;});
-$('shotBtn').onclick=()=>{ const c=document.createElement('canvas'); c.width=glCanvas.width; c.height=glCanvas.height; const x=c.getContext('2d'); x.drawImage(glCanvas,0,0); x.drawImage(overlay,0,0); const a=document.createElement('a'); a.download='starlab_rethink_v2.png'; a.href=c.toDataURL('image/png'); a.click(); };
+  if (frameCounter % 20 === 0) renderMinimap();
+  if (frameCounter % 20 === 0) renderChart();
+  syncUI();
+  render();
+  requestAnimationFrame(loop);
+}
+
+function boot() {
+  resize();
+  WorldSystem.generate();
+  OrganismSystem.seedInitial();
+  buildBins();
+  SpeciesSystem.updateStats();
+  updateGraph();
+  initUI();
+  syncUI();
+  renderMinimap();
+  renderChart();
+  requestAnimationFrame(loop);
+}
+
+boot();
 </script>
 </body>
 </html>
