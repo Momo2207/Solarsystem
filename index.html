@@ -48,7 +48,9 @@
   #toolbar {
     left: 14px;
     top: 14px;
-    width: 286px;
+    width: 306px;
+    max-height: calc(100vh - 28px);
+    overflow: auto;
     padding: 12px;
   }
   h1, h2, h3 { margin: 0; }
@@ -58,9 +60,7 @@
   .sub { font-size: 11px; color: var(--muted); line-height: 1.35; margin-top: 4px; }
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
-  button, select, input[type="range"] {
-    width: 100%;
-  }
+  button, select, input[type="range"] { width: 100%; }
   button {
     border: 1px solid var(--line);
     color: var(--text);
@@ -80,7 +80,7 @@
   #rightPanel {
     right: 14px;
     top: 14px;
-    width: 340px;
+    width: 370px;
     max-height: calc(100vh - 28px);
     overflow: hidden;
     display: flex;
@@ -89,118 +89,39 @@
   #inspect {
     padding: 12px 12px 8px;
     border-bottom: 1px solid var(--line);
+    max-height: 43vh;
+    overflow: auto;
   }
   #speciesPanel {
     padding: 10px 12px;
     border-bottom: 1px solid var(--line);
-    min-height: 160px;
-    max-height: 34vh;
+    min-height: 150px;
+    max-height: 30vh;
     overflow: auto;
   }
-  #chartsPanel {
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--line);
-  }
-  #logPanel {
-    padding: 10px 12px;
-    overflow: auto;
-    min-height: 100px;
-  }
-  #minimapBox {
-    position: fixed;
-    left: 14px;
-    bottom: 14px;
-    width: 222px;
-    padding: 10px;
-  }
-  #minimap {
-    width: 200px;
-    height: 200px;
-    display: block;
-    border-radius: 10px;
-    border: 1px solid var(--line);
-    image-rendering: pixelated;
-  }
-  #statusBar {
-    position: fixed;
-    left: 250px;
-    bottom: 14px;
-    right: 370px;
-    padding: 9px 12px;
-    min-height: 42px;
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    align-items: center;
-  }
-  .pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    border: 1px solid var(--line);
-    border-radius: 999px;
-    padding: 5px 8px;
-    font-size: 11px;
-    color: var(--muted);
-    background: rgba(255,255,255,0.04);
-    font-variant-numeric: tabular-nums;
-  }
-  .kv {
-    display: grid;
-    grid-template-columns: 122px 1fr;
-    gap: 3px 8px;
-    font-size: 11px;
-    line-height: 1.35;
-    color: var(--muted);
-  }
+  #chartsPanel { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  #logPanel { padding: 10px 12px; overflow: auto; min-height: 100px; }
+  #minimapBox { position: fixed; left: 14px; bottom: 14px; width: 222px; padding: 10px; }
+  #minimap { width: 200px; height: 200px; display: block; border-radius: 10px; border: 1px solid var(--line); image-rendering: pixelated; }
+  #statusBar { position: fixed; left: 250px; bottom: 14px; right: 400px; padding: 9px 12px; min-height: 42px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  .pill { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 999px; padding: 5px 8px; font-size: 11px; color: var(--muted); background: rgba(255,255,255,0.04); font-variant-numeric: tabular-nums; }
+  .kv { display: grid; grid-template-columns: 138px 1fr; gap: 3px 8px; font-size: 11px; line-height: 1.35; color: var(--muted); }
   .kv b { color: var(--text); font-weight: 600; }
-  .bar {
-    height: 5px;
-    background: rgba(255,255,255,0.10);
-    border-radius: 999px;
-    overflow: hidden;
-  }
+  .bar { height: 5px; background: rgba(255,255,255,0.10); border-radius: 999px; overflow: hidden; }
   .bar > span { display: block; height: 100%; width: 40%; background: var(--accent); }
-  .species {
-    border: 1px solid var(--line);
-    border-radius: 10px;
-    padding: 7px;
-    margin-bottom: 7px;
-    background: rgba(255,255,255,0.035);
-    font-size: 11px;
-  }
+  .species { border: 1px solid var(--line); border-radius: 10px; padding: 7px; margin-bottom: 7px; background: rgba(255,255,255,0.035); font-size: 11px; }
   .speciesTop { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
   .swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-block; margin-right: 6px; border: 1px solid rgba(255,255,255,0.25); vertical-align: -2px; }
   .species small { color: var(--muted); }
-  #chart {
-    width: 314px;
-    height: 130px;
-    display: block;
-    border-radius: 10px;
-    border: 1px solid var(--line);
-    background: rgba(0,0,0,0.14);
-  }
-  .logEntry {
-    font-size: 11px;
-    line-height: 1.35;
-    color: var(--muted);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    padding: 5px 0;
-  }
+  #chart { width: 344px; height: 130px; display: block; border-radius: 10px; border: 1px solid var(--line); background: rgba(0,0,0,0.14); }
+  .logEntry { font-size: 11px; line-height: 1.35; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,0.06); padding: 5px 0; }
   .logEntry b { color: var(--text); font-weight: 600; }
-  .hint {
-    position: fixed;
-    left: 315px;
-    top: 14px;
-    padding: 9px 12px;
-    color: var(--muted);
-    font-size: 12px;
-    pointer-events: none;
-  }
+  .hint { position: fixed; left: 335px; top: 14px; padding: 9px 12px; color: var(--muted); font-size: 12px; pointer-events: none; }
+  .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; font-size: 10.5px; color: var(--muted); margin-top: 6px; }
   @media (max-width: 900px) {
-    #rightPanel { width: 305px; }
+    #rightPanel { width: 315px; }
     #statusBar { display: none; }
-    #toolbar { width: 250px; }
+    #toolbar { width: 260px; }
   }
 </style>
 </head>
@@ -209,7 +130,7 @@
 
 <div id="toolbar" class="panel">
   <h1>Square Cell Evolution Sandbox</h1>
-  <div class="sub">Paint the world. Life adapts by mutation, selection, mitosis-like splitting and meiosis-like recombination.</div>
+  <div class="sub">Paint the world. Life can remain solitary, become static colonies, evolve mobile bodies or survive through symbiosis.</div>
 
   <h2>World tools</h2>
   <div class="grid2" id="toolButtons">
@@ -236,17 +157,35 @@
   </div>
   <div class="row"><label>Speed</label><input id="speed" type="range" min="0" max="12" step="0.25" value="1" /><span class="value" id="speedVal">1×</span></div>
 
-  <h2>View</h2>
-  <div class="grid2">
+  <h2>Base view</h2>
+  <div class="grid2" id="viewButtons">
     <button id="viewBiome" class="active">Biomes</button>
     <button id="viewHeat">Heat map</button>
     <button id="viewMoist">Moisture</button>
     <button id="viewFert">Fertility</button>
   </div>
-  <div class="sub">Drag to pan. Wheel to zoom. Click an organism or tile to inspect. Hold a tool and paint with the mouse.</div>
+
+  <h2>Evolution overlays</h2>
+  <div class="grid2" id="overlayButtons">
+    <button data-overlay="none" class="active">None</button>
+    <button data-overlay="species">Species territory</button>
+    <button data-overlay="food">Food web</button>
+    <button data-overlay="symbiosis">Symbiosis</button>
+    <button data-overlay="static">Static coverage</button>
+    <button data-overlay="mobile">Migration</button>
+    <button data-overlay="predator">Predator/prey</button>
+    <button data-overlay="decomp">Decomposer bloom</button>
+    <button data-overlay="lineage">Lineages</button>
+    <button data-overlay="extinction">Extinction zones</button>
+  </div>
+  <div class="legend">
+    <span>□ solitary</span><span>▣ static</span>
+    <span>▥ mobile</span><span>◫ symbiotic</span>
+  </div>
+  <div class="sub">Drag to pan. Wheel to zoom. Click to inspect. Alt-click selects without painting.</div>
 </div>
 
-<div class="hint panel">World is 256×256 tiles. Separate lakes, deserts, forests and cold regions can evolve independent square-cell lineages.</div>
+<div class="hint panel">World is 256×256 tiles. Organisms are still only square cells, but bodies can now be connected square cell groups with evolving roles.</div>
 
 <div id="rightPanel" class="panel">
   <div id="inspect">
@@ -254,12 +193,12 @@
     <div id="selectedInfo" class="kv"></div>
   </div>
   <div id="speciesPanel">
-    <h2 style="margin-top:0">Species / strains</h2>
+    <h2 style="margin-top:0">Species / lineages</h2>
     <div id="speciesList"></div>
   </div>
   <div id="chartsPanel">
     <h2 style="margin-top:0">Trends</h2>
-    <canvas id="chart" width="314" height="130"></canvas>
+    <canvas id="chart" width="344" height="130"></canvas>
     <div class="sub">Lines: population, biodiversity, average moisture, average temperature.</div>
   </div>
   <div id="logPanel">
@@ -270,7 +209,7 @@
 
 <div id="minimapBox" class="panel">
   <canvas id="minimap" width="200" height="200"></canvas>
-  <div class="sub">Minimap: biome state and current camera.</div>
+  <div class="sub">Minimap: biome state and camera.</div>
 </div>
 
 <div id="statusBar" class="panel"></div>
@@ -281,14 +220,13 @@
 const CFG = {
   worldW: 256,
   worldH: 256,
-  maxOrganisms: 6500,
-  initialOrganisms: 160,
-  tileSize: 8,
-  speciesThreshold: 0.185,
-  compatibleThreshold: 0.34,
+  maxOrganisms: 4300,
+  maxBodyCells: 34,
+  initialOrganisms: 190,
+  speciesThreshold: 0.245,
+  compatibleThreshold: 0.36,
   graphMax: 240,
-  maxEvents: 70,
-  simSubSteps: 1,
+  maxEvents: 90,
   binSize: 8
 };
 
@@ -310,7 +248,8 @@ const ui = {
   brushVal: document.getElementById('brushVal'),
   strength: document.getElementById('strength'),
   strengthVal: document.getElementById('strengthVal'),
-  toolButtons: document.getElementById('toolButtons')
+  toolButtons: document.getElementById('toolButtons'),
+  overlayButtons: document.getElementById('overlayButtons')
 };
 
 let W = CFG.worldW;
@@ -323,6 +262,7 @@ let paused = false;
 let speed = 1;
 let activeTool = 'water';
 let viewMode = 'biome';
+let overlayMode = 'none';
 let mouse = { x: 0, y: 0, worldX: 0, worldY: 0, tileX: 0, tileY: 0, down: false, painting: false, panning: false, lastX: 0, lastY: 0 };
 let camera = { x: W / 2, y: H / 2, zoom: 4.5 };
 let selected = { type: 'none', organismId: null, tileX: 0, tileY: 0 };
@@ -339,35 +279,28 @@ const world = {
   baseTemp: new Float32Array(N),
   barrier: new Float32Array(N),
   biome: new Uint8Array(N),
-  occupancy: new Uint16Array(N)
+  occupancy: new Uint16Array(N),
+  staticCover: new Float32Array(N),
+  mobileTrail: new Float32Array(N),
+  predatorHeat: new Float32Array(N),
+  decompHeat: new Float32Array(N),
+  deathHeat: new Float32Array(N),
+  symbiosisHeat: new Float32Array(N)
 };
 
-const BIOME = {
-  OCEAN: 0,
-  LAKE: 1,
-  WETLAND: 2,
-  DESERT: 3,
-  GRASS: 4,
-  FOREST: 5,
-  BURNED: 6,
-  COLD: 7,
-  BARREN: 8,
-  FIRE: 9
-};
-
+const BIOME = { OCEAN: 0, LAKE: 1, WETLAND: 2, DESERT: 3, GRASS: 4, FOREST: 5, BURNED: 6, COLD: 7, BARREN: 8, FIRE: 9 };
 const biomeNames = ['Ocean', 'Lake', 'Wetland', 'Desert', 'Grassland', 'Forest', 'Burned land', 'Cold zone', 'Barren land', 'Fire front'];
 const baseBiomeColors = [
-  [22, 70, 120],
-  [36, 110, 160],
-  [44, 118, 105],
-  [158, 125, 70],
-  [92, 142, 62],
-  [34, 95, 45],
-  [92, 72, 58],
-  [130, 156, 168],
-  [92, 86, 72],
-  [226, 68, 28]
+  [22, 70, 120], [36, 110, 160], [44, 118, 105], [158, 125, 70], [92, 142, 62],
+  [34, 95, 45], [92, 72, 58], [130, 156, 168], [92, 86, 72], [226, 68, 28]
 ];
+
+const STRATEGY = { SOLITARY: 'solitary cell', STATIC: 'static multicellular', MOBILE: 'moving multicellular', SYMBIOTIC: 'symbiotic system' };
+const strategyShort = { 'solitary cell': 'solitary', 'static multicellular': 'static', 'moving multicellular': 'mobile', 'symbiotic system': 'symbiotic' };
+const bodyPlanNames = ['single square cell', 'line of cells', 'blob colony', 'rooted branching structure', 'sheet or mat', 'ring or shell-like body', 'mobile front/back cluster', 'fungal network', 'floating colony', 'coral-like host/partner body'];
+const mobilityNames = ['sessile', 'crawling', 'drifting', 'swimming', 'wandering'];
+const reproNames = ['splitting', 'spores', 'seeds', 'eggs', 'fragments', 'mating'];
+const roleNames = { core: 'core', photo: 'photosynthetic', feed: 'feeding', move: 'movement', store: 'storage', repro: 'reproductive', protect: 'protective', root: 'root / nutrient', partner: 'symbiotic partner', parasite: 'cheater / parasite' };
 
 const organisms = [];
 let nextOrgId = 1;
@@ -378,11 +311,12 @@ let graph = { pop: [], species: [], moisture: [], temp: [], diversity: [] };
 let bins = [];
 let binCols = Math.ceil(W / CFG.binSize);
 let binRows = Math.ceil(H / CFG.binSize);
+let milestones = new Set();
+let lastDeathPulse = 0;
+let lastRadiationCheck = 0;
+let previousDominantEcosystem = '';
 
-function srand() {
-  rngSeed = (rngSeed * 1664525 + 1013904223) >>> 0;
-  return rngSeed / 4294967296;
-}
+function srand() { rngSeed = (rngSeed * 1664525 + 1013904223) >>> 0; return rngSeed / 4294967296; }
 function rand(a = 1, b = 0) { return b + srand() * (a - b); }
 function randRange(min, max) { return min + srand() * (max - min); }
 function chance(p) { return srand() < p; }
@@ -392,7 +326,10 @@ function idx(x, y) { return y * W + x; }
 function inBounds(x, y) { return x >= 0 && y >= 0 && x < W && y < H; }
 function smoothstep(t) { return t * t * (3 - 2 * t); }
 function hsl(h, s, l) { return `hsl(${Math.round(h)} ${Math.round(s)}% ${Math.round(l)}%)`; }
+function hsla(h, s, l, a) { return `hsla(${Math.round(h)} ${Math.round(s)}% ${Math.round(l)}% / ${a})`; }
 function fmt(v, d = 2) { return Number.isFinite(v) ? v.toFixed(d) : 'n/a'; }
+function wrapHue(h) { while (h < 0) h += 360; while (h >= 360) h -= 360; return h; }
+function escapeHTML(value) { return String(value).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
 
 function hashNoise(ix, iy, seed = 0) {
   let n = ix * 374761393 + iy * 668265263 + seed * 1442695041;
@@ -400,16 +337,10 @@ function hashNoise(ix, iy, seed = 0) {
   return ((n ^ (n >>> 16)) >>> 0) / 4294967295;
 }
 function valueNoise(x, y, scale, seed) {
-  const fx = x / scale;
-  const fy = y / scale;
-  const x0 = Math.floor(fx);
-  const y0 = Math.floor(fy);
-  const tx = smoothstep(fx - x0);
-  const ty = smoothstep(fy - y0);
-  const a = hashNoise(x0, y0, seed);
-  const b = hashNoise(x0 + 1, y0, seed);
-  const c = hashNoise(x0, y0 + 1, seed);
-  const d = hashNoise(x0 + 1, y0 + 1, seed);
+  const fx = x / scale, fy = y / scale;
+  const x0 = Math.floor(fx), y0 = Math.floor(fy);
+  const tx = smoothstep(fx - x0), ty = smoothstep(fy - y0);
+  const a = hashNoise(x0, y0, seed), b = hashNoise(x0 + 1, y0, seed), c = hashNoise(x0, y0 + 1, seed), d = hashNoise(x0 + 1, y0 + 1, seed);
   return lerp(lerp(a, b, tx), lerp(c, d, tx), ty);
 }
 function fbm(x, y, seed) {
@@ -421,14 +352,10 @@ function addEvent(kind, message, important = false) {
   events.unshift(entry);
   if (events.length > CFG.maxEvents) events.length = CFG.maxEvents;
 }
+function milestone(id, message) { if (!milestones.has(id)) { milestones.add(id); addEvent('evolution', message, true); } }
 
 function biomeAt(i) {
-  const w = world.water[i];
-  const m = world.moisture[i];
-  const f = world.fertility[i];
-  const v = world.vegetation[i];
-  const t = world.temp[i];
-  const fire = world.fire[i];
+  const w = world.water[i], m = world.moisture[i], f = world.fertility[i], v = world.vegetation[i], t = world.temp[i], fire = world.fire[i];
   if (fire > 0.08) return BIOME.FIRE;
   if (w > 0.72) return world.elevation[i] < 0.33 ? BIOME.OCEAN : BIOME.LAKE;
   if (w > 0.34 || (m > 0.72 && f > 0.35)) return BIOME.WETLAND;
@@ -450,21 +377,18 @@ const WorldSystem = {
         const n = fbm(x, y, 11);
         const ridge = Math.abs(valueNoise(x, y, 48, 61) - 0.5) * 0.25;
         const edgeWater = Math.min(x, W - 1 - x, y, H - 1 - y) / Math.min(W, H);
-        let elevation = clamp(n * 0.95 + ridge - (1 - clamp(edgeWater * 10, 0, 1)) * 0.22, 0, 1);
+        const elevation = clamp(n * 0.95 + ridge - (1 - clamp(edgeWater * 10, 0, 1)) * 0.22, 0, 1);
         world.elevation[i] = elevation;
         world.barrier[i] = 0;
-
         const lat = Math.abs((y / (H - 1)) * 2 - 1);
         const localHeat = (valueNoise(x, y, 80, 101) - 0.5) * 8 + (valueNoise(x, y, 28, 102) - 0.5) * 4;
         const temp = clamp(34 - lat * 34 + localHeat, -10, 42);
         world.baseTemp[i] = temp;
         world.temp[i] = temp;
-
         let water = 0;
         if (elevation < 0.31) water = clamp((0.34 - elevation) * 5.2, 0.2, 1);
         if (valueNoise(x, y, 26, 222) > 0.78 && elevation < 0.48) water = Math.max(water, randRange(0.45, 0.75));
         world.water[i] = water;
-
         const rain = clamp(1 - lat * 0.55 + valueNoise(x, y, 56, 91) * 0.5 - elevation * 0.25, 0, 1);
         const moisture = clamp(water * 0.75 + rain * 0.55 - Math.max(0, temp - 24) * 0.015, 0, 1);
         world.moisture[i] = moisture;
@@ -473,6 +397,7 @@ const WorldSystem = {
         world.fire[i] = 0;
         world.vegetation[i] = clamp((moisture * 0.75 + world.fertility[i] * 0.65 - Math.max(0, temp - 29) * 0.025 - water * 0.3) * randRange(0.65, 1.15), 0, 1);
         world.biome[i] = biomeAt(i);
+        world.staticCover[i] = world.mobileTrail[i] = world.predatorHeat[i] = world.decompHeat[i] = world.deathHeat[i] = world.symbiosisHeat[i] = 0;
       }
     }
   },
@@ -481,22 +406,14 @@ const WorldSystem = {
     const iterations = Math.floor(N * 0.24 * dt) + 800;
     const windX = Math.sin(simTime * 0.013) * 0.65 + Math.sin(simTime * 0.003) * 0.35;
     const windY = Math.cos(simTime * 0.011) * 0.65;
-
     for (let k = 0; k < iterations; k++) {
-      const x = Math.floor(srand() * W);
-      const y = Math.floor(srand() * H);
-      const i = idx(x, y);
+      const x = Math.floor(srand() * W), y = Math.floor(srand() * H), i = idx(x, y);
       let water = world.water[i];
-      let temp = world.temp[i];
-      let moisture = world.moisture[i];
       const elev = world.elevation[i] + world.barrier[i];
-
-      // Water flow toward lower combined terrain/water. Barriers matter.
       if (water > 0.015) {
         const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
         for (let d = 0; d < 2; d++) {
-          const dir = dirs[Math.floor(srand() * 4)];
-          const nx = x + dir[0], ny = y + dir[1];
+          const dir = dirs[Math.floor(srand() * 4)], nx = x + dir[0], ny = y + dir[1];
           if (!inBounds(nx, ny)) continue;
           const ni = idx(nx, ny);
           const hereLevel = elev + water * 0.52;
@@ -510,14 +427,10 @@ const WorldSystem = {
           }
         }
       }
-
-      // Evaporation, condensation and soil moisture.
-      const evap = clamp((temp - 8) / 40, 0, 1) * (0.0013 + world.fire[i] * 0.01) * dt;
+      const evap = clamp((world.temp[i] - 8) / 40, 0, 1) * (0.0013 + world.fire[i] * 0.01) * dt;
       world.water[i] = clamp(world.water[i] - evap, 0, 1.4);
-      const desiredMoisture = clamp(world.water[i] * 0.95 + world.vegetation[i] * 0.18 + world.ash[i] * 0.07 - Math.max(0, temp - 25) * 0.015, 0, 1);
-      world.moisture[i] = clamp(lerp(moisture, desiredMoisture, 0.055 * dt), 0, 1);
-
-      // Moisture spreads slowly through soil.
+      const desiredMoisture = clamp(world.water[i] * 0.95 + world.vegetation[i] * 0.18 + world.ash[i] * 0.07 - Math.max(0, world.temp[i] - 25) * 0.015, 0, 1);
+      world.moisture[i] = clamp(lerp(world.moisture[i], desiredMoisture, 0.055 * dt), 0, 1);
       if (chance(0.35)) {
         const nx = clamp(x + (chance(0.5) ? 1 : -1), 0, W - 1);
         const ny = clamp(y + (chance(0.5) ? 1 : -1), 0, H - 1);
@@ -526,49 +439,68 @@ const WorldSystem = {
         world.moisture[i] -= diff;
         world.moisture[ni] += diff;
       }
-
-      // Temperature returns to base, fire heats locally, water cools.
       world.temp[i] = clamp(world.temp[i] + (world.baseTemp[i] - world.temp[i]) * 0.012 * dt + world.fire[i] * 0.08 * dt - world.water[i] * 0.004 * dt, -18, 52);
-
-      // Fertility and vegetation growth.
       const tempGrowth = 1 - clamp(Math.abs(world.temp[i] - 18) / 28, 0, 1);
       const wetFit = 1 - clamp(Math.abs(world.moisture[i] - 0.52) / 0.7, 0, 1);
-      const growth = Math.max(0, tempGrowth * 0.55 + wetFit * 0.55 - 0.18) * world.fertility[i] * (1 - world.water[i] * 0.8);
+      const lightCrowding = clamp(1 - world.staticCover[i] * 0.035, 0.25, 1);
+      const growth = Math.max(0, tempGrowth * 0.55 + wetFit * 0.55 - 0.18) * world.fertility[i] * (1 - world.water[i] * 0.8) * lightCrowding;
       world.vegetation[i] = clamp(world.vegetation[i] + growth * 0.006 * dt - Math.max(0, 0.18 - world.moisture[i]) * 0.006 * dt - Math.max(0, world.temp[i] - 32) * 0.0015 * dt, 0, 1);
       world.fertility[i] = clamp(world.fertility[i] + world.ash[i] * 0.0008 * dt - Math.max(0, world.water[i] - 0.92) * 0.001 * dt, 0, 1);
       world.ash[i] = clamp(world.ash[i] * (1 - 0.0008 * dt), 0, 1);
-
-      // Fire behavior: dry vegetation burns, spreads with wind and moisture.
       if (world.fire[i] > 0.01) {
-        const burn = clamp(world.fire[i] * (0.02 + world.vegetation[i] * 0.065) * dt, 0, world.vegetation[i]);
-        world.vegetation[i] -= burn;
+        const burn = clamp(world.fire[i] * (0.02 + world.vegetation[i] * 0.065 + world.staticCover[i] * 0.004) * dt, 0, world.vegetation[i] + world.staticCover[i] * 0.01);
+        world.vegetation[i] = clamp(world.vegetation[i] - burn, 0, 1);
         world.ash[i] = clamp(world.ash[i] + burn * 0.85, 0, 1);
         world.fertility[i] = clamp(world.fertility[i] + burn * 0.12, 0, 1);
         world.moisture[i] = clamp(world.moisture[i] - world.fire[i] * 0.01 * dt, 0, 1);
         world.fire[i] = clamp(world.fire[i] + (world.vegetation[i] * 0.005 - world.moisture[i] * 0.016 - world.water[i] * 0.04 - 0.008) * dt, 0, 1);
-        const spreadChance = clamp((0.12 + world.vegetation[i] * 0.45 - world.moisture[i] * 0.5 + Math.max(0, world.temp[i] - 22) * 0.01) * dt, 0, 0.4);
+        const spreadChance = clamp((0.12 + world.vegetation[i] * 0.45 + world.staticCover[i] * 0.015 - world.moisture[i] * 0.5 + Math.max(0, world.temp[i] - 22) * 0.01) * dt, 0, 0.4);
         if (chance(spreadChance)) {
           const sx = x + Math.sign(windX + randRange(-0.7, 0.7));
           const sy = y + Math.sign(windY + randRange(-0.7, 0.7));
           if (inBounds(sx, sy)) {
             const si = idx(sx, sy);
-            if (world.vegetation[si] > 0.16 && world.moisture[si] < 0.62 && world.water[si] < 0.25) {
-              world.fire[si] = Math.max(world.fire[si], randRange(0.15, 0.55));
-            }
+            if ((world.vegetation[si] > 0.16 || world.staticCover[si] > 1) && world.moisture[si] < 0.62 && world.water[si] < 0.25) world.fire[si] = Math.max(world.fire[si], randRange(0.15, 0.55));
           }
         }
       }
-
       world.biome[i] = biomeAt(i);
+    }
+    this.decayHeatMaps(dt);
+  },
+
+  decayHeatMaps(dt) {
+    const sample = Math.floor(N * 0.08);
+    for (let k = 0; k < sample; k++) {
+      const i = Math.floor(srand() * N);
+      world.mobileTrail[i] *= (1 - 0.018 * dt);
+      world.predatorHeat[i] *= (1 - 0.025 * dt);
+      world.decompHeat[i] *= (1 - 0.018 * dt);
+      world.deathHeat[i] *= (1 - 0.011 * dt);
+      world.symbiosisHeat[i] *= (1 - 0.018 * dt);
     }
   }
 };
 
+function mobilityLabel(g) { return mobilityNames[clamp(Math.floor(g.mobilityType * mobilityNames.length), 0, mobilityNames.length - 1)]; }
+function reproLabel(g) { return reproNames[clamp(Math.floor(g.reproductiveStrategy * reproNames.length), 0, reproNames.length - 1)]; }
+function planIndex(g) { return clamp(Math.round(g.bodyPlan), 0, bodyPlanNames.length - 1); }
+function bodyPlanLabel(g) { return bodyPlanNames[planIndex(g)]; }
+
+function strategyFromGenome(g) {
+  const multicell = g.adhesion * 0.55 + g.colonyGrowth * 0.65 + g.structuralStrength * 0.22 + g.specialization * 0.22;
+  const mobileDrive = g.movementSpeed * 0.45 + g.mobilityType * 0.65 + g.predation * 0.25;
+  const symDrive = g.symbiosisOpen * 0.72 + g.symbiosisDependency * 0.36 + (g.bodyPlan > 7.7 ? 0.18 : 0);
+  if (symDrive > 0.92 && multicell > 0.78) return STRATEGY.SYMBIOTIC;
+  if (multicell > 0.95) return mobileDrive > 0.82 ? STRATEGY.MOBILE : STRATEGY.STATIC;
+  if (mobileDrive > 1.08 && g.size > 0.7 && g.adhesion > 0.32) return STRATEGY.MOBILE;
+  return STRATEGY.SOLITARY;
+}
+function baseStrategyFromGenome(g) { return strategyFromGenome(g); }
+
 function randomGenome(x = W / 2, y = H / 2) {
   const i = idx(clamp(Math.floor(x), 0, W - 1), clamp(Math.floor(y), 0, H - 1));
-  const t = world.temp[i];
-  const m = world.moisture[i];
-  const feeding = srand();
+  const t = world.temp[i], m = world.moisture[i], feeding = srand();
   return {
     preferredTemp: clamp(t + randRange(-5, 5), -10, 42),
     tempTolerance: randRange(7, 17),
@@ -577,8 +509,8 @@ function randomGenome(x = W / 2, y = H / 2) {
     droughtResistance: randRange(0.15, 0.85),
     fireResistance: randRange(0.02, 0.35),
     metabolism: randRange(0.55, 1.25),
-    movementSpeed: randRange(0.25, 1.2),
-    energyStorage: randRange(36, 95),
+    movementSpeed: randRange(0.14, 1.2),
+    energyStorage: randRange(36, 105),
     reproductionRate: randRange(0.35, 1.25),
     mutationRate: randRange(0.012, 0.055),
     lifespan: randRange(480, 1550),
@@ -587,37 +519,53 @@ function randomGenome(x = W / 2, y = H / 2) {
     photosynthesis: feeding < 0.48 ? randRange(0.35, 0.95) : randRange(0.0, 0.45),
     decomposition: feeding > 0.72 ? randRange(0.38, 1.0) : randRange(0.0, 0.35),
     feeding: feeding < 0.48 ? randRange(0.1, 0.42) : randRange(0.42, 0.92),
-    aggression: randRange(0.0, 0.38),
+    grazing: feeding < 0.70 ? randRange(0.2, 0.95) : randRange(0.0, 0.45),
+    predation: feeding > 0.82 ? randRange(0.18, 0.72) : randRange(0.0, 0.28),
+    aggression: randRange(0.0, 0.42),
     avoidance: randRange(0.25, 0.9),
     attractionWater: randRange(0.1, 1.0),
     attractionFertility: randRange(0.1, 1.0),
     attractionHeat: randRange(0, 0.65),
     attractionCold: randRange(0, 0.65),
-    meiosisDrive: randRange(0.08, 0.52)
+    meiosisDrive: randRange(0.08, 0.52),
+    adhesion: randRange(0.04, 0.72),
+    colonyGrowth: randRange(0.02, 0.68),
+    mobilityType: randRange(0.0, 1.0),
+    specialization: randRange(0.02, 0.62),
+    structuralStrength: randRange(0.03, 0.72),
+    symbiosisOpen: randRange(0.02, 0.62),
+    symbiosisDependency: randRange(0.0, 0.42),
+    reproductiveStrategy: randRange(0.0, 1.0),
+    cooperation: randRange(0.08, 0.88),
+    cheating: randRange(0.0, 0.38),
+    kinRecognition: randRange(0.08, 0.92),
+    bodyPlanMutation: randRange(0.006, 0.058),
+    bodyPlan: randRange(0, 4.2)
   };
 }
 
 const geneKeys = Object.keys(randomGenome());
 const geneRanges = {
-  preferredTemp: [-12, 45], tempTolerance: [2, 28], waterPref: [0, 1], waterTolerance: [0.05, 1], droughtResistance: [0, 1], fireResistance: [0, 1], metabolism: [0.25, 2.5], movementSpeed: [0.02, 2.4], energyStorage: [15, 160], reproductionRate: [0.05, 2.6], mutationRate: [0.002, 0.14], lifespan: [140, 3000], size: [0.35, 2.2], hue: [0, 360], photosynthesis: [0, 1.4], decomposition: [0, 1.4], feeding: [0, 1.2], aggression: [0, 1.1], avoidance: [0, 1.2], attractionWater: [0, 1.2], attractionFertility: [0, 1.2], attractionHeat: [0, 1.2], attractionCold: [0, 1.2], meiosisDrive: [0, 1]
+  preferredTemp: [-12, 45], tempTolerance: [2, 28], waterPref: [0, 1], waterTolerance: [0.05, 1], droughtResistance: [0, 1], fireResistance: [0, 1], metabolism: [0.25, 2.5], movementSpeed: [0.02, 2.4], energyStorage: [15, 170], reproductionRate: [0.05, 2.6], mutationRate: [0.002, 0.14], lifespan: [140, 3200], size: [0.35, 2.3], hue: [0, 360], photosynthesis: [0, 1.4], decomposition: [0, 1.4], feeding: [0, 1.2], grazing: [0, 1.3], predation: [0, 1.25], aggression: [0, 1.1], avoidance: [0, 1.2], attractionWater: [0, 1.2], attractionFertility: [0, 1.2], attractionHeat: [0, 1.2], attractionCold: [0, 1.2], meiosisDrive: [0, 1], adhesion: [0, 1.4], colonyGrowth: [0, 1.5], mobilityType: [0, 1], specialization: [0, 1.4], structuralStrength: [0, 1.4], symbiosisOpen: [0, 1.35], symbiosisDependency: [0, 1.1], reproductiveStrategy: [0, 1], cooperation: [0, 1.3], cheating: [0, 1.2], kinRecognition: [0, 1.2], bodyPlanMutation: [0.001, 0.16], bodyPlan: [0, bodyPlanNames.length - 1]
 };
 
 function mutateGenome(g, multiplier = 1) {
   const child = { ...g };
   const rate = clamp(g.mutationRate * multiplier, 0.001, 0.25);
   for (const key of geneKeys) {
-    if (chance(rate)) {
+    const effectiveRate = key === 'bodyPlan' ? clamp(g.bodyPlanMutation * multiplier, 0.002, 0.28) : rate;
+    if (chance(effectiveRate)) {
       const [min, max] = geneRanges[key];
       const span = max - min;
       let strength = span * randRange(0.006, 0.055) * (chance(0.08) ? 3.5 : 1);
       if (key === 'hue') strength = randRange(3, 24) * (chance(0.06) ? 3 : 1);
+      if (key === 'bodyPlan') strength = randRange(0.45, 1.6) * (chance(0.08) ? 2.5 : 1);
       child[key] = clamp(child[key] + randRange(-strength, strength), min, max);
     }
   }
-  if (chance(rate * 0.45)) {
-    // Trade-offs prevent every gene from simply improving forever.
-    child.metabolism = clamp(child.metabolism + child.movementSpeed * 0.015 + child.size * 0.012, geneRanges.metabolism[0], geneRanges.metabolism[1]);
-    child.reproductionRate = clamp(child.reproductionRate - child.energyStorage * 0.0007 + randRange(-0.015, 0.015), geneRanges.reproductionRate[0], geneRanges.reproductionRate[1]);
+  if (chance(rate * 0.55)) {
+    child.metabolism = clamp(child.metabolism + child.movementSpeed * 0.012 + child.size * 0.011 + child.colonyGrowth * 0.006, geneRanges.metabolism[0], geneRanges.metabolism[1]);
+    child.reproductionRate = clamp(child.reproductionRate - child.energyStorage * 0.00055 - child.structuralStrength * 0.012 + randRange(-0.015, 0.015), geneRanges.reproductionRate[0], geneRanges.reproductionRate[1]);
   }
   return child;
 }
@@ -627,63 +575,212 @@ function recombineGenome(a, b) {
   for (const key of geneKeys) {
     const source = chance(0.5) ? a : b;
     const other = source === a ? b : a;
-    g[key] = chance(0.18) ? (source[key] + other[key]) * 0.5 : source[key];
+    g[key] = chance(0.2) ? (source[key] + other[key]) * 0.5 : source[key];
   }
   g.mutationRate = clamp((a.mutationRate + b.mutationRate) * 0.5 + randRange(-0.006, 0.006), geneRanges.mutationRate[0], geneRanges.mutationRate[1]);
-  g.hue = (a.hue + b.hue) * 0.5 + randRange(-12, 12);
-  if (g.hue < 0) g.hue += 360;
-  if (g.hue > 360) g.hue -= 360;
-  return mutateGenome(g, 1.35);
+  g.bodyPlanMutation = clamp((a.bodyPlanMutation + b.bodyPlanMutation) * 0.5 + randRange(-0.008, 0.008), geneRanges.bodyPlanMutation[0], geneRanges.bodyPlanMutation[1]);
+  g.hue = wrapHue((a.hue + b.hue) * 0.5 + randRange(-12, 12));
+  return mutateGenome(g, 1.28);
 }
 
 function genomeDistance(a, b) {
-  let sum = 0;
-  let count = 0;
+  let sum = 0, count = 0;
   for (const key of geneKeys) {
     const [min, max] = geneRanges[key];
     const d = Math.abs(a[key] - b[key]) / (max - min);
-    sum += d * d;
-    count++;
+    const w = (key === 'bodyPlan' || key === 'adhesion' || key === 'colonyGrowth' || key === 'symbiosisOpen' || key === 'predation' || key === 'reproductiveStrategy') ? 1.55 : 1;
+    sum += d * d * w;
+    count += w;
   }
   return Math.sqrt(sum / count);
 }
 
-function feedingLabel(g) {
-  const photo = g.photosynthesis;
-  const decomp = g.decomposition;
-  if (photo > decomp && photo > g.feeding) return 'photo-cell';
-  if (decomp > photo && decomp > g.feeding * 0.8) return 'decomposer';
-  return g.aggression > 0.58 ? 'competitive grazer' : 'grazer';
+function ecologyDistance(g, s) {
+  const avg = s.average || s.representative;
+  let d = genomeDistance(g, avg) * 0.55;
+  if (strategyFromGenome(g) !== s.dominantStrategy) d += 0.12;
+  d += Math.abs(planIndex(g) - planIndex(avg)) / (bodyPlanNames.length - 1) * 0.11;
+  d += Math.abs(g.reproductiveStrategy - avg.reproductiveStrategy) * 0.08;
+  d += Math.abs(g.symbiosisOpen - avg.symbiosisOpen) * 0.06 + Math.abs(g.symbiosisDependency - avg.symbiosisDependency) * 0.07;
+  d += Math.abs(g.predation - avg.predation) * 0.06 + Math.abs(g.photosynthesis - avg.photosynthesis) * 0.04;
+  return d;
 }
 
-function makeOrganism(x, y, genome, parentSpecies = null, history = '') {
+function feedingLabel(g) {
+  if (g.predation > 0.65 && g.aggression > 0.35) return 'predator';
+  if (g.cheating > 0.68 && g.symbiosisOpen > 0.45) return 'parasite/cheater';
+  if (g.decomposition > Math.max(g.photosynthesis, g.grazing) && g.decomposition > 0.5) return 'decomposer';
+  if (g.photosynthesis > g.decomposition && g.photosynthesis > g.grazing) return 'photosynthetic';
+  if (g.grazing > 0.55) return 'grazer';
+  return 'generalist';
+}
+
+function targetCellCount(g, strategy = strategyFromGenome(g)) {
+  if (strategy === STRATEGY.SOLITARY) return 1;
+  const base = 1 + Math.floor(g.colonyGrowth * 8 + g.adhesion * 5 + g.size * 3 + g.specialization * 4);
+  if (strategy === STRATEGY.MOBILE) return clamp(Math.floor(base * 0.55 + g.movementSpeed * 2), 3, 15);
+  if (strategy === STRATEGY.SYMBIOTIC) return clamp(Math.floor(base * 1.05 + g.symbiosisOpen * 5), 4, 28);
+  return clamp(base + Math.floor(g.structuralStrength * 5), 3, CFG.maxBodyCells);
+}
+
+function addUniqueOffset(cells, seen, dx, dy, role) {
+  const key = `${dx},${dy}`;
+  if (seen.has(key)) return false;
+  seen.add(key);
+  cells.push({ dx, dy, role });
+  return true;
+}
+function roleForIndex(g, n, total, strategy, plan) {
+  if (n === 0) return 'core';
+  if (strategy === STRATEGY.SYMBIOTIC && (n % 4 === 0 || plan === 9 && n % 3 === 0)) return g.cheating > 0.7 ? 'parasite' : 'partner';
+  const r = n / Math.max(1, total - 1);
+  if (g.specialization < 0.22) {
+    if (g.photosynthesis > g.decomposition && g.photosynthesis > g.grazing) return 'photo';
+    if (g.decomposition > 0.55) return 'root';
+    return 'feed';
+  }
+  if (strategy === STRATEGY.MOBILE) {
+    if (r < 0.22) return 'move';
+    if (g.predation > 0.55 && r < 0.44) return 'feed';
+    if (r > 0.78) return 'repro';
+    return chance(g.structuralStrength * 0.45) ? 'protect' : 'store';
+  }
+  if (plan === 4 || g.photosynthesis > 0.55) return r < 0.72 ? 'photo' : 'repro';
+  if (plan === 3 || plan === 7) return r < 0.55 ? 'root' : 'photo';
+  if (g.decomposition > 0.55) return r < 0.72 ? 'root' : 'repro';
+  if (r > 0.78) return 'repro';
+  return chance(g.structuralStrength * 0.42) ? 'protect' : 'feed';
+}
+function buildBodyPlan(g, strategy = strategyFromGenome(g), desired = null) {
+  const count = desired || targetCellCount(g, strategy);
+  const cells = [];
+  const seen = new Set();
+  const plan = strategy === STRATEGY.SOLITARY ? 0 : planIndex(g);
+  addUniqueOffset(cells, seen, 0, 0, 'core');
+  if (count <= 1) return cells;
+  if (plan === 1) {
+    for (let n = 1; cells.length < count; n++) addUniqueOffset(cells, seen, n - Math.floor(count / 2), 0, roleForIndex(g, cells.length, count, strategy, plan));
+  } else if (plan === 2 || plan === 6) {
+    let r = 1;
+    while (cells.length < count && r < 6) {
+      for (let y = -r; y <= r && cells.length < count; y++) for (let x = -r; x <= r && cells.length < count; x++) {
+        if (Math.abs(x) + Math.abs(y) <= r + 1 && !seen.has(`${x},${y}`)) addUniqueOffset(cells, seen, x, y, roleForIndex(g, cells.length, count, strategy, plan));
+      }
+      r++;
+    }
+  } else if (plan === 3 || plan === 7 || plan === 9) {
+    let branch = 0;
+    while (cells.length < count) {
+      const len = 1 + Math.floor(cells.length / 4);
+      const dir = branch % 4;
+      const x = dir === 0 ? len : dir === 1 ? -len : Math.floor((branch % 3) - 1);
+      const y = dir === 2 ? len : dir === 3 ? -len : -Math.floor(len * 0.55);
+      addUniqueOffset(cells, seen, x, y, roleForIndex(g, cells.length, count, strategy, plan));
+      if (chance(0.45) && cells.length < count) addUniqueOffset(cells, seen, x + (chance(0.5) ? 1 : -1), y, roleForIndex(g, cells.length, count, strategy, plan));
+      branch++;
+      if (branch > count * 6) break;
+    }
+  } else if (plan === 4 || plan === 8) {
+    const width = Math.ceil(Math.sqrt(count * 1.35));
+    const height = Math.ceil(count / width);
+    for (let yy = 0; yy < height && cells.length < count; yy++) for (let xx = 0; xx < width && cells.length < count; xx++) {
+      addUniqueOffset(cells, seen, xx - Math.floor(width / 2), yy - Math.floor(height / 2), roleForIndex(g, cells.length, count, strategy, plan));
+    }
+  } else if (plan === 5) {
+    let r = 1;
+    while (cells.length < count && r < 6) {
+      for (let x = -r; x <= r && cells.length < count; x++) { addUniqueOffset(cells, seen, x, -r, roleForIndex(g, cells.length, count, strategy, plan)); addUniqueOffset(cells, seen, x, r, roleForIndex(g, cells.length, count, strategy, plan)); }
+      for (let y = -r + 1; y <= r - 1 && cells.length < count; y++) { addUniqueOffset(cells, seen, -r, y, roleForIndex(g, cells.length, count, strategy, plan)); addUniqueOffset(cells, seen, r, y, roleForIndex(g, cells.length, count, strategy, plan)); }
+      r++;
+    }
+  }
+  let safety = 0;
+  while (cells.length < count && safety++ < 200) {
+    const base = cells[Math.floor(srand() * cells.length)];
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    const d = dirs[Math.floor(srand() * dirs.length)];
+    addUniqueOffset(cells, seen, base.dx + d[0], base.dy + d[1], roleForIndex(g, cells.length, count, strategy, plan));
+  }
+  return cells.slice(0, CFG.maxBodyCells);
+}
+function roleCounts(cells) {
+  const counts = {};
+  for (const c of cells) counts[c.role] = (counts[c.role] || 0) + 1;
+  return counts;
+}
+
+function makeOrganism(x, y, genome, parentSpecies = null, history = '', options = {}) {
   if (organisms.length >= CFG.maxOrganisms) return null;
   const g = genome || randomGenome(x, y);
+  const strategy = options.strategy || strategyFromGenome(g);
+  const initialCells = options.bodyCells || buildBodyPlan(g, strategy, options.startSmall ? Math.min(targetCellCount(g, strategy), strategy === STRATEGY.SOLITARY ? 1 : 3 + Math.floor(g.adhesion * 3)) : null);
   const org = {
     id: nextOrgId++,
     x: clamp(x, 1, W - 2),
     y: clamp(y, 1, H - 2),
     vx: 0,
     vy: 0,
+    dir: randRange(0, Math.PI * 2),
     genome: g,
-    energy: clamp(g.energyStorage * randRange(0.42, 0.82), 8, g.energyStorage),
+    strategy,
+    bodyPlan: bodyPlanLabel(g),
+    bodyCells: initialCells,
+    roleCounts: roleCounts(initialCells),
+    energy: clamp(g.energyStorage * randRange(0.42, 0.82), 8, g.energyStorage * 1.2),
     age: 0,
     health: 1,
     hunger: 0,
     ready: 0,
     speciesId: 0,
     mutationHistory: history || 'ancestor',
+    parentLineage: parentSpecies,
     lastRepro: 0,
-    selectedPulse: 0
+    lastGrow: 0,
+    lastMovedFrom: { x, y },
+    symbiosis: { partnerId: null, partnerSpecies: null, kind: null, strength: 0, formedAt: null, collapseWarning: 0 },
+    evolvingScore: 0
   };
   org.speciesId = SpeciesSystem.assignSpecies(org, parentSpecies);
   organisms.push(org);
+  checkEvolutionMilestones(org);
   return org;
+}
+function refreshBody(org, target = null) {
+  org.strategy = strategyFromGenome(org.genome);
+  org.bodyPlan = bodyPlanLabel(org.genome);
+  org.bodyCells = buildBodyPlan(org.genome, org.strategy, target || Math.max(1, Math.min(targetCellCount(org.genome, org.strategy), org.bodyCells.length)));
+  org.roleCounts = roleCounts(org.bodyCells);
+}
+function bodyFootprint(org) {
+  const cells = [];
+  for (const c of org.bodyCells) {
+    const x = clamp(Math.floor(org.x + c.dx), 0, W - 1);
+    const y = clamp(Math.floor(org.y + c.dy), 0, H - 1);
+    cells.push({ x, y, i: idx(x, y), role: c.role, dx: c.dx, dy: c.dy });
+  }
+  return cells;
+}
+function bodyContains(org, wx, wy, radius = 0.58) {
+  for (const c of org.bodyCells) {
+    if (Math.abs((org.x + c.dx) - wx) <= radius && Math.abs((org.y + c.dy) - wy) <= radius) return true;
+  }
+  return false;
+}
+
+function checkEvolutionMilestones(org) {
+  if (org.bodyCells.length > 1) milestone('first-multicellular', `First multicellular organism evolved: ${org.bodyCells.length} connected square cells acting as one body.`);
+  if (org.strategy === STRATEGY.STATIC) milestone('first-static', `First static plant/fungus-like organism evolved with a ${org.bodyPlan}.`);
+  if (org.strategy === STRATEGY.MOBILE) milestone('first-mobile', `First mobile animal-like organism evolved: a ${org.bodyPlan} that moves as one body.`);
+  if (org.strategy === STRATEGY.SYMBIOTIC || org.roleCounts.partner) milestone('first-symbiotic-body', `First symbiosis-ready body plan appeared: partner cells are now part of survival strategy.`);
+  if (org.genome.predation > 0.68 && org.genome.aggression > 0.35) milestone('first-predator', `First predator evolved: a lineage now gains energy by hunting other square-cell organisms.`);
+  if (org.genome.cheating > 0.7 && org.genome.symbiosisOpen > 0.45) milestone('first-parasite', `First parasitic lineage emerged: it attaches to hosts and drains energy instead of cooperating.`);
+  if ((planIndex(org.genome) === 9 || org.bodyPlan.includes('coral')) && org.strategy === STRATEGY.SYMBIOTIC) milestone('first-reef', `First coral-like reef body plan formed: static host cells can shelter photosynthetic partners.`);
 }
 
 const SpeciesSystem = {
   create(genome, parentId = null, origin = 'emergent') {
     const id = nextSpeciesId++;
+    const strategy = strategyFromGenome(genome);
     const s = {
       id,
       label: `S-${String(id).padStart(3, '0')}`,
@@ -693,83 +790,130 @@ const SpeciesSystem = {
       created: simTime,
       extinctAt: null,
       population: 0,
+      bodyCells: 0,
       peak: 0,
       hue: genome.hue,
       average: { ...genome },
       dominantBiome: 'Unknown',
+      dominantStrategy: strategy,
+      dominantBodyPlan: bodyPlanLabel(genome),
+      dominantFeeding: feedingLabel(genome),
       distanceFromAncestor: parentId ? genomeDistance(genome, species.find(v => v.id === parentId)?.representative || genome) : 0,
-      lastBoomLogged: 0
+      lastBoomLogged: 0,
+      splitReason: origin
     };
     species.push(s);
-    addEvent('species', `New strain ${s.label} emerged (${feedingLabel(genome)}, preferred ${fmt(genome.preferredTemp, 1)}°C).`, true);
+    addEvent('species', `New lineage ${s.label} emerged: ${strategyShort[strategy]}, ${feedingLabel(genome)}, ${bodyPlanLabel(genome)}.`, true);
     return s;
   },
   assignSpecies(org, parentSpecies) {
-    if (species.length === 0) return SpeciesSystem.create(org.genome, null, 'initial').id;
-    let best = null;
-    let bestDist = Infinity;
+    if (species.length === 0) return SpeciesSystem.create(org.genome, null, 'initial ancestor').id;
+    let best = null, bestDist = Infinity;
     for (const s of species) {
       if (s.extinctAt) continue;
-      const d = genomeDistance(org.genome, s.representative);
+      const d = ecologyDistance(org.genome, s);
       if (d < bestDist) { bestDist = d; best = s; }
     }
-    if (!best || bestDist > CFG.speciesThreshold) {
-      return SpeciesSystem.create(org.genome, parentSpecies || (best ? best.id : null), 'mutation split').id;
+    const strategy = strategyFromGenome(org.genome);
+    const parent = parentSpecies ? species.find(s => s.id === parentSpecies) : null;
+    let split = !best || bestDist > CFG.speciesThreshold;
+    let reason = 'genetic/ecological split';
+    if (parent) {
+      const parentAvg = parent.average || parent.representative;
+      if (strategy !== parent.dominantStrategy && genomeDistance(org.genome, parentAvg) > 0.12) { split = true; reason = 'body strategy divergence'; }
+      if (Math.abs(org.genome.reproductiveStrategy - parentAvg.reproductiveStrategy) > 0.36 && genomeDistance(org.genome, parentAvg) > 0.1) { split = true; reason = 'reproductive isolation'; }
+      if (Math.abs(planIndex(org.genome) - planIndex(parentAvg)) >= 3) { split = true; reason = 'body plan divergence'; }
+      if (org.symbiosis?.partnerSpecies && org.symbiosis.partnerSpecies !== parent.representative.symbiosisPartnerSpecies) { split = true; reason = 'new symbiotic partner'; }
     }
+    if (split) return SpeciesSystem.create(org.genome, parentSpecies || (best ? best.id : null), reason).id;
     return best.id;
   },
   updateStats() {
     const stats = new Map();
     for (const s of species) {
-      stats.set(s.id, { count: 0, sums: {}, biomes: new Map() });
+      stats.set(s.id, { count: 0, cells: 0, sums: {}, biomes: new Map(), strategies: new Map(), plans: new Map(), feeding: new Map() });
       for (const key of geneKeys) stats.get(s.id).sums[key] = 0;
     }
     for (const o of organisms) {
       const st = stats.get(o.speciesId);
       if (!st) continue;
       st.count++;
+      st.cells += o.bodyCells.length;
       for (const key of geneKeys) st.sums[key] += o.genome[key];
-      const bi = world.biome[idx(Math.floor(o.x), Math.floor(o.y))];
+      const bi = world.biome[idx(clamp(Math.floor(o.x),0,W-1), clamp(Math.floor(o.y),0,H-1))];
       st.biomes.set(bi, (st.biomes.get(bi) || 0) + 1);
+      st.strategies.set(o.strategy, (st.strategies.get(o.strategy) || 0) + 1);
+      st.plans.set(o.bodyPlan, (st.plans.get(o.bodyPlan) || 0) + 1);
+      const feeding = feedingLabel(o.genome);
+      st.feeding.set(feeding, (st.feeding.get(feeding) || 0) + 1);
     }
+    let extinctThisTick = 0;
     for (const s of species) {
       const st = stats.get(s.id);
       const previous = s.population;
       s.population = st.count;
+      s.bodyCells = st.cells;
       s.peak = Math.max(s.peak, s.population);
       if (s.population > 0) {
         s.extinctAt = null;
         for (const key of geneKeys) s.average[key] = st.sums[key] / s.population;
-        let bestBiome = 8;
-        let bestBiomeCount = 0;
+        let bestBiome = 8, bestBiomeCount = 0;
         st.biomes.forEach((count, bi) => { if (count > bestBiomeCount) { bestBiomeCount = count; bestBiome = bi; } });
         s.dominantBiome = biomeNames[bestBiome];
+        s.dominantStrategy = mostCommon(st.strategies, s.dominantStrategy);
+        s.dominantBodyPlan = mostCommon(st.plans, s.dominantBodyPlan);
+        s.dominantFeeding = mostCommon(st.feeding, s.dominantFeeding);
         s.hue = lerp(s.hue, s.average.hue, 0.02);
-        if (s.population > 120 && previous < 60 && simTime - s.lastBoomLogged > 250) {
-          addEvent('boom', `${s.label} population boom in ${s.dominantBiome}: ${s.population} cells.`, false);
+        if (s.population > 80 && previous < 40 && simTime - s.lastBoomLogged > 250) {
+          addEvent('boom', `${s.label} population boom: ${s.population} organisms / ${s.bodyCells} cells in ${s.dominantBiome}.`, false);
           s.lastBoomLogged = simTime;
         }
       } else if (!s.extinctAt && previous > 0) {
         s.extinctAt = simTime;
-        addEvent('extinction', `${s.label} went extinct after ${Math.floor(simTime - s.created)} simulation ticks.`, true);
+        extinctThisTick++;
+        addEvent('extinction', `${s.label} went extinct after ${Math.floor(simTime - s.created)} ticks.`, true);
       }
+    }
+    if (extinctThisTick >= 4) addEvent('extinction', `Major extinction event: ${extinctThisTick} lineages vanished in one selection pulse.`, true);
+    if (simTime - lastRadiationCheck > 300) {
+      const recentlyBorn = species.filter(s => simTime - s.created < 300).length;
+      if (recentlyBorn >= 5) addEvent('radiation', `Adaptive radiation: ${recentlyBorn} new lineages appeared after environmental and ecological change.`, true);
+      lastRadiationCheck = simTime;
+    }
+    this.checkDominantEcosystem();
+  },
+  checkDominantEcosystem() {
+    if (frameCounter % 120 !== 0) return;
+    const counts = { solitary: 0, static: 0, mobile: 0, symbiotic: 0 };
+    for (const o of organisms) {
+      if (o.strategy === STRATEGY.STATIC) counts.static += o.bodyCells.length;
+      else if (o.strategy === STRATEGY.MOBILE) counts.mobile += o.bodyCells.length;
+      else if (o.strategy === STRATEGY.SYMBIOTIC) counts.symbiotic += o.bodyCells.length;
+      else counts.solitary += 1;
+    }
+    const dominant = Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0];
+    if (dominant && dominant !== previousDominantEcosystem && simTime > 200) {
+      addEvent('ecosystem', `New dominant ecosystem type: ${dominant} life now controls the most living square-cell area.`, true);
+      previousDominantEcosystem = dominant;
     }
   }
 };
+function mostCommon(map, fallback) { let best = fallback, c = -1; map.forEach((v, k) => { if (v > c) { c = v; best = k; } }); return best; }
 
 function buildBins() {
   bins = Array.from({ length: binCols * binRows }, () => []);
   world.occupancy.fill(0);
+  world.staticCover.fill(0);
   for (const o of organisms) {
-    const tx = clamp(Math.floor(o.x), 0, W - 1);
-    const ty = clamp(Math.floor(o.y), 0, H - 1);
-    world.occupancy[idx(tx, ty)]++;
-    const bx = Math.floor(tx / CFG.binSize);
-    const by = Math.floor(ty / CFG.binSize);
+    const tx = clamp(Math.floor(o.x), 0, W - 1), ty = clamp(Math.floor(o.y), 0, H - 1);
+    const bx = Math.floor(tx / CFG.binSize), by = Math.floor(ty / CFG.binSize);
     bins[by * binCols + bx].push(o);
+    for (const c of bodyFootprint(o)) {
+      world.occupancy[c.i]++;
+      if (o.strategy === STRATEGY.STATIC || o.strategy === STRATEGY.SYMBIOTIC) world.staticCover[c.i] += 1;
+    }
   }
 }
-
 function nearbyOrganisms(o, radiusTiles = 5) {
   const out = [];
   const bx0 = clamp(Math.floor((o.x - radiusTiles) / CFG.binSize), 0, binCols - 1);
@@ -777,229 +921,324 @@ function nearbyOrganisms(o, radiusTiles = 5) {
   const bx1 = clamp(Math.floor((o.x + radiusTiles) / CFG.binSize), 0, binCols - 1);
   const by1 = clamp(Math.floor((o.y + radiusTiles) / CFG.binSize), 0, binRows - 1);
   const r2 = radiusTiles * radiusTiles;
-  for (let by = by0; by <= by1; by++) {
-    for (let bx = bx0; bx <= bx1; bx++) {
-      for (const other of bins[by * binCols + bx]) {
-        if (other === o) continue;
-        const dx = other.x - o.x;
-        const dy = other.y - o.y;
-        if (dx * dx + dy * dy <= r2) out.push(other);
-      }
-    }
+  for (let by = by0; by <= by1; by++) for (let bx = bx0; bx <= bx1; bx++) for (const other of bins[by * binCols + bx]) {
+    if (other === o) continue;
+    const dx = other.x - o.x, dy = other.y - o.y;
+    if (dx * dx + dy * dy <= r2) out.push(other);
   }
   return out;
 }
 
-function habitatScore(genome, x, y) {
-  x = clamp(Math.floor(x), 0, W - 1);
-  y = clamp(Math.floor(y), 0, H - 1);
+function habitatScore(genome, x, y, org = null) {
+  x = clamp(Math.floor(x), 0, W - 1); y = clamp(Math.floor(y), 0, H - 1);
   const i = idx(x, y);
   const tempFit = 1 - clamp(Math.abs(world.temp[i] - genome.preferredTemp) / genome.tempTolerance, 0, 1);
   const moistFit = 1 - clamp(Math.abs(world.moisture[i] - genome.waterPref) / Math.max(0.08, genome.waterTolerance), 0, 1);
   const waterDanger = Math.max(0, world.water[i] - genome.waterTolerance) * 1.6;
   const dryDanger = Math.max(0, 0.22 - world.moisture[i]) * (1 - genome.droughtResistance) * 2.4;
   const fireDanger = world.fire[i] * (1 - genome.fireResistance) * 2.8;
-  const food = world.vegetation[i] * genome.feeding * 0.45 + world.fertility[i] * genome.attractionFertility * 0.25 + world.ash[i] * genome.decomposition * 0.22 + world.moisture[i] * genome.photosynthesis * 0.2;
+  const food = world.vegetation[i] * genome.grazing * 0.45 + world.fertility[i] * genome.attractionFertility * 0.25 + world.ash[i] * genome.decomposition * 0.28 + world.moisture[i] * genome.photosynthesis * 0.2 + world.deathHeat[i] * genome.decomposition * 0.1;
+  const predBonus = genome.predation > 0.55 ? world.occupancy[i] * 0.025 : 0;
   const tempPull = genome.attractionHeat * clamp((world.temp[i] - genome.preferredTemp) / 20, -1, 1) - genome.attractionCold * clamp((genome.preferredTemp - world.temp[i]) / 20, -1, 1);
-  return tempFit * 0.75 + moistFit * 0.55 + food + tempPull * 0.06 - waterDanger - dryDanger - fireDanger - world.barrier[i] * 1.5;
+  const lightPenalty = (org && (org.strategy === STRATEGY.STATIC || org.strategy === STRATEGY.SYMBIOTIC)) ? world.staticCover[i] * 0.014 : 0;
+  return tempFit * 0.75 + moistFit * 0.55 + food + predBonus + tempPull * 0.06 - waterDanger - dryDanger - fireDanger - world.barrier[i] * 1.5 - lightPenalty;
+}
+
+function footprintAverages(org) {
+  const cells = bodyFootprint(org);
+  let temp = 0, moist = 0, water = 0, fert = 0, veg = 0, ash = 0, fire = 0, density = 0, light = 0;
+  for (const c of cells) {
+    temp += world.temp[c.i]; moist += world.moisture[c.i]; water += world.water[c.i]; fert += world.fertility[c.i]; veg += world.vegetation[c.i]; ash += world.ash[c.i]; fire += world.fire[c.i]; density += world.occupancy[c.i];
+    light += clamp(1 - world.water[c.i] * 0.2 - world.fire[c.i] - Math.max(0, world.staticCover[c.i] - 1) * 0.045, 0.1, 1);
+  }
+  const n = Math.max(1, cells.length);
+  return { cells, temp: temp/n, moist: moist/n, water: water/n, fert: fert/n, veg: veg/n, ash: ash/n, fire: fire/n, density: density/n, light: light/n };
 }
 
 const OrganismSystem = {
   seedInitial() {
-    organisms.length = 0;
-    species.length = 0;
-    nextOrgId = 1;
-    nextSpeciesId = 1;
+    organisms.length = 0; species.length = 0; nextOrgId = 1; nextSpeciesId = 1; milestones = new Set(); previousDominantEcosystem = '';
     for (let n = 0; n < CFG.initialOrganisms; n++) {
-      let x = randRange(20, W - 20);
-      let y = randRange(20, H - 20);
+      let x = randRange(20, W - 20), y = randRange(20, H - 20);
       for (let tries = 0; tries < 80; tries++) {
-        const tx = Math.floor(randRange(8, W - 8));
-        const ty = Math.floor(randRange(8, H - 8));
-        const i = idx(tx, ty);
-        if (world.water[i] < 0.45 && world.fertility[i] > 0.18 && world.fire[i] < 0.01) { x = tx; y = ty; break; }
+        const tx = Math.floor(randRange(8, W - 8)), ty = Math.floor(randRange(8, H - 8)), i = idx(tx, ty);
+        if (world.water[i] < 0.55 && world.fertility[i] > 0.16 && world.fire[i] < 0.01) { x = tx; y = ty; break; }
       }
-      makeOrganism(x + randRange(-1, 1), y + randRange(-1, 1), randomGenome(x, y), null, 'seed organism');
+      const g = randomGenome(x, y);
+      // Primitive starting life is biased toward single cells, but still carries latent multicellular genes.
+      g.adhesion *= 0.45; g.colonyGrowth *= 0.42; g.symbiosisOpen *= 0.55; g.bodyPlan = randRange(0, 2.2);
+      makeOrganism(x + randRange(-1, 1), y + randRange(-1, 1), g, null, 'seed organism', { strategy: STRATEGY.SOLITARY, startSmall: true });
     }
-    addEvent('life', `${CFG.initialOrganisms} primitive square cells seeded into multiple regions.`, true);
+    addEvent('life', `${CFG.initialOrganisms} primitive solitary square cells seeded into multiple regions. Multicellular and symbiotic strategies must evolve from mutation and selection.`, true);
   },
 
   update(dt) {
     buildBins();
-    let births = [];
+    const births = [];
     let deaths = 0;
     const popPressure = organisms.length / CFG.maxOrganisms;
-
     for (let oi = organisms.length - 1; oi >= 0; oi--) {
-      const o = organisms[oi];
-      const g = o.genome;
-      o.age += dt;
-      o.lastRepro += dt;
-      const tx = clamp(Math.floor(o.x), 0, W - 1);
-      const ty = clamp(Math.floor(o.y), 0, H - 1);
-      const i = idx(tx, ty);
-      const tempFit = 1 - clamp(Math.abs(world.temp[i] - g.preferredTemp) / g.tempTolerance, 0, 1);
-      const moistureFit = 1 - clamp(Math.abs(world.moisture[i] - g.waterPref) / Math.max(0.08, g.waterTolerance), 0, 1);
-      const density = world.occupancy[i];
+      const o = organisms[oi], g = o.genome;
+      o.age += dt; o.lastRepro += dt; o.lastGrow += dt;
+      const strategyBefore = o.strategy;
+      if (frameCounter % 23 === 0 && chance(0.18)) refreshBody(o);
+      const env = footprintAverages(o);
+      const tempFit = 1 - clamp(Math.abs(env.temp - g.preferredTemp) / g.tempTolerance, 0, 1);
+      const moistureFit = 1 - clamp(Math.abs(env.moist - g.waterPref) / Math.max(0.08, g.waterTolerance), 0, 1);
+      const bodyN = Math.max(1, o.bodyCells.length);
+      if (o.strategy !== strategyBefore) checkEvolutionMilestones(o);
 
-      // Energy from environment. Traits choose different survival strategies.
-      const light = clamp(1 - world.water[i] * 0.2 - world.fire[i], 0, 1);
-      const photoGain = g.photosynthesis * light * world.moisture[i] * tempFit * 0.19 * dt;
-      const grazeGain = g.feeding * world.vegetation[i] * world.fertility[i] * moistureFit * 0.28 * dt;
-      const decompGain = g.decomposition * (world.ash[i] + Math.max(0, density - 1) * 0.02) * 0.24 * dt;
-      const totalGain = (photoGain + grazeGain + decompGain) / (1 + Math.max(0, density - 2) * 0.23);
+      const role = o.roleCounts;
+      const photoCells = (role.photo || 0) + (role.partner || 0) * 0.65 + (o.strategy === STRATEGY.SOLITARY ? 1 : 0) * (g.photosynthesis > 0.55 ? 1 : 0);
+      const feedCells = (role.feed || 0) + (role.core || 0) * 0.5 + (o.strategy === STRATEGY.SOLITARY ? 1 : 0);
+      const rootCells = (role.root || 0) + (role.store || 0) * 0.2;
+      const moveCells = (role.move || 0) + (o.strategy === STRATEGY.MOBILE ? 1 : 0);
+      const protectionCells = (role.protect || 0) + g.structuralStrength * 0.8;
+      const lightCompetition = 1 / (1 + Math.max(0, env.density - bodyN) * 0.10);
+      const photoGain = g.photosynthesis * env.light * env.moist * tempFit * (0.06 + photoCells * 0.032) * dt * lightCompetition;
+      const grazeGain = g.grazing * env.veg * env.fert * moistureFit * (0.065 + feedCells * 0.025) * dt;
+      const decompGain = g.decomposition * (env.ash + world.deathHeat[env.cells[0].i] * 0.2 + Math.max(0, env.density - bodyN) * 0.01) * (0.07 + rootCells * 0.03) * dt;
+      let totalGain = photoGain + grazeGain + decompGain;
+
+      if (grazeGain > 0.004) for (const c of env.cells) world.vegetation[c.i] = clamp(world.vegetation[c.i] - grazeGain * 0.004 / Math.sqrt(bodyN), 0, 1);
+      if (decompGain > 0.003) for (const c of env.cells) { world.ash[c.i] = clamp(world.ash[c.i] - decompGain * 0.004, 0, 1); world.decompHeat[c.i] = clamp(world.decompHeat[c.i] + g.decomposition * 0.04, 0, 1); }
+
+      totalGain += this.handlePredation(o, env, dt);
+      totalGain += this.handleSymbiosis(o, env, dt);
       o.energy += totalGain;
-      if (grazeGain > 0.004) world.vegetation[i] = clamp(world.vegetation[i] - grazeGain * 0.012, 0, 1);
-      if (decompGain > 0.003) world.ash[i] = clamp(world.ash[i] - decompGain * 0.01, 0, 1);
 
-      // Costs and damage.
-      const basalCost = (0.027 * g.metabolism + 0.004 * g.size + density * 0.0018) * dt;
+      const bodyCostFactor = o.strategy === STRATEGY.STATIC ? 0.64 : o.strategy === STRATEGY.SYMBIOTIC ? 0.75 : o.strategy === STRATEGY.MOBILE ? 1.05 : 1;
+      const basalCost = (0.022 * g.metabolism * Math.pow(bodyN, 0.76) * bodyCostFactor + 0.004 * g.size + env.density * 0.0009) * dt;
       o.energy -= basalCost;
-      const tempStress = Math.max(0, 1 - tempFit) * 0.018 * dt;
-      const dryStress = Math.max(0, 0.26 - world.moisture[i]) * (1 - g.droughtResistance) * 0.055 * dt;
-      const floodStress = Math.max(0, world.water[i] - g.waterTolerance) * 0.05 * dt;
-      const fireStress = world.fire[i] * (1 - g.fireResistance) * 0.22 * dt;
+      const protection = clamp(g.structuralStrength * 0.42 + protectionCells * 0.06 + (o.symbiosis.kind === 'defensive' ? o.symbiosis.strength * 0.25 : 0), 0, 0.82);
+      const tempStress = Math.max(0, 1 - tempFit) * 0.016 * dt * (1 - protection * 0.35);
+      const dryStress = Math.max(0, 0.26 - env.moist) * (1 - g.droughtResistance) * 0.055 * dt * (1 - protection * 0.4);
+      const floodStress = Math.max(0, env.water - g.waterTolerance) * 0.045 * dt * (1 - protection * 0.2);
+      const fireStress = env.fire * (1 - g.fireResistance) * (o.strategy === STRATEGY.STATIC ? 0.28 : 0.20) * dt * (1 - protection * 0.65);
       o.health = clamp(o.health - tempStress - dryStress - floodStress - fireStress + tempFit * moistureFit * 0.0025 * dt, 0, 1);
-      o.hunger = clamp(1 - o.energy / g.energyStorage, 0, 1);
-      o.ready = clamp(o.energy / (g.energyStorage * 0.72), 0, 1);
+      o.hunger = clamp(1 - o.energy / Math.max(1, g.energyStorage * (0.6 + bodyN * 0.35)), 0, 1);
+      o.ready = clamp(o.energy / (g.energyStorage * (0.72 + bodyN * 0.16)), 0, 1);
 
-      // Movement: sample nearby tiles and bias by genome. Low-energy cells conserve energy.
-      const moveProb = clamp(g.movementSpeed * 0.18 * dt * (o.energy > g.energyStorage * 0.16 ? 1 : 0.2), 0, 0.95);
-      if (chance(moveProb)) {
-        let bestX = o.x;
-        let bestY = o.y;
-        let bestScore = habitatScore(g, o.x, o.y) + randRange(-0.05, 0.05);
-        const spreadPush = density > 4 ? randRange(0.8, 1.8) : 0;
-        const samples = 5 + Math.floor(g.avoidance * 3);
-        for (let s = 0; s < samples; s++) {
-          const angle = randRange(0, Math.PI * 2);
-          const dist = randRange(0.8, 2.6 + g.movementSpeed * 1.6 + spreadPush);
-          const nx = o.x + Math.cos(angle) * dist;
-          const ny = o.y + Math.sin(angle) * dist;
-          if (!inBounds(Math.floor(nx), Math.floor(ny))) continue;
-          const score = habitatScore(g, nx, ny) + randRange(-0.08, 0.08);
-          if (score > bestScore) { bestScore = score; bestX = nx; bestY = ny; }
-        }
-        const dx = bestX - o.x;
-        const dy = bestY - o.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const step = Math.min(len, g.movementSpeed * 0.37 * dt + 0.16);
-        o.x = clamp(o.x + dx / len * step, 0.5, W - 1.5);
-        o.y = clamp(o.y + dy / len * step, 0.5, H - 1.5);
-        o.energy -= step * (0.025 + g.size * 0.012);
+      this.handleMovement(o, env, dt);
+      this.handleStaticGrowth(o, env, births, dt, popPressure);
+      this.handleReproduction(o, env, births, dt, popPressure);
+
+      if (o.strategy === STRATEGY.MOBILE) {
+        const ci = idx(clamp(Math.floor(o.x),0,W-1), clamp(Math.floor(o.y),0,H-1));
+        world.mobileTrail[ci] = clamp(world.mobileTrail[ci] + 0.05, 0, 1);
       }
+      if (o.strategy === STRATEGY.SYMBIOTIC) for (const c of env.cells) world.symbiosisHeat[c.i] = clamp(world.symbiosisHeat[c.i] + 0.03, 0, 1);
 
-      // Competition under scarcity. Aggressive genomes steal a little energy but pay cost.
-      if (density > 3 && o.energy < g.energyStorage * 0.34 && g.aggression > 0.35 && chance(g.aggression * 0.04 * dt)) {
-        const neighbors = nearbyOrganisms(o, 2.4);
-        const target = neighbors.find(n => n.energy > o.energy && n.speciesId !== o.speciesId);
-        if (target) {
-          const stolen = Math.min(target.energy * 0.08, 4);
-          target.energy -= stolen;
-          target.health -= g.aggression * 0.01;
-          o.energy += stolen * 0.72;
+      const maxEnergy = g.energyStorage * (1.05 + bodyN * 0.38 + g.energyStorage * 0.002);
+      if (o.health <= 0 || o.energy <= -6 || o.age > g.lifespan * (0.72 + bodyN * 0.09) * randRange(0.92, 1.14)) {
+        for (const c of env.cells) {
+          world.fertility[c.i] = clamp(world.fertility[c.i] + 0.012 + bodyN * 0.0009, 0, 1);
+          world.ash[c.i] = clamp(world.ash[c.i] + 0.018 + bodyN * 0.0016, 0, 1);
+          world.deathHeat[c.i] = clamp(world.deathHeat[c.i] + 0.35, 0, 1);
         }
-      }
-
-      // Reproduction: mitosis-like fast copy or meiosis-like recombination.
-      const goodHabitat = tempFit * moistureFit > 0.32 && world.fire[i] < 0.04 && world.water[i] < g.waterTolerance + 0.12;
-      const reproThreshold = g.energyStorage * (0.64 + g.size * 0.08);
-      if (goodHabitat && o.energy > reproThreshold && o.lastRepro > 22 / Math.max(0.2, g.reproductionRate) && births.length < 90 && popPressure < 0.995) {
-        const meiosisChance = clamp(g.meiosisDrive * 0.18 + density * 0.012, 0.02, 0.45);
-        if (chance(meiosisChance)) {
-          const mates = nearbyOrganisms(o, 5.5).filter(m => m.energy > m.genome.energyStorage * 0.42 && genomeDistance(g, m.genome) < CFG.compatibleThreshold && m.health > 0.45);
-          if (mates.length > 0) {
-            const mate = mates[Math.floor(srand() * mates.length)];
-            const childGenome = recombineGenome(g, mate.genome);
-            o.energy *= 0.68;
-            mate.energy *= 0.82;
-            o.lastRepro = 0;
-            mate.lastRepro = 0;
-            births.push({ x: (o.x + mate.x) * 0.5 + randRange(-1.5, 1.5), y: (o.y + mate.y) * 0.5 + randRange(-1.5, 1.5), genome: childGenome, parentSpecies: o.speciesId, history: `meiosis mix: ${o.speciesId}/${mate.speciesId}` });
-          }
-        } else {
-          const childGenome = mutateGenome(g, 1);
-          o.energy *= 0.55;
-          o.lastRepro = 0;
-          births.push({ x: o.x + randRange(-2, 2), y: o.y + randRange(-2, 2), genome: childGenome, parentSpecies: o.speciesId, history: `mitosis from ${o.speciesId}` });
+        if (o.symbiosis.partnerId) {
+          const partner = organisms.find(p => p.id === o.symbiosis.partnerId);
+          if (partner) { partner.symbiosis = { partnerId: null, partnerSpecies: null, kind: null, strength: 0, formedAt: null, collapseWarning: simTime }; partner.health -= partner.genome.symbiosisDependency * 0.25; }
+          if (g.symbiosisDependency > 0.55) addEvent('symbiosis', `Symbiotic collapse: ${species.find(s=>s.id===o.speciesId)?.label || 'a lineage'} lost its partner and suffered a dependency shock.`, true);
         }
-      }
-
-      // Death returns nutrients and ash.
-      if (o.health <= 0 || o.energy <= -4 || o.age > g.lifespan * randRange(0.92, 1.14)) {
-        world.fertility[i] = clamp(world.fertility[i] + 0.018 + g.size * 0.006, 0, 1);
-        world.ash[i] = clamp(world.ash[i] + 0.025 + o.energy * 0.0005, 0, 1);
         organisms.splice(oi, 1);
-        deaths++;
+        deaths += bodyN;
       } else {
-        o.energy = clamp(o.energy, -8, g.energyStorage * 1.15);
+        o.energy = clamp(o.energy, -8, maxEnergy);
+        o.evolvingScore = ecologyDistance(o.genome, species.find(s => s.id === o.speciesId) || { average: o.genome, representative: o.genome, dominantStrategy: o.strategy });
       }
     }
+    for (const b of births) makeOrganism(b.x, b.y, b.genome, b.parentSpecies, b.history, b.options || {});
+    if (deaths > 160 && simTime - lastDeathPulse > 25) {
+      addEvent('collapse', `Mass die-off: ${deaths} square cells died during a harsh selection pulse.`, true);
+      if (organisms.some(o => o.genome.decomposition > 0.65)) milestone('decomposer-bloom', 'First decomposer bloom after mass death: decomposing lineages are spreading into nutrient-rich dead zones.');
+      lastDeathPulse = simTime;
+    }
+    if (births.length > 65) addEvent('boom', `Rapid reproduction wave: ${births.length} new organisms released by splitting, spores, fragments or mating.`, false);
+  },
 
-    for (const b of births) makeOrganism(b.x, b.y, b.genome, b.parentSpecies, b.history);
-    if (deaths > 180) addEvent('collapse', `Mass die-off: ${deaths} cells died during a harsh selection pulse.`, true);
-    if (births.length > 70) addEvent('boom', `Rapid mitosis/recombination wave: ${births.length} new square cells born.`, false);
+  handlePredation(o, env, dt) {
+    const g = o.genome;
+    if (g.predation < 0.38 || (o.strategy !== STRATEGY.MOBILE && g.aggression < 0.62)) return 0;
+    const ci = env.cells[0].i;
+    world.predatorHeat[ci] = clamp(world.predatorHeat[ci] + g.predation * 0.045, 0, 1);
+    if (!chance((g.predation * 0.07 + g.aggression * 0.035) * dt)) return 0;
+    const prey = nearbyOrganisms(o, 3.2 + g.movementSpeed * 1.8).filter(p => p.id !== o.id && p.speciesId !== o.speciesId && p.health > 0 && p.energy > 2 && p.genome.structuralStrength < g.predation + 0.35);
+    if (!prey.length) return 0;
+    prey.sort((a,b) => (a.energy / Math.max(1,a.bodyCells.length)) - (b.energy / Math.max(1,b.bodyCells.length)));
+    const target = prey[Math.floor(srand() * Math.min(3, prey.length))];
+    const attack = clamp(g.predation * g.aggression * (0.55 + (o.roleCounts.feed || 0) * 0.08), 0.05, 1.2);
+    const defense = clamp(target.genome.structuralStrength * 0.55 + (target.roleCounts.protect || 0) * 0.08 + target.genome.cooperation * 0.12, 0, 1.1);
+    const damage = Math.max(0.02, attack - defense * 0.55) * 0.16;
+    target.health -= damage;
+    const stolen = Math.min(target.energy * (0.04 + attack * 0.08), 8 + o.bodyCells.length);
+    target.energy -= stolen;
+    if (target.health <= 0.1 && chance(0.18 + attack * 0.18)) target.energy -= 24;
+    return stolen * 0.72;
+  },
+
+  handleSymbiosis(o, env, dt) {
+    const g = o.genome;
+    let bonus = 0;
+    if (g.symbiosisOpen > 0.5 && !o.symbiosis.partnerId && chance((g.symbiosisOpen * 0.015 + g.cooperation * 0.008) * dt)) {
+      const partners = nearbyOrganisms(o, 4.6).filter(p => p.speciesId !== o.speciesId && p.genome.symbiosisOpen > 0.42 && p.health > 0.35 && (!p.symbiosis.partnerId || p.symbiosis.partnerId === o.id));
+      if (partners.length) {
+        partners.sort((a,b) => (b.genome.cooperation + b.genome.photosynthesis + b.genome.decomposition) - (a.genome.cooperation + a.genome.photosynthesis + a.genome.decomposition));
+        const p = partners[0];
+        const parasite = g.cheating > 0.68 && g.cooperation < 0.45;
+        const kind = parasite ? 'parasitism' : (g.structuralStrength + p.genome.structuralStrength > g.photosynthesis + p.genome.photosynthesis ? 'defensive' : 'mutualism');
+        const strength = clamp((g.symbiosisOpen + p.genome.symbiosisOpen + g.cooperation + p.genome.cooperation) / 4, 0.05, 1);
+        o.symbiosis = { partnerId: p.id, partnerSpecies: p.speciesId, kind, strength, formedAt: simTime, collapseWarning: 0 };
+        p.symbiosis = { partnerId: o.id, partnerSpecies: o.speciesId, kind, strength, formedAt: simTime, collapseWarning: 0 };
+        milestone('first-symbiosis', `First symbiosis formed: ${species.find(s=>s.id===o.speciesId)?.label || 'one species'} linked with ${species.find(s=>s.id===p.speciesId)?.label || 'another species'} through ${kind}.`);
+      }
+    }
+    if (o.symbiosis.partnerId) {
+      const partner = organisms.find(p => p.id === o.symbiosis.partnerId);
+      if (!partner) {
+        o.symbiosis.partnerId = null;
+        o.symbiosis.partnerSpecies = null;
+        o.health -= g.symbiosisDependency * 0.18;
+        if (g.symbiosisDependency > 0.52 && simTime - o.symbiosis.collapseWarning > 30) addEvent('symbiosis', `Symbiotic collapse after partner extinction or separation weakened ${species.find(s=>s.id===o.speciesId)?.label || 'a species'}.`, true);
+        return -g.symbiosisDependency * 0.08 * dt;
+      }
+      const d = Math.hypot(partner.x - o.x, partner.y - o.y);
+      if (d > 8.5) {
+        o.symbiosis.strength *= 0.985;
+        if (o.symbiosis.strength < 0.12) { o.symbiosis.partnerId = null; return -g.symbiosisDependency * 0.05 * dt; }
+      }
+      if (o.symbiosis.kind === 'parasitism') {
+        const drain = Math.min(partner.energy * 0.004 * g.cheating * dt, 0.2 + o.bodyCells.length * 0.015);
+        partner.energy -= drain;
+        partner.health -= g.cheating * 0.0015 * dt;
+        bonus += drain * 0.92;
+      } else {
+        const partnerEnergySkill = Math.max(partner.genome.photosynthesis, partner.genome.decomposition, partner.genome.grazing) * 0.05;
+        const hostProtection = Math.max(g.structuralStrength, partner.genome.structuralStrength) * 0.018;
+        bonus += (partnerEnergySkill + hostProtection + o.symbiosis.strength * 0.025) * dt * (1 - g.symbiosisDependency * 0.22);
+        partner.energy += g.cooperation * 0.01 * dt;
+        o.health = clamp(o.health + hostProtection * 0.02 * dt, 0, 1);
+      }
+    } else if (g.symbiosisDependency > 0.5) {
+      bonus -= g.symbiosisDependency * 0.018 * dt;
+    }
+    return bonus;
+  },
+
+  handleMovement(o, env, dt) {
+    const g = o.genome;
+    const canMove = o.strategy === STRATEGY.SOLITARY || o.strategy === STRATEGY.MOBILE || (o.strategy === STRATEGY.SYMBIOTIC && g.mobilityType > 0.45);
+    if (!canMove) return;
+    const moveFactor = o.strategy === STRATEGY.MOBILE ? 0.28 + (o.roleCounts.move || 0) * 0.045 : 0.18;
+    const waterMobility = mobilityLabel(g) === 'swimming' ? clamp(env.water + 0.2, 0.35, 1.2) : mobilityLabel(g) === 'drifting' ? clamp(env.water + 0.1, 0.2, 1) : 1;
+    const moveProb = clamp(g.movementSpeed * moveFactor * waterMobility * dt * (o.energy > g.energyStorage * 0.12 ? 1 : 0.2), 0, 0.95);
+    if (!chance(moveProb)) return;
+    let bestX = o.x, bestY = o.y, bestScore = habitatScore(g, o.x, o.y, o) + randRange(-0.05, 0.05);
+    const density = env.density;
+    const spreadPush = density > 4 ? randRange(0.8, 1.8) : 0;
+    const samples = 6 + Math.floor(g.avoidance * 3 + g.predation * 2);
+    let targetPrey = null;
+    if (g.predation > 0.55) {
+      const prey = nearbyOrganisms(o, 7).filter(p => p.speciesId !== o.speciesId && p.energy > 3);
+      if (prey.length) targetPrey = prey.sort((a,b)=>Math.hypot(a.x-o.x,a.y-o.y)-Math.hypot(b.x-o.x,b.y-o.y))[0];
+    }
+    for (let s = 0; s < samples; s++) {
+      let angle = randRange(0, Math.PI * 2);
+      if (targetPrey && chance(0.55)) angle = Math.atan2(targetPrey.y - o.y, targetPrey.x - o.x) + randRange(-0.45, 0.45);
+      const dist = randRange(0.8, 2.4 + g.movementSpeed * 1.7 + spreadPush);
+      const nx = o.x + Math.cos(angle) * dist;
+      const ny = o.y + Math.sin(angle) * dist;
+      if (!inBounds(Math.floor(nx), Math.floor(ny))) continue;
+      let score = habitatScore(g, nx, ny, o) + randRange(-0.08, 0.08);
+      if (targetPrey) score += Math.max(0, 1 - Math.hypot(targetPrey.x - nx, targetPrey.y - ny) / 12) * g.predation * 0.6;
+      if (score > bestScore) { bestScore = score; bestX = nx; bestY = ny; }
+    }
+    const dx = bestX - o.x, dy = bestY - o.y, len = Math.hypot(dx, dy) || 1;
+    const step = Math.min(len, g.movementSpeed * (o.strategy === STRATEGY.MOBILE ? 0.28 : 0.37) * dt + 0.12);
+    if (step > 0.02) {
+      o.lastMovedFrom = { x: o.x, y: o.y };
+      o.x = clamp(o.x + dx / len * step, 0.5, W - 1.5);
+      o.y = clamp(o.y + dy / len * step, 0.5, H - 1.5);
+      o.dir = Math.atan2(dy, dx);
+      o.energy -= step * (0.020 + g.size * 0.010 + o.bodyCells.length * 0.004);
+    }
+  },
+
+  handleStaticGrowth(o, env, births, dt, popPressure) {
+    const g = o.genome;
+    if (o.strategy !== STRATEGY.STATIC && !(o.strategy === STRATEGY.SYMBIOTIC && g.mobilityType < 0.48)) return;
+    const target = targetCellCount(g, o.strategy);
+    const good = env.fire < 0.03 && env.moist > 0.18 && env.water < g.waterTolerance + 0.22;
+    if (good && o.bodyCells.length < target && o.energy > g.energyStorage * (0.42 + o.bodyCells.length * 0.06) && o.lastGrow > 10 / Math.max(0.2, g.colonyGrowth)) {
+      const newPlan = buildBodyPlan(g, o.strategy, o.bodyCells.length + 1);
+      o.bodyCells = newPlan;
+      o.roleCounts = roleCounts(newPlan);
+      o.energy -= 2.2 + o.bodyCells.length * 0.25;
+      o.lastGrow = 0;
+      checkEvolutionMilestones(o);
+    }
+    const sporeReady = o.energy > g.energyStorage * (0.82 + o.bodyCells.length * 0.08) && o.lastRepro > 32 / Math.max(0.25, g.reproductionRate) && births.length < 120 && popPressure < 0.995;
+    if (good && sporeReady) {
+      const dist = g.reproductiveStrategy < 0.25 ? randRange(1, 3) : g.reproductiveStrategy < 0.65 ? randRange(4, 12) : randRange(1, 6);
+      const angle = randRange(0, Math.PI * 2);
+      const childGenome = mutateGenome(g, 0.95 + g.bodyPlanMutation * 4);
+      o.energy *= 0.77;
+      o.lastRepro = 0;
+      births.push({ x: o.x + Math.cos(angle) * dist, y: o.y + Math.sin(angle) * dist, genome: childGenome, parentSpecies: o.speciesId, history: `${reproLabel(g)} from static body ${o.speciesId}`, options: { startSmall: true } });
+    }
+  },
+
+  handleReproduction(o, env, births, dt, popPressure) {
+    if ((o.strategy === STRATEGY.STATIC || (o.strategy === STRATEGY.SYMBIOTIC && o.genome.mobilityType < 0.48)) && o.bodyCells.length > 1) return;
+    const g = o.genome;
+    const tempFit = 1 - clamp(Math.abs(env.temp - g.preferredTemp) / g.tempTolerance, 0, 1);
+    const moistureFit = 1 - clamp(Math.abs(env.moist - g.waterPref) / Math.max(0.08, g.waterTolerance), 0, 1);
+    const goodHabitat = tempFit * moistureFit > 0.28 && env.fire < 0.04 && env.water < g.waterTolerance + 0.14;
+    const reproThreshold = g.energyStorage * (0.62 + g.size * 0.08 + o.bodyCells.length * 0.10);
+    if (!goodHabitat || o.energy <= reproThreshold || o.lastRepro <= 22 / Math.max(0.2, g.reproductionRate) || births.length >= 120 || popPressure >= 0.995) return;
+    const wantsMating = g.meiosisDrive * 0.16 + g.reproductiveStrategy * 0.22 + env.density * 0.01;
+    if (chance(clamp(wantsMating, 0.02, 0.52))) {
+      const mates = nearbyOrganisms(o, 6.2).filter(m => m.energy > m.genome.energyStorage * 0.38 && ecologyDistance(g, species.find(s => s.id === m.speciesId) || { average: m.genome, representative: m.genome, dominantStrategy: m.strategy }) < CFG.compatibleThreshold && m.health > 0.42 && (g.kinRecognition < 0.6 || m.speciesId === o.speciesId || genomeDistance(g, m.genome) < 0.2));
+      if (mates.length) {
+        const mate = mates[Math.floor(srand() * mates.length)];
+        const childGenome = recombineGenome(g, mate.genome);
+        o.energy *= 0.72; mate.energy *= 0.85; o.lastRepro = 0; mate.lastRepro = 0;
+        births.push({ x: (o.x + mate.x) * 0.5 + randRange(-1.8, 1.8), y: (o.y + mate.y) * 0.5 + randRange(-1.8, 1.8), genome: childGenome, parentSpecies: o.speciesId, history: `meiosis/mating mix: ${o.speciesId}/${mate.speciesId}`, options: { startSmall: true } });
+        return;
+      }
+    }
+    const childGenome = mutateGenome(g, 1);
+    o.energy *= (o.strategy === STRATEGY.SOLITARY ? 0.55 : 0.68);
+    o.lastRepro = 0;
+    const spread = o.strategy === STRATEGY.MOBILE ? 2.5 : 1.8;
+    births.push({ x: o.x + randRange(-spread, spread), y: o.y + randRange(-spread, spread), genome: childGenome, parentSpecies: o.speciesId, history: `${reproLabel(g)} clone from ${o.speciesId}`, options: { startSmall: true } });
   }
 };
 
 function applyTool(cx, cy, tool, radius, strength) {
-  const r2 = radius * radius;
-  const s = strength / 100;
-  const minX = clamp(Math.floor(cx - radius), 0, W - 1);
-  const maxX = clamp(Math.floor(cx + radius), 0, W - 1);
-  const minY = clamp(Math.floor(cy - radius), 0, H - 1);
-  const maxY = clamp(Math.floor(cy + radius), 0, H - 1);
-  for (let y = minY; y <= maxY; y++) {
-    for (let x = minX; x <= maxX; x++) {
-      const dx = x - cx;
-      const dy = y - cy;
-      const d2 = dx * dx + dy * dy;
-      if (d2 > r2) continue;
-      const falloff = 1 - Math.sqrt(d2) / radius;
-      const amount = s * falloff;
-      const i = idx(x, y);
-      if (tool === 'water') {
-        world.water[i] = clamp(world.water[i] + amount * 0.085, 0, 1.4);
-        world.moisture[i] = clamp(world.moisture[i] + amount * 0.09, 0, 1);
-        world.fire[i] = Math.max(0, world.fire[i] - amount * 0.25);
-      } else if (tool === 'dry') {
-        world.water[i] = clamp(world.water[i] - amount * 0.11, 0, 1.4);
-        world.moisture[i] = clamp(world.moisture[i] - amount * 0.07, 0, 1);
-      } else if (tool === 'fire') {
-        if (world.vegetation[i] > 0.08 && world.water[i] < 0.45) world.fire[i] = clamp(world.fire[i] + amount * 0.55, 0, 1);
-        world.temp[i] = clamp(world.temp[i] + amount * 2.2, -18, 52);
-      } else if (tool === 'heat') {
-        world.baseTemp[i] = clamp(world.baseTemp[i] + amount * 0.75, -18, 52);
-        world.temp[i] = clamp(world.temp[i] + amount * 1.1, -18, 52);
-      } else if (tool === 'cool') {
-        world.baseTemp[i] = clamp(world.baseTemp[i] - amount * 0.75, -18, 52);
-        world.temp[i] = clamp(world.temp[i] - amount * 1.1, -18, 52);
-      } else if (tool === 'fertile') {
-        world.fertility[i] = clamp(world.fertility[i] + amount * 0.06, 0, 1);
-        world.ash[i] = clamp(world.ash[i] + amount * 0.015, 0, 1);
-      } else if (tool === 'barren') {
-        world.fertility[i] = clamp(world.fertility[i] - amount * 0.08, 0, 1);
-        world.vegetation[i] = clamp(world.vegetation[i] - amount * 0.06, 0, 1);
-      } else if (tool === 'barrier') {
-        world.barrier[i] = clamp(world.barrier[i] + amount * 0.08, 0, 0.8);
-        world.water[i] = clamp(world.water[i] - amount * 0.025, 0, 1.4);
-      } else if (tool === 'lower') {
-        world.barrier[i] = clamp(world.barrier[i] - amount * 0.09, -0.35, 0.8);
-        world.elevation[i] = clamp(world.elevation[i] - amount * 0.006, 0, 1);
-      } else if (tool === 'life' && chance(0.0025 * amount)) {
-        makeOrganism(x + randRange(-0.2, 0.2), y + randRange(-0.2, 0.2), randomGenome(x, y), null, 'player seeded');
-      }
-      world.biome[i] = biomeAt(i);
-    }
+  const r2 = radius * radius, s = strength / 100;
+  const minX = clamp(Math.floor(cx - radius), 0, W - 1), maxX = clamp(Math.floor(cx + radius), 0, W - 1);
+  const minY = clamp(Math.floor(cy - radius), 0, H - 1), maxY = clamp(Math.floor(cy + radius), 0, H - 1);
+  for (let y = minY; y <= maxY; y++) for (let x = minX; x <= maxX; x++) {
+    const dx = x - cx, dy = y - cy, d2 = dx*dx + dy*dy;
+    if (d2 > r2) continue;
+    const falloff = 1 - Math.sqrt(d2) / radius, amount = s * falloff, i = idx(x, y);
+    if (tool === 'water') { world.water[i] = clamp(world.water[i] + amount * 0.085, 0, 1.4); world.moisture[i] = clamp(world.moisture[i] + amount * 0.09, 0, 1); world.fire[i] = Math.max(0, world.fire[i] - amount * 0.25); }
+    else if (tool === 'dry') { world.water[i] = clamp(world.water[i] - amount * 0.11, 0, 1.4); world.moisture[i] = clamp(world.moisture[i] - amount * 0.07, 0, 1); }
+    else if (tool === 'fire') { if (world.vegetation[i] > 0.08 || world.staticCover[i] > 0.5) world.fire[i] = clamp(world.fire[i] + amount * 0.55, 0, 1); world.temp[i] = clamp(world.temp[i] + amount * 2.2, -18, 52); }
+    else if (tool === 'heat') { world.baseTemp[i] = clamp(world.baseTemp[i] + amount * 0.75, -18, 52); world.temp[i] = clamp(world.temp[i] + amount * 1.1, -18, 52); }
+    else if (tool === 'cool') { world.baseTemp[i] = clamp(world.baseTemp[i] - amount * 0.75, -18, 52); world.temp[i] = clamp(world.temp[i] - amount * 1.1, -18, 52); }
+    else if (tool === 'fertile') { world.fertility[i] = clamp(world.fertility[i] + amount * 0.06, 0, 1); world.ash[i] = clamp(world.ash[i] + amount * 0.015, 0, 1); }
+    else if (tool === 'barren') { world.fertility[i] = clamp(world.fertility[i] - amount * 0.08, 0, 1); world.vegetation[i] = clamp(world.vegetation[i] - amount * 0.06, 0, 1); }
+    else if (tool === 'barrier') { world.barrier[i] = clamp(world.barrier[i] + amount * 0.08, 0, 0.8); world.water[i] = clamp(world.water[i] - amount * 0.025, 0, 1.4); }
+    else if (tool === 'lower') { world.barrier[i] = clamp(world.barrier[i] - amount * 0.09, -0.35, 0.8); world.elevation[i] = clamp(world.elevation[i] - amount * 0.006, 0, 1); }
+    else if (tool === 'life' && chance(0.0025 * amount)) { makeOrganism(x + randRange(-0.2, 0.2), y + randRange(-0.2, 0.2), randomGenome(x, y), null, 'player seeded', { startSmall: true }); }
+    world.biome[i] = biomeAt(i);
   }
 }
 
-function worldToScreen(wx, wy) {
-  return { x: (wx - camera.x) * camera.zoom + canvas.width / 2, y: (wy - camera.y) * camera.zoom + canvas.height / 2 };
-}
-function screenToWorld(sx, sy) {
-  return { x: (sx - canvas.width / 2) / camera.zoom + camera.x, y: (sy - canvas.height / 2) / camera.zoom + camera.y };
-}
+function worldToScreen(wx, wy) { return { x: (wx - camera.x) * camera.zoom + canvas.width / devicePixelRatio / 2, y: (wy - camera.y) * camera.zoom + canvas.height / devicePixelRatio / 2 }; }
+function screenToWorld(sx, sy) { return { x: (sx - canvas.width / devicePixelRatio / 2) / camera.zoom + camera.x, y: (sy - canvas.height / devicePixelRatio / 2) / camera.zoom + camera.y }; }
 function resize() {
   canvas.width = Math.floor(window.innerWidth * devicePixelRatio);
   canvas.height = Math.floor(window.innerHeight * devicePixelRatio);
@@ -1012,244 +1251,223 @@ window.addEventListener('resize', resize);
 function tileColor(i) {
   if (viewMode === 'temp') {
     const t = clamp((world.temp[i] + 14) / 62, 0, 1);
-    const r = Math.round(40 + t * 210);
-    const g = Math.round(80 + Math.sin(t * Math.PI) * 95);
-    const b = Math.round(175 - t * 145);
-    return [r, g, b];
+    return [Math.round(40 + t * 210), Math.round(80 + Math.sin(t * Math.PI) * 95), Math.round(175 - t * 145)];
   }
-  if (viewMode === 'moist') {
-    const m = world.moisture[i];
-    return [Math.round(62 - m * 30), Math.round(74 + m * 92), Math.round(78 + m * 142)];
-  }
-  if (viewMode === 'fert') {
-    const f = world.fertility[i];
-    return [Math.round(62 + f * 75), Math.round(64 + f * 130), Math.round(50 + f * 35)];
-  }
-  const b = world.biome[i];
-  const base = baseBiomeColors[b];
-  const veg = world.vegetation[i];
-  const water = world.water[i];
-  const fire = world.fire[i];
-  const elevShade = (world.elevation[i] + world.barrier[i]) * 30 - 10;
+  if (viewMode === 'moist') { const m = world.moisture[i]; return [Math.round(62 - m * 30), Math.round(74 + m * 92), Math.round(78 + m * 142)]; }
+  if (viewMode === 'fert') { const f = world.fertility[i]; return [Math.round(62 + f * 75), Math.round(64 + f * 130), Math.round(50 + f * 35)]; }
+  const base = baseBiomeColors[world.biome[i]], veg = world.vegetation[i], water = world.water[i], fire = world.fire[i], elevShade = (world.elevation[i] + world.barrier[i]) * 30 - 10;
   if (fire > 0.05) return [Math.round(190 + fire * 65), Math.round(52 + fire * 78), Math.round(15 + fire * 30)];
-  return [
-    clamp(Math.round(base[0] + veg * 10 - water * 6 + elevShade), 0, 255),
-    clamp(Math.round(base[1] + veg * 25 + world.fertility[i] * 10 + elevShade * 0.4), 0, 255),
-    clamp(Math.round(base[2] + water * 30 - veg * 4 + elevShade * 0.15), 0, 255)
-  ];
+  return [clamp(Math.round(base[0] + veg * 10 - water * 6 + elevShade),0,255), clamp(Math.round(base[1] + veg * 25 + world.fertility[i] * 10 + elevShade * 0.4),0,255), clamp(Math.round(base[2] + water * 30 - veg * 4 + elevShade * 0.15),0,255)];
 }
 
 const renderBuffer = document.createElement('canvas');
-renderBuffer.width = W;
-renderBuffer.height = H;
+renderBuffer.width = W; renderBuffer.height = H;
 const renderBufferCtx = renderBuffer.getContext('2d');
 const imageData = renderBufferCtx.createImageData(W, H);
 let terrainDirty = true;
-
 function updateTerrainTexture() {
   const data = imageData.data;
-  for (let i = 0; i < N; i++) {
-    const c = tileColor(i);
-    const p = i * 4;
-    data[p] = c[0];
-    data[p + 1] = c[1];
-    data[p + 2] = c[2];
-    data[p + 3] = 255;
+  for (let i = 0; i < N; i++) { const c = tileColor(i), p = i*4; data[p]=c[0]; data[p+1]=c[1]; data[p+2]=c[2]; data[p+3]=255; }
+  renderBufferCtx.putImageData(imageData, 0, 0); terrainDirty = false;
+}
+
+function drawOverlay(cssW, cssH, minX, maxX, minY, maxY) {
+  if (overlayMode === 'none') return;
+  ctx.save();
+  if (overlayMode === 'static' || overlayMode === 'mobile' || overlayMode === 'predator' || overlayMode === 'decomp' || overlayMode === 'extinction' || overlayMode === 'symbiosis') {
+    const source = overlayMode === 'static' ? world.staticCover : overlayMode === 'mobile' ? world.mobileTrail : overlayMode === 'predator' ? world.predatorHeat : overlayMode === 'decomp' ? world.decompHeat : overlayMode === 'extinction' ? world.deathHeat : world.symbiosisHeat;
+    const color = overlayMode === 'static' ? [140,255,155] : overlayMode === 'mobile' ? [120,190,255] : overlayMode === 'predator' ? [255,80,70] : overlayMode === 'decomp' ? [190,120,255] : overlayMode === 'extinction' ? [235,235,235] : [255,210,90];
+    for (let y=minY; y<=maxY; y++) for (let x=minX; x<=maxX; x++) {
+      const i = idx(x,y), v = clamp(source[i] / (overlayMode === 'static' ? 5 : 1), 0, 1);
+      if (v < 0.03) continue;
+      const p = worldToScreen(x,y);
+      ctx.fillStyle = `rgba(${color[0]},${color[1]},${color[2]},${0.08 + v*0.42})`;
+      ctx.fillRect(p.x, p.y, camera.zoom+0.5, camera.zoom+0.5);
+    }
   }
-  renderBufferCtx.putImageData(imageData, 0, 0);
-  terrainDirty = false;
+  if (overlayMode === 'species' || overlayMode === 'lineage') {
+    for (const o of organisms) {
+      const p = worldToScreen(o.x, o.y); if (p.x < -30 || p.y < -30 || p.x > cssW + 30 || p.y > cssH + 30) continue;
+      const sp = species.find(s=>s.id===o.speciesId); const h = overlayMode === 'lineage' && sp?.ancestor ? (species.find(a=>a.id===sp.ancestor)?.hue || sp.hue) : (sp?.hue || o.genome.hue);
+      ctx.fillStyle = hsla(h, 85, overlayMode === 'lineage' ? 68 : 56, 0.22);
+      ctx.fillRect(p.x - camera.zoom * 1.5, p.y - camera.zoom * 1.5, camera.zoom * 3, camera.zoom * 3);
+    }
+  }
+  if (overlayMode === 'food') {
+    ctx.lineWidth = 1;
+    for (const o of organisms) if (o.genome.predation > 0.55 && chance(0.12)) {
+      const prey = nearbyOrganisms(o, 8).filter(p=>p.speciesId!==o.speciesId && p.energy>2)[0];
+      if (!prey) continue;
+      const a=worldToScreen(o.x,o.y), b=worldToScreen(prey.x,prey.y);
+      ctx.strokeStyle='rgba(255,100,80,0.32)'; ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    }
+  }
+  if (overlayMode === 'symbiosis') {
+    ctx.lineWidth = 1.5;
+    for (const o of organisms) if (o.symbiosis.partnerId && o.id < o.symbiosis.partnerId) {
+      const p2 = organisms.find(p=>p.id===o.symbiosis.partnerId); if (!p2) continue;
+      const a=worldToScreen(o.x,o.y), b=worldToScreen(p2.x,p2.y);
+      ctx.strokeStyle = o.symbiosis.kind === 'parasitism' ? 'rgba(255,70,90,0.55)' : 'rgba(255,220,90,0.55)';
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function roleHue(org, role, spHue) {
+  if (role === 'photo') return 112;
+  if (role === 'root') return 52;
+  if (role === 'move') return 200;
+  if (role === 'feed') return org.genome.predation > 0.55 ? 8 : 92;
+  if (role === 'store') return wrapHue(spHue + 24);
+  if (role === 'repro') return 316;
+  if (role === 'protect') return 215;
+  if (role === 'partner') return wrapHue(spHue + 120);
+  if (role === 'parasite') return 350;
+  return spHue;
+}
+function renderOrganism(o, cssW, cssH) {
+  const g = o.genome, sp = species.find(s => s.id === o.speciesId), spHue = sp ? sp.hue : g.hue;
+  const energyRatio = clamp(o.energy / Math.max(1, g.energyStorage * (0.9 + o.bodyCells.length * 0.35)), 0, 1);
+  const baseSize = clamp(camera.zoom * (0.52 + g.size * 0.22), 2, 11);
+  const selectedOrg = selected.type === 'organism' && selected.organismId === o.id;
+  const strategy = o.strategy;
+  for (const c of o.bodyCells) {
+    const px = o.x + c.dx, py = o.y + c.dy, p = worldToScreen(px, py);
+    if (p.x < -20 || p.y < -20 || p.x > cssW + 20 || p.y > cssH + 20) continue;
+    const hue = roleHue(o, c.role, spHue);
+    const sat = strategy === STRATEGY.SYMBIOTIC ? 72 : strategy === STRATEGY.STATIC ? 62 : 68;
+    const light = 25 + energyRatio * 30 + o.health * 18 + (c.role === 'protect' ? 8 : 0);
+    ctx.fillStyle = hsl(hue, sat, light);
+    ctx.fillRect(p.x - baseSize/2, p.y - baseSize/2, baseSize, baseSize);
+    if (camera.zoom > 4.2) {
+      ctx.strokeStyle = strategy === STRATEGY.MOBILE ? 'rgba(230,245,255,0.38)' : strategy === STRATEGY.STATIC ? 'rgba(0,0,0,0.36)' : strategy === STRATEGY.SYMBIOTIC ? 'rgba(255,230,130,0.50)' : 'rgba(0,0,0,0.42)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(p.x - baseSize/2, p.y - baseSize/2, baseSize, baseSize);
+      if (c.role === 'partner' || c.role === 'parasite') {
+        ctx.fillStyle = c.role === 'parasite' ? 'rgba(0,0,0,0.45)' : 'rgba(255,255,255,0.35)';
+        ctx.fillRect(p.x - baseSize*0.22, p.y - baseSize*0.22, baseSize*0.44, baseSize*0.44);
+      }
+    }
+  }
+  if (camera.zoom > 4.8 && strategy === STRATEGY.MOBILE) {
+    const nose = worldToScreen(o.x + Math.cos(o.dir) * 0.85, o.y + Math.sin(o.dir) * 0.85);
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'; ctx.fillRect(nose.x - 1.5, nose.y - 1.5, 3, 3);
+  }
+  if (selectedOrg) {
+    const p = worldToScreen(o.x, o.y), r = Math.max(8, baseSize * (1.8 + Math.sqrt(o.bodyCells.length) * 0.5));
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 2; ctx.strokeRect(p.x - r, p.y - r, r*2, r*2);
+  }
 }
 
 function render() {
-  const cssW = canvas.width / devicePixelRatio;
-  const cssH = canvas.height / devicePixelRatio;
-  ctx.save();
-  ctx.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
-  ctx.fillStyle = '#090d12';
-  ctx.fillRect(0, 0, cssW, cssH);
-
+  const cssW = canvas.width / devicePixelRatio, cssH = canvas.height / devicePixelRatio;
+  ctx.save(); ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+  ctx.fillStyle = '#090d12'; ctx.fillRect(0,0,cssW,cssH);
   if (terrainDirty || frameCounter % 10 === 0) updateTerrainTexture();
   const topLeft = worldToScreen(0, 0);
   ctx.imageSmoothingEnabled = camera.zoom < 3;
-  ctx.drawImage(renderBuffer, topLeft.x, topLeft.y, W * camera.zoom, H * camera.zoom);
-
-  // Organic overlay for water shimmer and fire glow.
-  const minX = clamp(Math.floor(camera.x - cssW / camera.zoom / 2 - 2), 0, W - 1);
-  const maxX = clamp(Math.ceil(camera.x + cssW / camera.zoom / 2 + 2), 0, W - 1);
-  const minY = clamp(Math.floor(camera.y - cssH / camera.zoom / 2 - 2), 0, H - 1);
-  const maxY = clamp(Math.ceil(camera.y + cssH / camera.zoom / 2 + 2), 0, H - 1);
-  if (camera.zoom > 3.2) {
-    for (let y = minY; y <= maxY; y++) {
-      for (let x = minX; x <= maxX; x++) {
-        const i = idx(x, y);
-        if (world.water[i] > 0.45) {
-          const p = worldToScreen(x, y);
-          const shimmer = 0.15 + Math.sin((x * 2.2 + y * 1.7 + simTime * 0.06)) * 0.07;
-          ctx.fillStyle = `rgba(130, 210, 255, ${shimmer * clamp(world.water[i], 0, 1)})`;
-          ctx.fillRect(p.x, p.y, camera.zoom + 0.5, camera.zoom + 0.5);
-        }
-        if (world.fire[i] > 0.04) {
-          const p = worldToScreen(x, y);
-          ctx.fillStyle = `rgba(255, 130, 30, ${clamp(world.fire[i] * 0.55, 0, 0.7)})`;
-          ctx.fillRect(p.x - camera.zoom * 0.15, p.y - camera.zoom * 0.15, camera.zoom * 1.3, camera.zoom * 1.3);
-        }
-      }
-    }
+  ctx.drawImage(renderBuffer, topLeft.x, topLeft.y, W*camera.zoom, H*camera.zoom);
+  const minX = clamp(Math.floor(camera.x - cssW / camera.zoom / 2 - 2), 0, W - 1), maxX = clamp(Math.ceil(camera.x + cssW / camera.zoom / 2 + 2), 0, W - 1);
+  const minY = clamp(Math.floor(camera.y - cssH / camera.zoom / 2 - 2), 0, H - 1), maxY = clamp(Math.ceil(camera.y + cssH / camera.zoom / 2 + 2), 0, H - 1);
+  if (camera.zoom > 3.2) for (let y=minY; y<=maxY; y++) for (let x=minX; x<=maxX; x++) {
+    const i = idx(x,y);
+    if (world.water[i] > 0.45) { const p=worldToScreen(x,y), shimmer=0.15 + Math.sin((x*2.2+y*1.7+simTime*0.06))*0.07; ctx.fillStyle=`rgba(130,210,255,${shimmer*clamp(world.water[i],0,1)})`; ctx.fillRect(p.x,p.y,camera.zoom+0.5,camera.zoom+0.5); }
+    if (world.fire[i] > 0.04) { const p=worldToScreen(x,y); ctx.fillStyle=`rgba(255,130,30,${clamp(world.fire[i]*0.55,0,0.7)})`; ctx.fillRect(p.x-camera.zoom*0.15,p.y-camera.zoom*0.15,camera.zoom*1.3,camera.zoom*1.3); }
   }
-
-  // Organisms: always abstract squares.
+  drawOverlay(cssW, cssH, minX, maxX, minY, maxY);
   ctx.imageSmoothingEnabled = false;
-  for (const o of organisms) {
-    const p = worldToScreen(o.x, o.y);
-    if (p.x < -20 || p.y < -20 || p.x > cssW + 20 || p.y > cssH + 20) continue;
-    const g = o.genome;
-    const sp = species.find(s => s.id === o.speciesId);
-    const energyRatio = clamp(o.energy / g.energyStorage, 0, 1);
-    const size = clamp(camera.zoom * (0.52 + g.size * 0.35), 2, 12);
-    const light = 30 + energyRatio * 30 + o.health * 18;
-    ctx.fillStyle = hsl(sp ? sp.hue : g.hue, 65, light);
-    ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size);
-    if (camera.zoom > 5.2) {
-      ctx.strokeStyle = `rgba(0,0,0,${0.35 + o.hunger * 0.35})`;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(p.x - size / 2, p.y - size / 2, size, size);
-      if (g.photosynthesis > g.decomposition && g.photosynthesis > g.feeding) {
-        ctx.fillStyle = 'rgba(255,255,255,0.28)';
-        ctx.fillRect(p.x - size * 0.18, p.y - size * 0.18, size * 0.36, size * 0.36);
-      } else if (g.decomposition > g.feeding) {
-        ctx.fillStyle = 'rgba(0,0,0,0.35)';
-        ctx.fillRect(p.x - size * 0.32, p.y - size * 0.32, size * 0.64, size * 0.22);
-      }
-    }
-    if (selected.type === 'organism' && selected.organismId === o.id) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.95)';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(p.x - size / 2 - 4, p.y - size / 2 - 4, size + 8, size + 8);
-    }
-  }
-
-  // Brush outline.
-  const wp = worldToScreen(mouse.tileX, mouse.tileY);
-  const radius = Number(ui.brush.value) * camera.zoom;
-  ctx.strokeStyle = activeTool === 'fire' ? 'rgba(255,120,70,0.75)' : 'rgba(255,255,255,0.55)';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.arc(wp.x, wp.y, radius, 0, Math.PI * 2);
-  ctx.stroke();
-
+  const visible = organisms.slice().sort((a,b)=>a.bodyCells.length-b.bodyCells.length);
+  for (const o of visible) renderOrganism(o, cssW, cssH);
+  const wp = worldToScreen(mouse.tileX, mouse.tileY), radius = Number(ui.brush.value) * camera.zoom;
+  ctx.strokeStyle = activeTool === 'fire' ? 'rgba(255,120,70,0.75)' : 'rgba(255,255,255,0.55)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(wp.x, wp.y, radius, 0, Math.PI*2); ctx.stroke();
   ctx.restore();
 }
 
 function renderMinimap() {
   const img = miniCtx.createImageData(200, 200);
-  for (let py = 0; py < 200; py++) {
-    for (let px = 0; px < 200; px++) {
-      const x = Math.floor(px / 200 * W);
-      const y = Math.floor(py / 200 * H);
-      const c = tileColor(idx(x, y));
-      const p = (py * 200 + px) * 4;
-      img.data[p] = c[0]; img.data[p + 1] = c[1]; img.data[p + 2] = c[2]; img.data[p + 3] = 255;
-    }
+  for (let py=0; py<200; py++) for (let px=0; px<200; px++) {
+    const x = Math.floor(px/200*W), y = Math.floor(py/200*H), c = tileColor(idx(x,y)), p = (py*200+px)*4;
+    img.data[p]=c[0]; img.data[p+1]=c[1]; img.data[p+2]=c[2]; img.data[p+3]=255;
   }
-  miniCtx.putImageData(img, 0, 0);
-  miniCtx.strokeStyle = 'rgba(255,255,255,0.9)';
-  miniCtx.lineWidth = 1;
-  const cssW = canvas.width / devicePixelRatio;
-  const cssH = canvas.height / devicePixelRatio;
-  const vx = (camera.x - cssW / camera.zoom / 2) / W * 200;
-  const vy = (camera.y - cssH / camera.zoom / 2) / H * 200;
-  const vw = cssW / camera.zoom / W * 200;
-  const vh = cssH / camera.zoom / H * 200;
-  miniCtx.strokeRect(vx, vy, vw, vh);
-
-  for (const o of organisms) {
-    if (chance(0.09)) {
-      miniCtx.fillStyle = 'rgba(255,255,255,0.9)';
-      miniCtx.fillRect(Math.floor(o.x / W * 200), Math.floor(o.y / H * 200), 1, 1);
-    }
-  }
+  miniCtx.putImageData(img,0,0);
+  for (const o of organisms) if (chance(0.12)) { const sp = species.find(s=>s.id===o.speciesId); miniCtx.fillStyle = hsl(sp?sp.hue:o.genome.hue,70,70); miniCtx.fillRect(Math.floor(o.x/W*200), Math.floor(o.y/H*200), 1.2, 1.2); }
+  miniCtx.strokeStyle='rgba(255,255,255,0.9)'; miniCtx.lineWidth=1;
+  const cssW=canvas.width/devicePixelRatio, cssH=canvas.height/devicePixelRatio;
+  miniCtx.strokeRect((camera.x-cssW/camera.zoom/2)/W*200, (camera.y-cssH/camera.zoom/2)/H*200, cssW/camera.zoom/W*200, cssH/camera.zoom/H*200);
 }
-
 function renderChart() {
-  const w = chartCanvas.width;
-  const h = chartCanvas.height;
-  chartCtx.clearRect(0, 0, w, h);
-  chartCtx.fillStyle = 'rgba(0,0,0,0.16)';
-  chartCtx.fillRect(0, 0, w, h);
-  chartCtx.strokeStyle = 'rgba(255,255,255,0.08)';
-  chartCtx.lineWidth = 1;
-  for (let y = 20; y < h; y += 25) { chartCtx.beginPath(); chartCtx.moveTo(0, y); chartCtx.lineTo(w, y); chartCtx.stroke(); }
-
-  const lines = [
-    { key: 'pop', max: CFG.maxOrganisms, color: 'rgba(139,211,255,0.95)' },
-    { key: 'diversity', max: 42, color: 'rgba(255,213,107,0.92)' },
-    { key: 'moisture', max: 1, color: 'rgba(90,170,255,0.78)' },
-    { key: 'temp', max: 42, min: -12, color: 'rgba(255,110,90,0.78)' }
-  ];
-  for (const line of lines) {
-    const arr = graph[line.key];
-    if (arr.length < 2) continue;
-    chartCtx.strokeStyle = line.color;
-    chartCtx.lineWidth = 1.5;
-    chartCtx.beginPath();
-    arr.forEach((v, j) => {
-      const x = j / (CFG.graphMax - 1) * w;
-      const min = line.min || 0;
-      const y = h - clamp((v - min) / (line.max - min), 0, 1) * (h - 10) - 5;
-      if (j === 0) chartCtx.moveTo(x, y); else chartCtx.lineTo(x, y);
-    });
-    chartCtx.stroke();
-  }
+  const w=chartCanvas.width, h=chartCanvas.height;
+  chartCtx.clearRect(0,0,w,h); chartCtx.fillStyle='rgba(0,0,0,0.16)'; chartCtx.fillRect(0,0,w,h);
+  chartCtx.strokeStyle='rgba(255,255,255,0.08)'; chartCtx.lineWidth=1; for (let y=20;y<h;y+=25){ chartCtx.beginPath(); chartCtx.moveTo(0,y); chartCtx.lineTo(w,y); chartCtx.stroke(); }
+  const lines=[{key:'pop',max:CFG.maxOrganisms,color:'rgba(139,211,255,0.95)'},{key:'diversity',max:42,color:'rgba(255,213,107,0.92)'},{key:'moisture',max:1,color:'rgba(90,170,255,0.78)'},{key:'temp',max:42,min:-12,color:'rgba(255,110,90,0.78)'}];
+  for (const line of lines) { const arr=graph[line.key]; if (arr.length<2) continue; chartCtx.strokeStyle=line.color; chartCtx.lineWidth=1.5; chartCtx.beginPath(); arr.forEach((v,j)=>{ const x=j/(CFG.graphMax-1)*w, min=line.min||0, y=h-clamp((v-min)/(line.max-min),0,1)*(h-10)-5; if(j===0) chartCtx.moveTo(x,y); else chartCtx.lineTo(x,y); }); chartCtx.stroke(); }
+}
+function updateGraph() {
+  let m=0,t=0; for (let k=0;k<900;k++){ const i=Math.floor(srand()*N); m+=world.moisture[i]; t+=world.temp[i]; }
+  const aliveSpecies=species.filter(s=>s.population>0).length;
+  graph.pop.push(organisms.length); graph.species.push(aliveSpecies); graph.diversity.push(aliveSpecies); graph.moisture.push(m/900); graph.temp.push(t/900);
+  for (const key of Object.keys(graph)) while (graph[key].length>CFG.graphMax) graph[key].shift();
 }
 
-function updateGraph() {
-  let m = 0;
-  let t = 0;
-  for (let k = 0; k < 900; k++) {
-    const i = Math.floor(srand() * N);
-    m += world.moisture[i];
-    t += world.temp[i];
-  }
-  const aliveSpecies = species.filter(s => s.population > 0).length;
-  graph.pop.push(organisms.length);
-  graph.species.push(aliveSpecies);
-  graph.diversity.push(aliveSpecies);
-  graph.moisture.push(m / 900);
-  graph.temp.push(t / 900);
-  for (const key of Object.keys(graph)) while (graph[key].length > CFG.graphMax) graph[key].shift();
+function cellRoleSummary(o) {
+  return Object.entries(o.roleCounts).map(([k,v]) => `${roleNames[k] || k}: ${v}`).join(', ') || 'unspecialized';
+}
+function energySources(g) {
+  const arr=[]; if(g.photosynthesis>0.25) arr.push(`light/moisture ${fmt(g.photosynthesis,2)}`); if(g.grazing>0.25) arr.push(`grazing ${fmt(g.grazing,2)}`); if(g.predation>0.35) arr.push(`predation ${fmt(g.predation,2)}`); if(g.decomposition>0.35) arr.push(`decomposition ${fmt(g.decomposition,2)}`); if(g.symbiosisOpen>0.5) arr.push('partner exchange'); return arr.join(', ') || 'weak generalist uptake';
+}
+function survivalAdvantages(o) {
+  const g=o.genome, a=[]; if(g.droughtResistance>0.65) a.push('drought resistance'); if(g.fireResistance>0.55) a.push('fire tolerance'); if(g.structuralStrength>0.7) a.push('strong structure'); if(g.movementSpeed>0.9 && (o.strategy===STRATEGY.MOBILE || o.strategy===STRATEGY.SOLITARY)) a.push('migration'); if(g.photosynthesis>0.7) a.push('efficient photosynthesis'); if(g.predation>0.65) a.push('hunting'); if(g.decomposition>0.7) a.push('dead-zone recovery'); if(o.symbiosis.partnerId) a.push(`${o.symbiosis.kind} with partner`); return a.join(', ') || 'balanced generalist traits';
+}
+function survivalWeaknesses(o) {
+  const g=o.genome, a=[]; if(g.tempTolerance<8) a.push('narrow temperature range'); if(g.droughtResistance<0.25) a.push('dryness'); if(g.fireResistance<0.18) a.push('fire'); if(o.strategy===STRATEGY.STATIC) a.push('cannot escape disasters'); if(o.strategy===STRATEGY.MOBILE && g.metabolism>1.1) a.push('high movement cost'); if(g.symbiosisDependency>0.55 && !o.symbiosis.partnerId) a.push('missing required partner'); if(g.predation>0.55) a.push('depends on prey density'); return a.join(', ') || 'no extreme weakness yet';
+}
+function dependencyLabel(o) {
+  if (!o.symbiosis.partnerId) return o.genome.symbiosisDependency > 0.5 ? 'needs partner but currently alone' : 'low dependency';
+  const partner = organisms.find(p=>p.id===o.symbiosis.partnerId);
+  const sp = partner ? species.find(s=>s.id===partner.speciesId) : null;
+  return `${o.symbiosis.kind} with ${sp ? sp.label : 'unknown partner'} (${fmt(o.symbiosis.strength,2)})`;
 }
 
 function inspectHTML() {
   if (selected.type === 'organism') {
     const o = organisms.find(v => v.id === selected.organismId);
     if (!o) { selected.type = 'none'; return '<b>Nothing selected</b><span>Click a square cell or terrain tile.</span>'; }
-    const g = o.genome;
-    const sp = species.find(s => s.id === o.speciesId);
+    const g = o.genome, sp = species.find(s => s.id === o.speciesId), env = footprintAverages(o);
     return `
-      <span>Selection</span><b>Square cell #${o.id}</b>
+      <span>Selection</span><b>Organism #${o.id}</b>
+      <span>Level</span><b>${o.bodyCells.length === 1 ? 'cell' : 'organism'} · ${o.bodyCells.length} square cells</b>
+      <span>Life strategy</span><b>${o.strategy}</b>
       <span>Species</span><b>${sp ? sp.label : 'Unknown'}</b>
-      <span>Energy</span><b>${fmt(o.energy,1)} / ${fmt(g.energyStorage,1)}</b>
+      <span>Body plan</span><b>${escapeHTML(o.bodyPlan)}</b>
+      <span>Cell roles</span><b>${escapeHTML(cellRoleSummary(o))}</b>
+      <span>Energy</span><b>${fmt(o.energy,1)}</b>
       <span>Health</span><b>${fmt(o.health * 100,0)}%</b>
       <span>Age</span><b>${fmt(o.age,0)} / ${fmt(g.lifespan,0)}</b>
-      <span>Feeding mode</span><b>${feedingLabel(g)}</b>
+      <span>Energy sources</span><b>${escapeHTML(energySources(g))}</b>
+      <span>Dependencies</span><b>${escapeHTML(dependencyLabel(o))}</b>
+      <span>Advantages</span><b>${escapeHTML(survivalAdvantages(o))}</b>
+      <span>Weaknesses</span><b>${escapeHTML(survivalWeaknesses(o))}</b>
+      <span>Parent lineage</span><b>${o.parentLineage ? 'S-' + String(o.parentLineage).padStart(3,'0') : 'ancestor/unknown'}</b>
+      <span>Speciation pressure</span><b>${o.evolvingScore > CFG.speciesThreshold * 0.82 ? 'high: drifting toward new species' : 'low/moderate'} (${fmt(o.evolvingScore,3)})</b>
+      <span>Local ecosystem</span><b>${biomeNames[world.biome[env.cells[0].i]]}, density ${fmt(env.density,1)}, fire ${fmt(env.fire,2)}</b>
       <span>Preferred temp</span><b>${fmt(g.preferredTemp,1)}°C ±${fmt(g.tempTolerance,1)}</b>
       <span>Water preference</span><b>${fmt(g.waterPref,2)} / tol ${fmt(g.waterTolerance,2)}</b>
-      <span>Drought resistance</span><b>${fmt(g.droughtResistance,2)}</b>
-      <span>Fire resistance</span><b>${fmt(g.fireResistance,2)}</b>
-      <span>Metabolism</span><b>${fmt(g.metabolism,2)}</b>
-      <span>Move speed</span><b>${fmt(g.movementSpeed,2)}</b>
-      <span>Reproduction rate</span><b>${fmt(g.reproductionRate,2)}</b>
-      <span>Mutation rate</span><b>${fmt(g.mutationRate,3)}</b>
-      <span>Mitosis/meiosis</span><b>${fmt(1 - g.meiosisDrive,2)} / ${fmt(g.meiosisDrive,2)}</b>
-      <span>Size gene</span><b>${fmt(g.size,2)}</b>
+      <span>Mobility type</span><b>${mobilityLabel(g)}</b>
+      <span>Reproduction</span><b>${reproLabel(g)} · meiosis ${fmt(g.meiosisDrive,2)}</b>
+      <span>Adhesion / colony</span><b>${fmt(g.adhesion,2)} / ${fmt(g.colonyGrowth,2)}</b>
+      <span>Specialization</span><b>${fmt(g.specialization,2)}</b>
+      <span>Structure</span><b>${fmt(g.structuralStrength,2)}</b>
       <span>Photosynthesis</span><b>${fmt(g.photosynthesis,2)}</b>
+      <span>Grazing / predation</span><b>${fmt(g.grazing,2)} / ${fmt(g.predation,2)}</b>
       <span>Decomposition</span><b>${fmt(g.decomposition,2)}</b>
-      <span>Aggression</span><b>${fmt(g.aggression,2)}</b>
-      <span>Mutation history</span><b>${o.mutationHistory}</b>`;
+      <span>Symbiosis open/dep.</span><b>${fmt(g.symbiosisOpen,2)} / ${fmt(g.symbiosisDependency,2)}</b>
+      <span>Cooperate / cheat</span><b>${fmt(g.cooperation,2)} / ${fmt(g.cheating,2)}</b>
+      <span>Kin recognition</span><b>${fmt(g.kinRecognition,2)}</b>
+      <span>Body plan mutation</span><b>${fmt(g.bodyPlanMutation,3)}</b>
+      <span>Mutation history</span><b>${escapeHTML(o.mutationHistory)}</b>`;
   }
-  const x = clamp(selected.tileX || mouse.tileX, 0, W - 1);
-  const y = clamp(selected.tileY || mouse.tileY, 0, H - 1);
-  const i = idx(x, y);
+  const x = clamp(selected.tileX || mouse.tileX, 0, W - 1), y = clamp(selected.tileY || mouse.tileY, 0, H - 1), i = idx(x, y);
   return `
     <span>Selection</span><b>Tile ${x}, ${y}</b>
     <span>Biome</span><b>${biomeNames[world.biome[i]]}</b>
@@ -1261,211 +1479,126 @@ function inspectHTML() {
     <span>Fire</span><b>${fmt(world.fire[i],2)}</b>
     <span>Ash / nutrients</span><b>${fmt(world.ash[i],2)}</b>
     <span>Elevation</span><b>${fmt(world.elevation[i] + world.barrier[i],2)}</b>
-    <span>Local cells</span><b>${world.occupancy[i] || 0}</b>`;
+    <span>Living cell cover</span><b>${world.occupancy[i] || 0}</b>
+    <span>Static coverage</span><b>${fmt(world.staticCover[i],1)}</b>
+    <span>Migration trail</span><b>${fmt(world.mobileTrail[i],2)}</b>
+    <span>Predator hotspot</span><b>${fmt(world.predatorHeat[i],2)}</b>
+    <span>Decomposer bloom</span><b>${fmt(world.decompHeat[i],2)}</b>
+    <span>Extinction signal</span><b>${fmt(world.deathHeat[i],2)}</b>`;
 }
-
 function updateSpeciesList() {
-  const alive = [...species].sort((a, b) => b.population - a.population).slice(0, 16);
-  ui.speciesList.innerHTML = alive.map(s => {
-    const extinct = s.population === 0;
-    const age = Math.floor((s.extinctAt || simTime) - s.created);
-    const pct = clamp(s.population / Math.max(1, organisms.length), 0, 1) * 100;
+  const alive = [...species].sort((a,b)=>b.population-a.population).slice(0,18);
+  ui.speciesList.innerHTML = alive.map(s=>{
+    const extinct=s.population===0, age=Math.floor((s.extinctAt||simTime)-s.created), pct=clamp(s.population/Math.max(1,organisms.length),0,1)*100;
     return `<div class="species">
-      <div class="speciesTop"><div><span class="swatch" style="background:${hsl(s.hue,65,52)}"></span><b>${s.label}</b> <small>${extinct ? 'extinct' : s.dominantBiome}</small></div><b>${s.population}</b></div>
+      <div class="speciesTop"><div><span class="swatch" style="background:${hsl(s.hue,65,52)}"></span><b>${s.label}</b> <small>${extinct?'extinct':s.dominantBiome}</small></div><b>${s.population}</b></div>
       <div class="bar" style="margin:6px 0"><span style="width:${pct}%; background:${hsl(s.hue,65,58)}"></span></div>
-      <small>age ${age}, peak ${s.peak}, ${feedingLabel(s.average)}, temp ${fmt(s.average.preferredTemp,1)}°C, water ${fmt(s.average.waterPref,2)}, mutation distance ${fmt(s.distanceFromAncestor,3)}</small>
+      <small>${escapeHTML(strategyShort[s.dominantStrategy] || s.dominantStrategy)}, ${escapeHTML(s.dominantFeeding)}, ${escapeHTML(s.dominantBodyPlan)}<br>age ${age}, peak ${s.peak}, cells ${s.bodyCells}, split: ${escapeHTML(s.splitReason)}, distance ${fmt(s.distanceFromAncestor,3)}</small>
     </div>`;
   }).join('');
 }
-
-function updateEventLog() {
-  ui.eventLog.innerHTML = events.map(e => `<div class="logEntry"><b>${Math.floor(e.time)}</b> · ${e.message}</div>`).join('');
-}
-
+function updateEventLog() { ui.eventLog.innerHTML = events.map(e => `<div class="logEntry"><b>${Math.floor(e.time)}</b> · ${escapeHTML(e.message)}</div>`).join(''); }
 function updateStatusBar() {
-  const aliveSpecies = species.filter(s => s.population > 0).length;
-  let fireTiles = 0;
-  let avgTemp = 0;
-  let avgMoist = 0;
-  for (let k = 0; k < 1000; k++) {
-    const i = Math.floor(srand() * N);
-    if (world.fire[i] > 0.05) fireTiles++;
-    avgTemp += world.temp[i];
-    avgMoist += world.moisture[i];
-  }
+  const aliveSpecies=species.filter(s=>s.population>0).length;
+  let fireTiles=0, avgTemp=0, avgMoist=0;
+  for (let k=0;k<1000;k++){ const i=Math.floor(srand()*N); if(world.fire[i]>0.05) fireTiles++; avgTemp+=world.temp[i]; avgMoist+=world.moisture[i]; }
   if (fireTiles > 45 && frameCounter % 130 === 0) addEvent('fire', `Large fire outbreak: roughly ${Math.round(fireTiles / 1000 * N)} burning tiles.`, true);
+  const counts = { solitary:0, static:0, mobile:0, symbiotic:0 };
+  let cellTotal = 0;
+  for (const o of organisms) { cellTotal += o.bodyCells.length; if(o.strategy===STRATEGY.STATIC) counts.static++; else if(o.strategy===STRATEGY.MOBILE) counts.mobile++; else if(o.strategy===STRATEGY.SYMBIOTIC) counts.symbiotic++; else counts.solitary++; }
   ui.statusBar.innerHTML = `
     <span class="pill">time ${Math.floor(simTime)}</span>
     <span class="pill">speed ${paused ? 'paused' : speed.toFixed(2) + '×'}</span>
-    <span class="pill">cells ${organisms.length}/${CFG.maxOrganisms}</span>
-    <span class="pill">living species ${aliveSpecies}</span>
-    <span class="pill">avg temp ${fmt(avgTemp / 1000,1)}°C</span>
-    <span class="pill">avg moisture ${fmt(avgMoist / 1000,2)}</span>
-    <span class="pill">tool ${activeTool}</span>`;
+    <span class="pill">organisms ${organisms.length}/${CFG.maxOrganisms}</span>
+    <span class="pill">cells ${cellTotal}</span>
+    <span class="pill">species ${aliveSpecies}</span>
+    <span class="pill">sol/static/mob/sym ${counts.solitary}/${counts.static}/${counts.mobile}/${counts.symbiotic}</span>
+    <span class="pill">avg temp ${fmt(avgTemp/1000,1)}°C</span>
+    <span class="pill">moist ${fmt(avgMoist/1000,2)}</span>
+    <span class="pill">overlay ${overlayMode}</span>`;
 }
-
 function syncUI() {
-  ui.speedVal.textContent = paused ? 'paused' : `${Number(ui.speed.value).toFixed(Number(ui.speed.value) % 1 ? 2 : 0)}×`;
-  ui.brushVal.textContent = ui.brush.value;
-  ui.strengthVal.textContent = ui.strength.value;
-  ui.selectedInfo.innerHTML = inspectHTML();
+  ui.speedVal.textContent = paused ? 'paused' : `${Number(ui.speed.value).toFixed(Number(ui.speed.value)%1?2:0)}×`;
+  ui.brushVal.textContent = ui.brush.value; ui.strengthVal.textContent = ui.strength.value; ui.selectedInfo.innerHTML = inspectHTML();
   if (frameCounter % 30 === 0) updateSpeciesList();
   if (frameCounter % 18 === 0) updateEventLog();
   if (frameCounter % 20 === 0) updateStatusBar();
 }
 
 function selectAt(wx, wy) {
-  let best = null;
-  let bestD = Infinity;
-  const radius = Math.max(2.5, 8 / camera.zoom);
-  const fake = { x: wx, y: wy };
-  for (const o of nearbyOrganisms(fake, radius + 4)) {
-    const d = Math.hypot(o.x - wx, o.y - wy);
-    if (d < bestD && d < radius) { bestD = d; best = o; }
+  let best=null, bestD=Infinity;
+  const fake={x:wx,y:wy};
+  for (const o of nearbyOrganisms(fake, Math.max(7, 12/camera.zoom))) {
+    if (!bodyContains(o, wx, wy, Math.max(0.62, 2.8/camera.zoom))) continue;
+    const d=Math.hypot(o.x-wx,o.y-wy);
+    if(d<bestD){bestD=d; best=o;}
   }
-  if (best) {
-    selected = { type: 'organism', organismId: best.id, tileX: Math.floor(best.x), tileY: Math.floor(best.y) };
-  } else {
-    selected = { type: 'tile', organismId: null, tileX: clamp(Math.floor(wx), 0, W - 1), tileY: clamp(Math.floor(wy), 0, H - 1) };
-  }
+  if(best) selected={type:'organism', organismId:best.id, tileX:Math.floor(best.x), tileY:Math.floor(best.y)};
+  else selected={type:'tile', organismId:null, tileX:clamp(Math.floor(wx),0,W-1), tileY:clamp(Math.floor(wy),0,H-1)};
   syncUI();
 }
-
-function initUI() {
-  ui.toolButtons.querySelectorAll('button').forEach(btn => {
-    btn.addEventListener('click', () => {
-      activeTool = btn.dataset.tool;
-      ui.toolButtons.querySelectorAll('button').forEach(b => b.classList.toggle('active', b === btn));
-    });
-  });
-  ui.toolButtons.querySelector('[data-tool="water"]').classList.add('active');
-
-  ui.speed.addEventListener('input', () => { speed = Number(ui.speed.value); paused = speed === 0; syncUI(); });
-  ui.brush.addEventListener('input', syncUI);
-  ui.strength.addEventListener('input', syncUI);
-  document.getElementById('pauseBtn').addEventListener('click', () => { paused = !paused; if (!paused && speed === 0) { speed = 1; ui.speed.value = 1; } syncUI(); });
-  document.getElementById('slowBtn').addEventListener('click', () => { speed = 0.5; paused = false; ui.speed.value = 0.5; syncUI(); });
-  document.getElementById('fastBtn').addEventListener('click', () => { speed = 4; paused = false; ui.speed.value = 4; syncUI(); });
-  document.getElementById('viewBiome').addEventListener('click', () => setView('biome'));
-  document.getElementById('viewHeat').addEventListener('click', () => setView('temp'));
-  document.getElementById('viewMoist').addEventListener('click', () => setView('moist'));
-  document.getElementById('viewFert').addEventListener('click', () => setView('fert'));
-
-  canvas.addEventListener('contextmenu', e => e.preventDefault());
-  canvas.addEventListener('pointerdown', e => {
-    const rect = canvas.getBoundingClientRect();
-    mouse.x = e.clientX - rect.left;
-    mouse.y = e.clientY - rect.top;
-    mouse.lastX = mouse.x;
-    mouse.lastY = mouse.y;
-    const wpos = screenToWorld(mouse.x, mouse.y);
-    mouse.worldX = wpos.x; mouse.worldY = wpos.y; mouse.tileX = Math.floor(wpos.x); mouse.tileY = Math.floor(wpos.y);
-    mouse.down = true;
-    if (e.button === 1 || e.button === 2 || e.shiftKey || e.spaceKey) {
-      mouse.panning = true;
-    } else if (e.altKey) {
-      selectAt(wpos.x, wpos.y);
-    } else {
-      mouse.painting = true;
-      applyTool(wpos.x, wpos.y, activeTool, Number(ui.brush.value), Number(ui.strength.value));
-    }
-  });
-  canvas.addEventListener('pointerup', e => {
-    if (mouse.painting && Math.hypot(mouse.x - mouse.lastX, mouse.y - mouse.lastY) < 3 && activeTool !== 'life') {
-      const wpos = screenToWorld(mouse.x, mouse.y);
-      selectAt(wpos.x, wpos.y);
-    }
-    mouse.down = false;
-    mouse.painting = false;
-    mouse.panning = false;
-  });
-  canvas.addEventListener('pointermove', e => {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const dx = x - mouse.x;
-    const dy = y - mouse.y;
-    mouse.x = x; mouse.y = y;
-    const wpos = screenToWorld(mouse.x, mouse.y);
-    mouse.worldX = wpos.x; mouse.worldY = wpos.y; mouse.tileX = clamp(Math.floor(wpos.x), 0, W - 1); mouse.tileY = clamp(Math.floor(wpos.y), 0, H - 1);
-    if (mouse.panning) {
-      camera.x = clamp(camera.x - dx / camera.zoom, 0, W);
-      camera.y = clamp(camera.y - dy / camera.zoom, 0, H);
-    }
-    if (mouse.painting) {
-      applyTool(wpos.x, wpos.y, activeTool, Number(ui.brush.value), Number(ui.strength.value));
-    }
-  });
-  canvas.addEventListener('wheel', e => {
-    e.preventDefault();
-    const before = screenToWorld(mouse.x, mouse.y);
-    const factor = Math.exp(-e.deltaY * 0.001);
-    camera.zoom = clamp(camera.zoom * factor, 1.4, 18);
-    const after = screenToWorld(mouse.x, mouse.y);
-    camera.x += before.x - after.x;
-    camera.y += before.y - after.y;
-  }, { passive: false });
-
-  miniCanvas.addEventListener('click', e => {
-    const rect = miniCanvas.getBoundingClientRect();
-    camera.x = clamp((e.clientX - rect.left) / rect.width * W, 0, W);
-    camera.y = clamp((e.clientY - rect.top) / rect.height * H, 0, H);
-  });
-}
-
 function setView(mode) {
-  viewMode = mode;
-  terrainDirty = true;
-  document.getElementById('viewBiome').classList.toggle('active', mode === 'biome');
-  document.getElementById('viewHeat').classList.toggle('active', mode === 'temp');
-  document.getElementById('viewMoist').classList.toggle('active', mode === 'moist');
-  document.getElementById('viewFert').classList.toggle('active', mode === 'fert');
+  viewMode=mode; terrainDirty=true;
+  document.getElementById('viewBiome').classList.toggle('active',mode==='biome');
+  document.getElementById('viewHeat').classList.toggle('active',mode==='temp');
+  document.getElementById('viewMoist').classList.toggle('active',mode==='moist');
+  document.getElementById('viewFert').classList.toggle('active',mode==='fert');
+}
+function setOverlay(mode) {
+  overlayMode=mode;
+  ui.overlayButtons.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.dataset.overlay===mode));
+}
+function initUI() {
+  ui.toolButtons.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{ activeTool=btn.dataset.tool; ui.toolButtons.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b===btn)); }));
+  ui.toolButtons.querySelector('[data-tool="water"]').classList.add('active');
+  ui.overlayButtons.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>setOverlay(btn.dataset.overlay)));
+  ui.speed.addEventListener('input',()=>{ speed=Number(ui.speed.value); paused=speed===0; syncUI(); });
+  ui.brush.addEventListener('input',syncUI); ui.strength.addEventListener('input',syncUI);
+  document.getElementById('pauseBtn').addEventListener('click',()=>{ paused=!paused; if(!paused&&speed===0){speed=1;ui.speed.value=1;} syncUI(); });
+  document.getElementById('slowBtn').addEventListener('click',()=>{ speed=0.5; paused=false; ui.speed.value=0.5; syncUI(); });
+  document.getElementById('fastBtn').addEventListener('click',()=>{ speed=4; paused=false; ui.speed.value=4; syncUI(); });
+  document.getElementById('viewBiome').addEventListener('click',()=>setView('biome'));
+  document.getElementById('viewHeat').addEventListener('click',()=>setView('temp'));
+  document.getElementById('viewMoist').addEventListener('click',()=>setView('moist'));
+  document.getElementById('viewFert').addEventListener('click',()=>setView('fert'));
+  canvas.addEventListener('contextmenu',e=>e.preventDefault());
+  canvas.addEventListener('pointerdown',e=>{
+    const rect=canvas.getBoundingClientRect(); mouse.x=e.clientX-rect.left; mouse.y=e.clientY-rect.top; mouse.lastX=mouse.x; mouse.lastY=mouse.y;
+    const wpos=screenToWorld(mouse.x,mouse.y); mouse.worldX=wpos.x; mouse.worldY=wpos.y; mouse.tileX=Math.floor(wpos.x); mouse.tileY=Math.floor(wpos.y); mouse.down=true;
+    if(e.button===1||e.button===2||e.shiftKey){mouse.panning=true;} else if(e.altKey){selectAt(wpos.x,wpos.y);} else {mouse.painting=true; applyTool(wpos.x,wpos.y,activeTool,Number(ui.brush.value),Number(ui.strength.value));}
+  });
+  canvas.addEventListener('pointerup',()=>{ if(mouse.painting && Math.hypot(mouse.x-mouse.lastX, mouse.y-mouse.lastY)<3 && activeTool!=='life'){ const wpos=screenToWorld(mouse.x,mouse.y); selectAt(wpos.x,wpos.y); } mouse.down=false; mouse.painting=false; mouse.panning=false; });
+  canvas.addEventListener('pointermove',e=>{
+    const rect=canvas.getBoundingClientRect(); const x=e.clientX-rect.left, y=e.clientY-rect.top, dx=x-mouse.x, dy=y-mouse.y; mouse.x=x; mouse.y=y;
+    const wpos=screenToWorld(mouse.x,mouse.y); mouse.worldX=wpos.x; mouse.worldY=wpos.y; mouse.tileX=clamp(Math.floor(wpos.x),0,W-1); mouse.tileY=clamp(Math.floor(wpos.y),0,H-1);
+    if(mouse.panning){ camera.x=clamp(camera.x-dx/camera.zoom,0,W); camera.y=clamp(camera.y-dy/camera.zoom,0,H); }
+    if(mouse.painting) applyTool(wpos.x,wpos.y,activeTool,Number(ui.brush.value),Number(ui.strength.value));
+  });
+  canvas.addEventListener('wheel',e=>{ e.preventDefault(); const before=screenToWorld(mouse.x,mouse.y); const factor=Math.exp(-e.deltaY*0.001); camera.zoom=clamp(camera.zoom*factor,1.4,18); const after=screenToWorld(mouse.x,mouse.y); camera.x+=before.x-after.x; camera.y+=before.y-after.y; }, {passive:false});
+  miniCanvas.addEventListener('click',e=>{ const rect=miniCanvas.getBoundingClientRect(); camera.x=clamp((e.clientX-rect.left)/rect.width*W,0,W); camera.y=clamp((e.clientY-rect.top)/rect.height*H,0,H); });
 }
 
 let last = performance.now();
 let simAccumulator = 0;
 function loop(now) {
-  const realDt = Math.min(0.05, (now - last) / 1000);
-  last = now;
-  frameCounter++;
-
+  const realDt = Math.min(0.05, (now - last) / 1000); last = now; frameCounter++;
   if (!paused && speed > 0) {
     simAccumulator += realDt * speed * 34;
     let steps = 0;
     while (simAccumulator >= 1 && steps < 12) {
-      const dt = 1;
-      simTime += dt;
-      WorldSystem.update(dt);
-      OrganismSystem.update(dt);
-      SpeciesSystem.updateStats();
-      terrainDirty = true;
-      simAccumulator -= 1;
-      steps++;
+      const dt = 1; simTime += dt;
+      WorldSystem.update(dt); OrganismSystem.update(dt); SpeciesSystem.updateStats();
+      terrainDirty = true; simAccumulator -= 1; steps++;
       if (Math.floor(simTime) % 40 === 0) updateGraph();
     }
   }
-
   if (frameCounter % 20 === 0) renderMinimap();
   if (frameCounter % 20 === 0) renderChart();
-  syncUI();
-  render();
-  requestAnimationFrame(loop);
+  syncUI(); render(); requestAnimationFrame(loop);
 }
-
 function boot() {
-  resize();
-  WorldSystem.generate();
-  OrganismSystem.seedInitial();
-  buildBins();
-  SpeciesSystem.updateStats();
-  updateGraph();
-  initUI();
-  syncUI();
-  renderMinimap();
-  renderChart();
-  requestAnimationFrame(loop);
+  resize(); WorldSystem.generate(); OrganismSystem.seedInitial(); buildBins(); SpeciesSystem.updateStats(); updateGraph(); initUI(); syncUI(); renderMinimap(); renderChart(); requestAnimationFrame(loop);
 }
-
 boot();
 </script>
 </body>
