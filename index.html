@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>StarLab V1 – Interactive Stellar Observatory</title>
+  <title>StarLab V1.1 – Particle Stellar Observatory</title>
   <style>
     :root {
       --bg-dark: #06070b;
@@ -619,6 +619,7 @@
       className: 'G-Type',
       activeRegions: [],
       particles: [],
+      surfaceParticles: [],
       flareBursts: [],
       history: [],
       bgStars: [],
@@ -788,6 +789,7 @@
       document.getElementById('calmBtn').addEventListener('click', () => {
         controls.activity.value = 12;
         state.particles.length = 0;
+        state.surfaceParticles.length = 0;
         state.flareBursts.length = 0;
         readControls();
         updateReadouts();
@@ -1021,6 +1023,7 @@
         r.strength = clamp(r.strength + Math.sin(state.t * 0.3 + r.phase) * 0.0009, 0.05, 1.2);
       }
 
+      updateSurfaceParticles(dt);
       updateParticles(dt);
       updateFlareBursts(dt);
 
@@ -1037,6 +1040,59 @@
         state.history.push({ t: state.t, activity: state.activity, flare: recent, particles: state.particles.length });
         if (state.history.length > 190) state.history.shift();
       }
+    }
+
+    function updateSurfaceParticles(dt) {
+      if (controls.viewMode.value === 'cross' || state.paused) return;
+      const mode = controls.viewMode.value;
+      const baseRate = mode === 'visible' ? 95 : mode === 'halpha' ? 145 : mode === 'ultraviolet' ? 165 : mode === 'xray' ? 65 : 110;
+      const rate = baseRate * (0.45 + state.activity * 1.25) * (0.55 + state.granulation * 0.35);
+      const exact = rate * dt;
+      let spawn = Math.floor(exact);
+      if (Math.random() < exact - spawn) spawn++;
+      spawn = Math.min(spawn, 14);
+
+      for (let i = 0; i < spawn; i++) {
+        const useRegion = state.activeRegions.length && Math.random() < 0.58 + state.activity * 0.26;
+        let dir;
+        let heat = Math.random();
+        if (useRegion) {
+          const r = state.activeRegions[Math.floor(Math.random() * state.activeRegions.length)];
+          const ta = normalize(cross(r.dir, Math.abs(r.dir[1]) > 0.85 ? [1,0,0] : [0,1,0]));
+          const tb = normalize(cross(r.dir, ta));
+          const spread = 0.035 + (1.0 - r.strength * 0.45) * 0.16;
+          dir = normalize(add(r.dir, add(mul(ta, (Math.random()-0.5)*spread), mul(tb, (Math.random()-0.5)*spread))));
+          heat = clamp(0.55 + r.strength * 0.45 + Math.random()*0.18, 0, 1.25);
+        } else {
+          const lat = Math.asin((Math.random()*2-1) * 0.84);
+          const lon = Math.random() * Math.PI * 2;
+          dir = sphericalDir(lat, lon);
+        }
+        const tangent = normalize(cross(dir, Math.abs(dir[1]) > 0.82 ? [1,0,0] : [0,1,0]));
+        const drift = (Math.random() - 0.5) * (0.8 + state.rotation * 0.12);
+        state.surfaceParticles.push({
+          dir,
+          tangent,
+          drift,
+          heat,
+          age: 0,
+          life: 0.45 + Math.random()*1.15,
+          size: 0.9 + Math.random()*2.7 + heat*1.8,
+          phase: Math.random()*Math.PI*2,
+          kind: Math.random() < 0.18 + state.activity*0.18 ? 'spark' : 'granule'
+        });
+      }
+
+      for (let i = state.surfaceParticles.length - 1; i >= 0; i--) {
+        const p = state.surfaceParticles[i];
+        p.age += dt;
+        if (p.age >= p.life) { state.surfaceParticles.splice(i, 1); continue; }
+        const slide = p.drift * dt * 0.018;
+        p.dir = normalize(add(p.dir, mul(p.tangent, slide)));
+        p.tangent = normalize(cross(p.dir, Math.abs(p.dir[1]) > 0.82 ? [1,0,0] : [0,1,0]));
+      }
+      const limit = controls.viewMode.value === 'xray' ? 760 : 1350;
+      if (state.surfaceParticles.length > limit) state.surfaceParticles.splice(0, state.surfaceParticles.length - limit);
     }
 
     function updateParticles(dt) {
@@ -1184,6 +1240,7 @@
       const mode = controls.viewMode.value;
 
       if (controls.showCorona.checked) drawCorona(ctx, center.x, center.y, radiusPx, mode);
+      if (mode !== 'cross') drawSurfacePlasma(ctx, modelRot, radiusPx, mode);
       if (controls.showLoops.checked && mode !== 'cross') drawMagneticLoops(ctx, modelRot, radiusPx, mode);
       if (controls.showParticles.checked) drawParticles(ctx, cameraRot, mode);
       drawFlareBursts(ctx, modelRot, mode);
@@ -1224,6 +1281,50 @@
       ctx.restore();
     }
 
+    function drawSurfacePlasma(ctx, modelRot, radiusPx, mode) {
+      if (!state.surfaceParticles.length) return;
+      const ctxMode = mode;
+      ctx.save();
+      ctx.globalCompositeOperation = 'screen';
+      for (const p of state.surfaceParticles) {
+        const pr = projectLocal(mul(p.dir, 1.006), modelRot);
+        if (!pr || pr.z < -0.04) continue;
+        const vis = clamp((pr.z + 0.08) / 1.08, 0, 1);
+        const life = Math.sin(Math.PI * clamp(p.age / p.life, 0, 1));
+        if (life <= 0.01) continue;
+        let col;
+        if (ctxMode === 'halpha') col = p.kind === 'spark' ? [255, 75, 46] : [255, 116, 64];
+        else if (ctxMode === 'ultraviolet') col = p.kind === 'spark' ? [175, 120, 255] : [95, 190, 255];
+        else if (ctxMode === 'xray') col = p.kind === 'spark' ? [140, 245, 255] : [70, 180, 255];
+        else if (ctxMode === 'thermal') col = p.heat > 0.75 ? [255, 236, 120] : [255, 118, 52];
+        else if (ctxMode === 'magnetogram') col = p.heat > 0.72 ? [255, 85, 65] : [85, 150, 255];
+        else col = p.heat > 0.72 ? [255, 226, 118] : [255, 148, 58];
+        const size = Math.max(0.55 * state.dpr, p.size * state.dpr * (0.50 + state.zoom * 0.50) * (0.5 + vis*0.75));
+        const alpha = (p.kind === 'spark' ? 0.34 : 0.17) * life * vis * (0.65 + state.activity*0.6);
+        const grad = ctx.createRadialGradient(pr.x, pr.y, 0, pr.x, pr.y, size * (p.kind === 'spark' ? 5.2 : 3.2));
+        grad.addColorStop(0.0, `rgba(255,255,255,${alpha*0.55})`);
+        grad.addColorStop(0.22, `rgba(${col[0]},${col[1]},${col[2]},${alpha})`);
+        grad.addColorStop(1.0, `rgba(${col[0]},${col[1]},${col[2]},0)`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(pr.x, pr.y, size * (p.kind === 'spark' ? 5.2 : 3.2), 0, Math.PI*2);
+        ctx.fill();
+
+        if (p.kind === 'granule' && p.heat > 0.42) {
+          const t2 = projectLocal(mul(normalize(add(p.dir, mul(p.tangent, 0.018))), 1.008), modelRot);
+          if (t2 && t2.z > -0.05) {
+            ctx.strokeStyle = `rgba(${col[0]},${col[1]},${col[2]},${alpha*0.28})`;
+            ctx.lineWidth = Math.max(0.45 * state.dpr, size*0.25);
+            ctx.beginPath();
+            ctx.moveTo(pr.x, pr.y);
+            ctx.lineTo(t2.x, t2.y);
+            ctx.stroke();
+          }
+        }
+      }
+      ctx.restore();
+    }
+
     function drawMagneticLoops(ctx, modelRot, radiusPx, mode) {
       ctx.save();
       ctx.globalCompositeOperation = 'screen';
@@ -1231,26 +1332,63 @@
         if (r.strength < 0.18) continue;
         const visible = dot(transform(modelRot, r.dir), [0,0,1]);
         if (visible < -0.12) continue;
-        const tint = mode === 'halpha' ? [255, 78, 54] : mode === 'ultraviolet' ? [150, 110, 255] : mode === 'xray' ? [85, 220, 255] : [255, 155, 72];
+        const tint = mode === 'halpha' ? [255, 72, 46] : mode === 'ultraviolet' ? [160, 120, 255] : mode === 'xray' ? [95, 230, 255] : [255, 160, 72];
         const tangent = normalize(cross(r.dir, Math.abs(r.dir[1]) > 0.84 ? [1,0,0] : [0,1,0]));
-        const width = 0.08 + r.strength * 0.08;
-        const d1 = normalize(add(r.dir, mul(tangent, width)));
-        const d2 = normalize(add(r.dir, mul(tangent, -width)));
-        const height = 0.16 + r.strength * (mode === 'xray' ? 0.55 : 0.34);
-        ctx.beginPath();
-        let first = true;
-        for (let i = 0; i <= 34; i++) {
-          const t = i / 34;
-          const base = normalize(add(mul(d1, 1-t), mul(d2, t)));
-          const p3 = mul(base, 1.01 + Math.sin(Math.PI*t) * height);
-          const p = projectLocal(p3, modelRot);
-          if (!p) continue;
-          if (first) { ctx.moveTo(p.x, p.y); first = false; }
-          else ctx.lineTo(p.x, p.y);
+        const side = normalize(cross(r.dir, tangent));
+        const loopCount = r.strength > 0.72 ? 3 : 2;
+        for (let loop = 0; loop < loopCount; loop++) {
+          const phase = r.phase + loop * 1.7;
+          const width = 0.055 + r.strength * 0.09 + loop * 0.018;
+          const offset = (loop - (loopCount-1)/2) * 0.035;
+          const d1 = normalize(add(add(r.dir, mul(tangent, width)), mul(side, offset)));
+          const d2 = normalize(add(add(r.dir, mul(tangent, -width)), mul(side, -offset*0.6)));
+          const height = 0.17 + r.strength * (mode === 'xray' ? 0.62 : mode === 'halpha' ? 0.45 : 0.34) + loop * 0.035;
+          const pts = [];
+          for (let i = 0; i <= 44; i++) {
+            const t = i / 44;
+            const sway = Math.sin(t*Math.PI*2 + state.t*1.8 + phase) * 0.012 * r.strength;
+            const base = normalize(add(add(mul(d1, 1-t), mul(d2, t)), mul(side, sway)));
+            const p3 = mul(base, 1.012 + Math.sin(Math.PI*t) * height);
+            const p = projectLocal(p3, modelRot);
+            if (p) pts.push(p);
+          }
+          if (pts.length < 3) continue;
+          const alpha = clamp(0.18 + r.strength*0.38, 0, 0.78) * clamp((visible + 0.25), 0.2, 1.0);
+          const baseW = Math.max(1.0*state.dpr, radiusPx * 0.006 * (0.8 + r.strength));
+
+          for (const pass of [4.6, 2.1, 0.75]) {
+            ctx.beginPath();
+            for (let i = 0; i < pts.length; i++) {
+              const p = pts[i];
+              if (i === 0) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y);
+            }
+            ctx.strokeStyle = pass > 3
+              ? `rgba(${tint[0]},${tint[1]},${tint[2]},${alpha*0.085})`
+              : pass > 1
+                ? `rgba(${tint[0]},${tint[1]},${tint[2]},${alpha*0.22})`
+                : `rgba(255,245,210,${alpha*0.46})`;
+            ctx.lineWidth = baseW * pass;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+          }
+
+          const beadCount = 7 + Math.floor(r.strength * 8);
+          for (let b = 0; b < beadCount; b++) {
+            const q = (b / beadCount + state.t * (0.05 + 0.045*r.strength) + phase*0.037) % 1;
+            const idx = Math.min(pts.length-1, Math.floor(q * (pts.length-1)));
+            const p = pts[idx];
+            const beadR = baseW * (0.9 + Math.sin(q*Math.PI*2 + state.t*3.0)*0.25);
+            const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, beadR*4.5);
+            g.addColorStop(0, `rgba(255,255,255,${alpha*0.38})`);
+            g.addColorStop(0.25, `rgba(${tint[0]},${tint[1]},${tint[2]},${alpha*0.34})`);
+            g.addColorStop(1, `rgba(${tint[0]},${tint[1]},${tint[2]},0)`);
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, beadR*4.5, 0, Math.PI*2);
+            ctx.fill();
+          }
         }
-        ctx.strokeStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${clamp(0.15 + r.strength*0.34,0,0.72)})`;
-        ctx.lineWidth = Math.max(1, radiusPx * 0.004 * (0.7 + r.strength));
-        ctx.stroke();
       }
       ctx.restore();
     }
@@ -1280,53 +1418,180 @@
       ctx.save();
       ctx.globalCompositeOperation = 'screen';
       for (const burst of state.flareBursts) {
-        const p = projectLocal(mul(burst.region.dir, 1.035), modelRot);
-        if (!p) continue;
+        const dir = burst.region.dir;
+        const root = projectLocal(mul(dir, 1.028), modelRot);
+        if (!root) continue;
         const life = clamp(burst.life / burst.maxLife, 0, 1);
-        const visible = dot(transform(modelRot, burst.region.dir), [0,0,1]);
+        const grow = 1.0 - life;
+        const visible = dot(transform(modelRot, dir), [0,0,1]);
         if (visible < -0.15) continue;
-        const r = getScreenScale() * state.radiusVis * (0.045 + burst.power * 0.05) * (1.2 - life * 0.25);
-        const col = mode === 'xray' ? [150,240,255] : mode === 'ultraviolet' ? [160,110,255] : [255,220,125];
-        const grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r*3.8);
-        grad.addColorStop(0, `rgba(255,255,255,${0.65*life})`);
-        grad.addColorStop(0.18, `rgba(${col[0]},${col[1]},${col[2]},${0.40*life})`);
+        const radiusPx = getScreenScale() * state.radiusVis;
+        const col = mode === 'xray' ? [140,245,255] : mode === 'ultraviolet' ? [168,112,255] : mode === 'halpha' ? [255,72,45] : [255,205,105];
+        const tangent = normalize(cross(dir, Math.abs(dir[1]) > 0.84 ? [1,0,0] : [0,1,0]));
+        const side = normalize(cross(dir, tangent));
+        const jetHeight = 0.10 + burst.power * 0.105 + grow * 0.09;
+
+        for (let ribbon = -1; ribbon <= 1; ribbon += 2) {
+          const pts = [];
+          for (let i = 0; i <= 30; i++) {
+            const t = i / 30;
+            const curl = Math.sin(t*Math.PI*1.2 + burst.power + state.t*2.2) * 0.025 * ribbon;
+            const base = normalize(add(add(dir, mul(tangent, ribbon * 0.035 * Math.sin(Math.PI*t))), mul(side, curl)));
+            const p3 = mul(base, 1.025 + Math.sin(Math.PI*t) * jetHeight * (0.75 + 0.4*ribbon*ribbon));
+            const p = projectLocal(p3, modelRot);
+            if (p) pts.push(p);
+          }
+          if (pts.length > 2) {
+            for (const pass of [5.0, 2.3, 0.8]) {
+              ctx.beginPath();
+              for (let i = 0; i < pts.length; i++) {
+                const p = pts[i];
+                if (i === 0) ctx.moveTo(p.x,p.y); else ctx.lineTo(p.x,p.y);
+              }
+              ctx.strokeStyle = pass > 3 ? `rgba(${col[0]},${col[1]},${col[2]},${0.10*life})` : pass > 1 ? `rgba(${col[0]},${col[1]},${col[2]},${0.24*life})` : `rgba(255,255,235,${0.50*life})`;
+              ctx.lineWidth = Math.max(state.dpr, radiusPx * 0.006 * burst.power) * pass;
+              ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.stroke();
+            }
+          }
+        }
+
+        const flareR = radiusPx * (0.038 + burst.power * 0.052) * (1.0 + grow * 0.7);
+        const grad = ctx.createRadialGradient(root.x, root.y, 0, root.x, root.y, flareR*4.2);
+        grad.addColorStop(0, `rgba(255,255,255,${0.72*life})`);
+        grad.addColorStop(0.17, `rgba(${col[0]},${col[1]},${col[2]},${0.48*life})`);
+        grad.addColorStop(0.48, `rgba(${col[0]},${col[1]},${col[2]},${0.18*life})`);
         grad.addColorStop(1, `rgba(${col[0]},${col[1]},${col[2]},0)`);
         ctx.fillStyle = grad;
         ctx.beginPath();
-        ctx.arc(p.x, p.y, r*3.8, 0, Math.PI*2);
+        ctx.arc(root.x, root.y, flareR*4.2, 0, Math.PI*2);
         ctx.fill();
       }
       ctx.restore();
     }
 
     function drawCrossSectionOverlay(ctx, modelRot, radiusPx) {
-      if (!controls.showEnergyArrows.checked) return;
       const cx = state.width / 2;
       const cy = state.height / 2;
+      const slice = clamp(parseFloat(controls.slice.value) / 100, -0.95, 0.95);
+      const diskR = Math.max(18 * state.dpr, radiusPx * Math.sqrt(Math.max(0.02, 1.0 - slice*slice)));
+      const cutX = cx + slice * radiusPx;
+      const coreFrac = clamp(getCoreFraction(), 0.08, 0.34);
+      const radFrac = 0.56;
+      const convFrac = 0.88;
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+
+      // Subtle dimming over the removed cap makes the slice plane read clearly even when the WebGL shell is still visible.
+      ctx.fillStyle = 'rgba(0,0,0,0.22)';
+      ctx.beginPath();
+      ctx.arc(cx, cy, radiusPx * 1.012, 0, Math.PI*2);
+      ctx.clip();
+      ctx.fillRect(cutX, cy - radiusPx*1.05, radiusPx*1.2, radiusPx*2.1);
+      ctx.restore();
+
+      ctx.save();
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.beginPath();
+      ctx.arc(cutX, cy, diskR, 0, Math.PI*2);
+      ctx.clip();
+
+      const bg = ctx.createRadialGradient(cutX, cy, 0, cutX, cy, diskR);
+      bg.addColorStop(0.00, 'rgba(255,245,176,0.98)');
+      bg.addColorStop(coreFrac, 'rgba(255,214,86,0.95)');
+      bg.addColorStop(radFrac, 'rgba(255,114,38,0.93)');
+      bg.addColorStop(convFrac, 'rgba(178,54,24,0.90)');
+      bg.addColorStop(1.00, 'rgba(72,20,18,0.94)');
+      ctx.fillStyle = bg;
+      ctx.fillRect(cutX-diskR, cy-diskR, diskR*2, diskR*2);
+
+      // Convective cell texture: many small warm parcels instead of a flat anatomy diagram.
+      const cellCount = 190;
+      for (let i = 0; i < cellCount; i++) {
+        const seed = Math.sin(i*127.1 + Math.floor(state.t*18)*0.07) * 43758.5453;
+        const f = seed - Math.floor(seed);
+        const a = (i * 2.399963 + state.t*0.10) % (Math.PI*2);
+        const rr = diskR * (radFrac + (convFrac-radFrac) * ((f*13.17)%1));
+        const x = cutX + Math.cos(a) * rr;
+        const y = cy + Math.sin(a) * rr;
+        const s = diskR * (0.012 + 0.020 * ((f*7.7)%1));
+        const g = ctx.createRadialGradient(x,y,0,x,y,s*3.3);
+        const hot = 0.45 + 0.55*((f*5.1)%1);
+        g.addColorStop(0, `rgba(255,${Math.round(95+hot*120)},48,0.15)`);
+        g.addColorStop(1, 'rgba(255,80,30,0)');
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(x,y,s*3.3,0,Math.PI*2); ctx.fill();
+      }
+
+      // Radiative-zone rays.
+      ctx.globalCompositeOperation = 'screen';
+      for (let i = 0; i < 38; i++) {
+        const a = i/38*Math.PI*2 + state.t*0.12;
+        ctx.strokeStyle = `rgba(255,225,130,${0.035 + 0.025*Math.sin(i+state.t)})`;
+        ctx.lineWidth = Math.max(0.45*state.dpr, diskR*0.0025);
+        ctx.beginPath();
+        ctx.moveTo(cutX + Math.cos(a)*diskR*coreFrac*0.78, cy + Math.sin(a)*diskR*coreFrac*0.78);
+        ctx.lineTo(cutX + Math.cos(a)*diskR*radFrac*0.98, cy + Math.sin(a)*diskR*radFrac*0.98);
+        ctx.stroke();
+      }
+
+      // Layer boundary rings.
+      ctx.globalCompositeOperation = 'source-over';
+      const rings = [
+        [coreFrac, 'rgba(255,255,230,0.62)', 2.4],
+        [radFrac, 'rgba(255,210,120,0.45)', 1.7],
+        [convFrac, 'rgba(255,145,70,0.38)', 1.4],
+        [1.0, 'rgba(255,230,180,0.58)', 2.0]
+      ];
+      for (const [rf, col, lw] of rings) {
+        ctx.beginPath();
+        ctx.arc(cutX, cy, diskR*rf, 0, Math.PI*2);
+        ctx.strokeStyle = col;
+        ctx.lineWidth = lw * state.dpr;
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // Bright cut rim and slice plane marker.
       ctx.save();
       ctx.globalCompositeOperation = 'screen';
-      ctx.strokeStyle = 'rgba(255,230,160,0.26)';
-      ctx.fillStyle = 'rgba(255,230,160,0.44)';
-      ctx.lineWidth = Math.max(1, state.dpr);
-      for (let i = 0; i < 8; i++) {
-        const a = i / 8 * Math.PI * 2 + state.t * 0.25;
-        const r1 = radiusPx * 0.20;
-        const r2 = radiusPx * 0.78;
-        const x1 = cx + Math.cos(a) * r1;
-        const y1 = cy + Math.sin(a) * r1;
-        const x2 = cx + Math.cos(a) * r2;
-        const y2 = cy + Math.sin(a) * r2;
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
-        const ah = Math.atan2(y2-y1, x2-x1);
-        ctx.beginPath();
-        ctx.moveTo(x2, y2);
-        ctx.lineTo(x2 - Math.cos(ah-0.45)*8*state.dpr, y2 - Math.sin(ah-0.45)*8*state.dpr);
-        ctx.lineTo(x2 - Math.cos(ah+0.45)*8*state.dpr, y2 - Math.sin(ah+0.45)*8*state.dpr);
-        ctx.closePath();
-        ctx.fill();
+      ctx.strokeStyle = 'rgba(255,230,170,0.82)';
+      ctx.lineWidth = Math.max(1.2*state.dpr, radiusPx*0.004);
+      ctx.beginPath();
+      ctx.arc(cutX, cy, diskR, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(120,220,255,0.62)';
+      ctx.lineWidth = Math.max(1*state.dpr, radiusPx*0.003);
+      ctx.setLineDash([8*state.dpr, 7*state.dpr]);
+      ctx.beginPath();
+      ctx.moveTo(cutX, cy-radiusPx*1.08);
+      ctx.lineTo(cutX, cy+radiusPx*1.08);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = 'rgba(120,220,255,0.88)';
+      ctx.font = `${11*state.dpr}px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif`;
+      ctx.fillText(`slice ${Math.round(slice*100)}%`, cutX + 10*state.dpr, cy - radiusPx*1.05);
+
+      if (controls.showEnergyArrows.checked) {
+        ctx.strokeStyle = 'rgba(255,238,170,0.34)';
+        ctx.fillStyle = 'rgba(255,238,170,0.54)';
+        ctx.lineWidth = Math.max(1, state.dpr);
+        for (let i = 0; i < 10; i++) {
+          const a = i / 10 * Math.PI * 2 + state.t * 0.25;
+          const r1 = diskR * 0.18;
+          const r2 = diskR * 0.78;
+          const x1 = cutX + Math.cos(a) * r1;
+          const y1 = cy + Math.sin(a) * r1;
+          const x2 = cutX + Math.cos(a) * r2;
+          const y2 = cy + Math.sin(a) * r2;
+          ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+          const ah = Math.atan2(y2-y1, x2-x1);
+          ctx.beginPath();
+          ctx.moveTo(x2, y2);
+          ctx.lineTo(x2 - Math.cos(ah-0.45)*8*state.dpr, y2 - Math.sin(ah-0.45)*8*state.dpr);
+          ctx.lineTo(x2 - Math.cos(ah+0.45)*8*state.dpr, y2 - Math.sin(ah+0.45)*8*state.dpr);
+          ctx.closePath(); ctx.fill();
+        }
       }
       ctx.restore();
     }
@@ -1423,7 +1688,7 @@
       const radial = normalize(transform(cameraSpin, region.dir));
       const tangentA = normalize(cross(radial, Math.abs(radial[1]) > 0.8 ? [1,0,0] : [0,1,0]));
       const tangentB = normalize(cross(radial, tangentA));
-      const count = Math.round(50 + power * 130);
+      const count = Math.round(120 + power * 230);
       for (let i = 0; i < count; i++) {
         const spread = (Math.random() - 0.5) * 0.85;
         const spread2 = (Math.random() - 0.5) * 0.85;
@@ -1434,7 +1699,7 @@
           a: mul(dir, 0.05),
           life: 0.65 + Math.random()*0.9 + power*0.2,
           maxLife: 1.4 + power*0.2,
-          size: 1.3 + Math.random()*3.2 + power*0.9,
+          size: 1.8 + Math.random()*5.0 + power*1.5,
           color: Math.random() < 0.5 ? [255,205,110] : [255,105,65]
         });
       }
@@ -1449,7 +1714,7 @@
       const tangentA = normalize(cross(radial, Math.abs(radial[1]) > 0.8 ? [1,0,0] : [0,1,0]));
       const tangentB = normalize(cross(radial, tangentA));
       const power = strength * (0.8 + state.activity * 1.5);
-      const count = Math.round(160 + power * 220);
+      const count = Math.round(260 + power * 360);
       for (let i = 0; i < count; i++) {
         const angle = Math.random() * Math.PI * 2;
         const cone = Math.pow(Math.random(), 0.7) * 0.48;
@@ -1460,7 +1725,7 @@
           a: mul(dir, 0.025),
           life: 1.8 + Math.random()*2.4 + power*0.35,
           maxLife: 3.2 + power*0.35,
-          size: 1.0 + Math.random()*4.8,
+          size: 1.4 + Math.random()*6.2,
           color: Math.random() < 0.35 ? [140,220,255] : [255,135,80]
         });
       }
@@ -1644,7 +1909,8 @@
       return mix(b, vec3(1.0,0.08,0.02), smoothstep(0.72,1.0,t));
     }
     void main() {
-      if (uCrossSection > 0.5 && vLocal.x > uSlice) discard;
+      // In cross-section mode the slice follows the screen-facing view, so the plane remains readable while rotating.
+      if (uCrossSection > 0.5 && vView.x > uSlice) discard;
       float limb = clamp(vView.z, 0.0, 1.0);
       if (limb <= 0.001) discard;
       vec3 n = normalize(vLocal);
