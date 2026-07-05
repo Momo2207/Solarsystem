@@ -48,8 +48,9 @@
   #toolbar {
     left: 14px;
     top: 14px;
+    bottom: 260px;
     width: 306px;
-    max-height: calc(100vh - 28px);
+    max-height: none;
     overflow: auto;
     padding: 12px;
   }
@@ -61,6 +62,15 @@
   .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
   button, select, input[type="range"] { width: 100%; }
+  select {
+    border: 1px solid var(--line);
+    color: var(--text);
+    background: rgba(255,255,255,0.055);
+    border-radius: 10px;
+    padding: 8px 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
   button {
     border: 1px solid var(--line);
     color: var(--text);
@@ -80,8 +90,9 @@
   #rightPanel {
     right: 14px;
     top: 14px;
+    bottom: 14px;
     width: 370px;
-    max-height: calc(100vh - 28px);
+    max-height: none;
     overflow: hidden;
     display: flex;
     flex-direction: column;
@@ -89,21 +100,21 @@
   #inspect {
     padding: 12px 12px 8px;
     border-bottom: 1px solid var(--line);
-    max-height: 43vh;
+    max-height: 34vh;
     overflow: auto;
   }
   #speciesPanel {
     padding: 10px 12px;
     border-bottom: 1px solid var(--line);
-    min-height: 150px;
-    max-height: 30vh;
+    min-height: 120px;
+    max-height: 26vh;
     overflow: auto;
   }
   #chartsPanel { padding: 10px 12px; border-bottom: 1px solid var(--line); }
-  #logPanel { padding: 10px 12px; overflow: auto; min-height: 100px; }
+  #logPanel { padding: 10px 12px; overflow: auto; flex: 1; min-height: 0; }
   #minimapBox { position: fixed; left: 14px; bottom: 14px; width: 222px; padding: 10px; }
   #minimap { width: 200px; height: 200px; display: block; border-radius: 10px; border: 1px solid var(--line); image-rendering: pixelated; }
-  #statusBar { position: fixed; left: 250px; bottom: 14px; right: 400px; padding: 9px 12px; min-height: 42px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+  #statusBar { position: fixed; left: 340px; bottom: 14px; right: 400px; padding: 9px 12px; min-height: 42px; max-height: 72px; overflow: auto; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
   .pill { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 999px; padding: 5px 8px; font-size: 11px; color: var(--muted); background: rgba(255,255,255,0.04); font-variant-numeric: tabular-nums; }
   .kv { display: grid; grid-template-columns: 138px 1fr; gap: 3px 8px; font-size: 11px; line-height: 1.35; color: var(--muted); }
   .kv b { color: var(--text); font-weight: 600; }
@@ -116,11 +127,18 @@
   #chart { width: 344px; height: 130px; display: block; border-radius: 10px; border: 1px solid var(--line); background: rgba(0,0,0,0.14); }
   .logEntry { font-size: 11px; line-height: 1.35; color: var(--muted); border-bottom: 1px solid rgba(255,255,255,0.06); padding: 5px 0; }
   .logEntry b { color: var(--text); font-weight: 600; }
-  .hint { position: fixed; left: 335px; top: 14px; padding: 9px 12px; color: var(--muted); font-size: 12px; pointer-events: none; }
+  .hint { position: fixed; left: 340px; right: 400px; top: 14px; max-width: none; padding: 9px 12px; color: var(--muted); font-size: 12px; pointer-events: none; }
   .legend { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; font-size: 10.5px; color: var(--muted); margin-top: 6px; }
+  @media (max-width: 1250px) {
+    .hint { display: none; }
+    #statusBar { display: none; }
+  }
+  @media (max-height: 760px) {
+    #minimapBox { display: none; }
+    #toolbar { bottom: 14px; }
+  }
   @media (max-width: 900px) {
     #rightPanel { width: 315px; }
-    #statusBar { display: none; }
     #toolbar { width: 260px; }
   }
 </style>
@@ -134,6 +152,7 @@
 
   <h2>World tools</h2>
   <div class="grid2" id="toolButtons">
+    <button data-tool="inspect" class="active">Inspect / select</button>
     <button data-tool="water">Add water</button>
     <button data-tool="dry">Dry area</button>
     <button data-tool="fire" class="danger">Add fire</button>
@@ -169,23 +188,23 @@
     <button id="viewFert">Fertility</button>
   </div>
 
-  <h2>Evolution overlays</h2>
-  <div class="grid2" id="overlayButtons">
-    <button data-overlay="none" class="active">None</button>
-    <button data-overlay="species">Species territory</button>
-    <button data-overlay="food">Food web</button>
-    <button data-overlay="weather">Weather</button>
-    <button data-overlay="firerisk">Fire risk</button>
-    <button data-overlay="selection">Selection pressure</button>
-    <button data-overlay="symbiosis">Symbiosis</button>
-    <button data-overlay="static">Static coverage</button>
-    <button data-overlay="mobile">Migration</button>
-    <button data-overlay="predator">Predator/prey</button>
-    <button data-overlay="decomp">Decomposer bloom</button>
-    <button data-overlay="detritus">Death / detritus</button>
-    <button data-overlay="lineage">Lineages</button>
-    <button data-overlay="extinction">Extinction zones</button>
-  </div>
+  <h2>Evolution overlay</h2>
+  <select id="overlayButtons" aria-label="Evolution overlay">
+    <option value="none" selected>None</option>
+    <option value="species">Species territory</option>
+    <option value="food">Food web</option>
+    <option value="weather">Weather</option>
+    <option value="firerisk">Fire risk</option>
+    <option value="selection">Selection pressure</option>
+    <option value="symbiosis">Symbiosis</option>
+    <option value="static">Static coverage</option>
+    <option value="mobile">Migration</option>
+    <option value="predator">Predator/prey</option>
+    <option value="decomp">Decomposer bloom</option>
+    <option value="detritus">Death / detritus</option>
+    <option value="lineage">Lineages</option>
+    <option value="extinction">Extinction zones</option>
+  </select>
   <div class="legend">
     <span>□ solitary</span><span>▣ static</span>
     <span>▥ mobile</span><span>◫ symbiotic</span>
@@ -268,9 +287,10 @@ let simTime = 0;
 let frameCounter = 0;
 let paused = false;
 let speed = 1;
-let activeTool = 'water';
+let activeTool = 'inspect';
 let viewMode = 'biome';
 let overlayMode = 'none';
+let worldStatsLoggedAt300 = false;
 let mouse = { x: 0, y: 0, worldX: 0, worldY: 0, tileX: 0, tileY: 0, down: false, painting: false, panning: false, lastX: 0, lastY: 0 };
 let camera = { x: W / 2, y: H / 2, zoom: 4.5 };
 let selected = { type: 'none', organismId: null, tileX: 0, tileY: 0 };
@@ -376,15 +396,43 @@ function milestone(id, message) { if (!milestones.has(id)) { milestones.add(id);
 function biomeAt(i) {
   const w = world.water[i], m = world.moisture[i], f = world.fertility[i], v = world.vegetation[i], t = world.temp[i], fire = world.fire[i];
   if (fire > 0.08) return BIOME.FIRE;
-  if (w > 0.72) return world.elevation[i] < 0.33 ? BIOME.OCEAN : BIOME.LAKE;
-  if (w > 0.34 || (m > 0.72 && f > 0.35)) return BIOME.WETLAND;
+  if (w > 0.72) return world.elevation[i] < 0.30 ? BIOME.OCEAN : BIOME.LAKE;
   if (world.ash[i] > 0.22 && v < 0.22) return BIOME.BURNED;
   if (t < 1) return BIOME.COLD;
   if (t > 27 && m < 0.24 && v < 0.2) return BIOME.DESERT;
   if (v > 0.68 && m > 0.46 && f > 0.35) return BIOME.FOREST;
+  if (
+    (w > 0.36 && m > 0.50) ||
+    (m > 0.84 && f > 0.45 && world.elevation[i] < 0.40 && v > 0.25)
+  ) {
+    return BIOME.WETLAND;
+  }
   if (v > 0.2 && m > 0.25 && f > 0.22) return BIOME.GRASS;
   return BIOME.BARREN;
 }
+
+function logWorldStats(label = 'world') {
+  let waterTiles = 0;
+  let wetlandTiles = 0;
+  let oceanLakeTiles = 0;
+  let highMoistureTiles = 0;
+  for (let i = 0; i < N; i++) {
+    if (world.water[i] > 0.34) waterTiles++;
+    if (world.moisture[i] > 0.72) highMoistureTiles++;
+    if (world.biome[i] === BIOME.WETLAND) wetlandTiles++;
+    if (world.biome[i] === BIOME.OCEAN || world.biome[i] === BIOME.LAKE) oceanLakeTiles++;
+  }
+  console.table({
+    label,
+    waterTiles,
+    highMoistureTiles,
+    wetlandTiles,
+    oceanLakeTiles,
+    waterPercent: ((waterTiles / N) * 100).toFixed(1),
+    wetlandPercent: ((wetlandTiles / N) * 100).toFixed(1)
+  });
+}
+
 
 const WEATHER_W = 32;
 const WEATHER_H = 32;
@@ -543,11 +591,29 @@ const WorldSystem = {
         world.baseTemp[i] = temp;
         world.temp[i] = temp;
         let water = 0;
-        if (elevation < 0.31) water = clamp((0.34 - elevation) * 5.2, 0.2, 1);
-        if (valueNoise(x, y, 26, 222) > 0.78 && elevation < 0.48) water = Math.max(water, randRange(0.45, 0.75));
+        if (elevation < 0.255) {
+          water = clamp((0.275 - elevation) * 3.2, 0.12, 0.82);
+        }
+        if (valueNoise(x, y, 26, 222) > 0.88 && elevation < 0.39) {
+          water = Math.max(water, randRange(0.18, 0.42));
+        }
         world.water[i] = water;
-        const rain = clamp(1 - lat * 0.55 + valueNoise(x, y, 56, 91) * 0.5 - elevation * 0.25, 0, 1);
-        const moisture = clamp(water * 0.75 + rain * 0.55 - Math.max(0, temp - 24) * 0.015, 0, 1);
+        const climateWetness = clamp(
+          0.18 +
+          (1 - lat) * 0.30 +
+          valueNoise(x, y, 56, 91) * 0.28 -
+          elevation * 0.42 -
+          Math.max(0, temp - 26) * 0.012,
+          0,
+          1
+        );
+        const moisture = clamp(
+          water * 0.42 +
+          climateWetness * 0.42 -
+          Math.max(0, temp - 24) * 0.018,
+          0,
+          1
+        );
         world.moisture[i] = moisture;
         world.fertility[i] = clamp(valueNoise(x, y, 42, 202) * 0.65 + moisture * 0.45 - water * 0.15, 0, 1);
         world.ash[i] = 0;
@@ -556,7 +622,8 @@ const WorldSystem = {
         world.burnAge[i] = 0;
         world.burnedCooldown[i] = 0;
         world.rainSuppression[i] = 0;
-        world.vegetation[i] = clamp((moisture * 0.75 + world.fertility[i] * 0.65 - Math.max(0, temp - 29) * 0.025 - water * 0.3) * randRange(0.65, 1.15), 0, 1);
+        const initialVegetation = moisture * 0.95 + world.fertility[i] * 0.78 + climateWetness * 0.34 - Math.max(0, temp - 29) * 0.025 - water * 0.32;
+        world.vegetation[i] = clamp(initialVegetation * randRange(0.72, 1.22), 0, 1);
         world.fireFuel[i] = clamp(world.vegetation[i] * 0.72, 0, 1.25);
         world.biome[i] = biomeAt(i);
         world.staticCover[i] = world.mobileTrail[i] = world.predatorHeat[i] = world.decompHeat[i] = world.deathHeat[i] = world.symbiosisHeat[i] = 0;
@@ -564,6 +631,8 @@ const WorldSystem = {
       }
     }
     WeatherSystem.generate();
+    logWorldStats('after generation');
+    worldStatsLoggedAt300 = false;
   },
 
   update(dt) {
@@ -584,10 +653,17 @@ const WorldSystem = {
           const thereLevel = world.elevation[ni] + world.barrier[ni] + world.water[ni] * 0.52;
           const diff = hereLevel - thereLevel;
           if (diff > 0.006) {
-            const flow = Math.min(water, diff * 0.10 * dt + 0.006 * dt);
-            world.water[i] -= flow;
-            world.water[ni] += flow;
-            water -= flow;
+            const capacity = Math.max(0, 1.05 - world.water[ni]);
+            const flow = Math.min(
+              water,
+              capacity,
+              diff * 0.055 * dt + 0.003 * dt
+            );
+            if (flow > 0) {
+              world.water[i] -= flow;
+              world.water[ni] += flow;
+              water -= flow;
+            }
           }
         }
       }
@@ -596,12 +672,17 @@ const WorldSystem = {
       const drought = w.drought;
       const heat = w.heatwave;
       const cold = w.cold;
-      const rainWaterGain = rain * (0.0018 + w.storm * 0.0022) * dt;
-      world.water[i] = clamp(world.water[i] + rainWaterGain - drought * 0.0006 * dt, 0, 1.4);
+      const standingRain = Math.max(0, rain - 0.72) * (0.00045 + w.storm * 0.0008) * dt;
+      const drainage = Math.max(0, world.water[i] - 0.34) * (0.0015 + world.elevation[i] * 0.001) * dt;
+      world.water[i] = clamp(
+        world.water[i] + standingRain - drainage - drought * 0.0007 * dt,
+        0,
+        1.05
+      );
       world.rainSuppression[i] = clamp(world.rainSuppression[i] * (1 - 0.035 * dt) + rain * 0.22 * dt, 0, 1);
       const evap = clamp((world.temp[i] - 8) / 40, 0, 1) * (0.0011 + world.fire[i] * 0.006 + drought * 0.0026 + heat * 0.0035) * dt;
-      world.water[i] = clamp(world.water[i] - evap, 0, 1.4);
-      const desiredMoisture = clamp(world.water[i] * 0.95 + world.vegetation[i] * 0.16 + world.ash[i] * 0.07 + rain * 0.36 - drought * 0.24 - heat * 0.16 - Math.max(0, world.temp[i] - 25) * 0.012, 0, 1);
+      world.water[i] = clamp(world.water[i] - evap, 0, 1.05);
+      const desiredMoisture = clamp(world.water[i] * 0.82 + world.vegetation[i] * 0.16 + world.ash[i] * 0.07 + rain * 0.18 - drought * 0.24 - heat * 0.16 - Math.max(0, world.temp[i] - 25) * 0.012, 0, 1);
       world.moisture[i] = clamp(lerp(world.moisture[i], desiredMoisture, 0.06 * dt), 0, 1);
       if (chance(0.35)) {
         const nx = clamp(x + (chance(0.5) ? 1 : -1), 0, W - 1);
@@ -2049,13 +2130,13 @@ function setView(mode) {
   document.getElementById('viewFert').classList.toggle('active',mode==='fert');
 }
 function setOverlay(mode) {
-  overlayMode=mode;
-  ui.overlayButtons.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b.dataset.overlay===mode));
+  overlayMode = mode;
+  if (ui.overlayButtons) ui.overlayButtons.value = mode;
 }
 function initUI() {
   ui.toolButtons.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>{ activeTool=btn.dataset.tool; ui.toolButtons.querySelectorAll('button').forEach(b=>b.classList.toggle('active', b===btn)); }));
-  ui.toolButtons.querySelector('[data-tool="water"]').classList.add('active');
-  ui.overlayButtons.querySelectorAll('button').forEach(btn=>btn.addEventListener('click',()=>setOverlay(btn.dataset.overlay)));
+  ui.toolButtons.querySelector('[data-tool="inspect"]')?.classList.add('active');
+  ui.overlayButtons.addEventListener('change', e => setOverlay(e.target.value));
   ui.speed.addEventListener('input',()=>{ speed=Number(ui.speed.value); paused=speed===0; syncUI(); });
   ui.brush.addEventListener('input',syncUI); ui.strength.addEventListener('input',syncUI);
   document.getElementById('pauseBtn').addEventListener('click',()=>{ paused=!paused; if(!paused&&speed===0){speed=1;ui.speed.value=1;} syncUI(); });
@@ -2069,9 +2150,17 @@ function initUI() {
   canvas.addEventListener('pointerdown',e=>{
     const rect=canvas.getBoundingClientRect(); mouse.x=e.clientX-rect.left; mouse.y=e.clientY-rect.top; mouse.lastX=mouse.x; mouse.lastY=mouse.y;
     const wpos=screenToWorld(mouse.x,mouse.y); mouse.worldX=wpos.x; mouse.worldY=wpos.y; mouse.tileX=Math.floor(wpos.x); mouse.tileY=Math.floor(wpos.y); mouse.down=true;
-    if(e.button===1||e.button===2||e.shiftKey){mouse.panning=true;} else if(e.altKey){selectAt(wpos.x,wpos.y);} else {mouse.painting=true; applyTool(wpos.x,wpos.y,activeTool,Number(ui.brush.value),Number(ui.strength.value));}
+    if(e.button===1||e.button===2||e.shiftKey){
+      mouse.panning=true;
+    } else if(e.altKey || activeTool === 'inspect'){
+      selectAt(wpos.x,wpos.y);
+      mouse.painting=false;
+    } else {
+      mouse.painting=true;
+      applyTool(wpos.x,wpos.y,activeTool,Number(ui.brush.value),Number(ui.strength.value));
+    }
   });
-  canvas.addEventListener('pointerup',()=>{ if(mouse.painting && Math.hypot(mouse.x-mouse.lastX, mouse.y-mouse.lastY)<3 && activeTool!=='life'){ const wpos=screenToWorld(mouse.x,mouse.y); selectAt(wpos.x,wpos.y); } mouse.down=false; mouse.painting=false; mouse.panning=false; });
+  canvas.addEventListener('pointerup',()=>{ if(mouse.painting && Math.hypot(mouse.x-mouse.lastX, mouse.y-mouse.lastY)<3 && activeTool!=='life' && activeTool!=='inspect'){ const wpos=screenToWorld(mouse.x,mouse.y); selectAt(wpos.x,wpos.y); } mouse.down=false; mouse.painting=false; mouse.panning=false; });
   canvas.addEventListener('pointermove',e=>{
     const rect=canvas.getBoundingClientRect(); const x=e.clientX-rect.left, y=e.clientY-rect.top, dx=x-mouse.x, dy=y-mouse.y; mouse.x=x; mouse.y=y;
     const wpos=screenToWorld(mouse.x,mouse.y); mouse.worldX=wpos.x; mouse.worldY=wpos.y; mouse.tileX=clamp(Math.floor(wpos.x),0,W-1); mouse.tileY=clamp(Math.floor(wpos.y),0,H-1);
@@ -2093,6 +2182,7 @@ function loop(now) {
       const dt = 1; simTime += dt;
       WeatherSystem.update(dt); WorldSystem.update(dt); OrganismSystem.update(dt); if (Math.floor(simTime) % 3 === 0) SpeciesSystem.updateStats();
       terrainDirty = true; simAccumulator -= 1; steps++;
+      if (!worldStatsLoggedAt300 && simTime >= 300) { logWorldStats('after 300 ticks'); worldStatsLoggedAt300 = true; }
       if (Math.floor(simTime) % 40 === 0) updateGraph();
     }
   }
