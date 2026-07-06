@@ -54,6 +54,7 @@
 
     /* --- SIMULATION CANVAS --- */
     #sim-container { position: relative; flex: 1; height: 100%; background: var(--bg-dark); }
+    #background-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
     #simulation { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
     #overlay-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
 
@@ -303,9 +304,11 @@
         <label for="observationFilter">Instrument / Filter:</label>
         <select id="observationFilter">
             <option value="visible" selected>Visible Light (Optical)</option>
+            <option value="telescope">Real Telescope (Long Exposure)</option>
             <option value="infrared">Infrared (Dust Pen.)</option>
             <option value="ultraviolet">Ultraviolet (Young Stars)</option>
             <option value="xray">X-Ray (High Energy)</option>
+            <option value="radio">Radio / Cold Gas (H I)</option>
             <option value="spectroscopy">Spectroscopy Tool</option>
         </select>
         <div class="help-text" id="instrumentDesc">Optical imaging with dust extinction and diffraction.</div>
@@ -364,11 +367,13 @@
         <label for="hotGasBrightness">Hot Gas Lum. Bias: <span id="hotGasBrightnessValue">0</span></label>
         <input type="range" id="hotGasBrightness" min="-1" max="3" step="0.1" value="0">
         
-        <label for="coldGasBrightness">Cold Gas Appearance: <span id="coldGasBrightnessValue">0</span></label>
+        <label for="coldGasBrightness">Cold Gas Diagnostic Overlay: <span id="coldGasBrightnessValue">0</span></label>
         <input type="range" id="coldGasBrightness" min="-1" max="3" step="0.1" value="0">
+        <label class="checkbox-label" style="margin-top:8px;"><input type="checkbox" id="showColdGasOverlay"> Show Cold Gas Diagnostic Overlay in Optical / Special Views</label>
+        <div class="help-text">Cold gas is not normally directly visible in optical galaxy images. Infrared and spectroscopy keep cold-gas tracing on by default.</div>
 
         <label for="dustBrightness">Dust Opacity Bias: <span id="dustBrightnessValue">0</span></label>
-        <input type="range" id="dustBrightness" min="-1" max="3" step="0.1" value="0">
+        <input type="range" id="dustBrightness" min="-1" max="3" step="0.01" value="0">
         
         <label for="starScale">Star Size Scaling: <span id="starScaleValue">0</span></label>
         <input type="range" id="starScale" min="-1" max="3" step="0.1" value="0">
@@ -389,7 +394,38 @@
           <label class="checkbox-label"><input type="checkbox" id="showJets" checked> Show AGN Outflows</label>
           <label class="checkbox-label"><input type="checkbox" id="showGrid" checked> Show Reference Grid</label>
           <label class="checkbox-label"><input type="checkbox" id="showStreaks" checked> Show Orbital Streaks</label>
+          <label class="checkbox-label"><input type="checkbox" id="showBackgroundUniverse" checked> Show Background Universe</label>
+          <label class="checkbox-label"><input type="checkbox" id="showEnhancedCore" checked> Enhanced Galaxy Core</label>
+          <label class="checkbox-label"><input type="checkbox" id="cinematicDepth" checked> Depth Layering / Focus</label>
         </div>
+      </div>
+    </div>
+    
+    <!-- Astrophysical Detail -->
+    <div class="control-group">
+      <div class="group-header">Astrophysical Detail <span class="group-toggle">+</span></div>
+      <div class="group-content collapsed">
+        <label class="checkbox-label"><input type="checkbox" id="showHIIRegions" checked> H II Regions</label>
+        <div class="help-text">Young massive stars ionize nearby gas clouds and light up star-forming arms.</div>
+        <label class="checkbox-label"><input type="checkbox" id="showAccretionDisks" checked> Accretion Disks</label>
+        <label class="checkbox-label"><input type="checkbox" id="showJetLobes" checked> Jet Lobes</label>
+        <label class="checkbox-label"><input type="checkbox" id="showEvolvingDust" checked> Evolving Dust</label>
+        <label class="checkbox-label"><input type="checkbox" id="showForegroundStars" checked> Foreground Stars</label>
+        <label class="checkbox-label"><input type="checkbox" id="showBackgroundLensing" checked> Subtle Background Lensing</label>
+      </div>
+    </div>
+    
+    <!-- Observation Synthesis -->
+    <div class="control-group">
+      <div class="group-header">Observation Synthesis <span class="group-toggle">+</span></div>
+      <div class="group-content collapsed">
+        <label class="checkbox-label"><input type="checkbox" id="useObservationSynthesis" checked> Synthesized Galaxy Light</label>
+        <div class="help-text">Builds diffuse old-star, bulge, young-arm, H II, hot-gas and dust-emission maps before telescope rendering.</div>
+        <label class="checkbox-label"><input type="checkbox" id="reduceResolvedOldStars" checked> Reduce Old-Star Sparkle</label>
+        <label class="checkbox-label"><input type="checkbox" id="enableOldStarConsolidation" checked> Gradual Old-Star Consolidation</label>
+        <div class="help-text">After the first ~500 Myr, old dim non-target stars are slowly folded into smooth disk light instead of remaining as individual glitter particles.</div>
+        <label class="checkbox-label"><input type="checkbox" id="showPopulationMaps" checked> Population Light Maps</label>
+        <label class="checkbox-label"><input type="checkbox" id="showGasPhaseMaps" checked> Gas Phase Emission Maps</label>
       </div>
     </div>
     
@@ -403,9 +439,11 @@
         <select id="parallelInstrument">
             <option value="none" selected>None</option>
             <option value="visible">Visible Light</option>
+            <option value="telescope">Real Telescope</option>
             <option value="infrared">Infrared</option>
             <option value="ultraviolet">Ultraviolet</option>
             <option value="xray">X-Ray</option>
+            <option value="radio">Radio / Cold Gas</option>
         </select>
 
         <label for="screenshotScale">Capture Resolution:</label>
@@ -445,7 +483,7 @@
     <div id="hud">
       <div class="hud-card"><div class="hud-label">Time Elapsed</div><div class="hud-value" id="hud-time">0 yr</div></div>
       <div class="hud-card"><div class="hud-label">Sim Status</div><div class="hud-value val-cool" id="hud-phase">Running</div></div>
-      <div class="hud-card"><div class="hud-label">System SFR</div><div class="hud-value" id="hud-sfr">0 M☉/Myr</div></div>
+      <div class="hud-card"><div class="hud-label">SFR Index</div><div class="hud-value" id="hud-sfr">0 sim</div></div>
       <div class="hud-card"><div class="hud-label">BH Mass (Alpha)</div><div class="hud-value val-active" id="hud-bh-a">0 M☉</div></div>
       <div class="hud-card" id="hud-card-b"><div class="hud-label">BH Mass (Beta)</div><div class="hud-value val-alert" id="hud-bh-b">0 M☉</div></div>
       <div class="hud-card"><div class="hud-label">Cold Gas Res.</div><div class="hud-value val-cool" id="hud-gas">0%</div></div>
@@ -455,6 +493,7 @@
     <!-- CONTEXTUAL HINT -->
     <div id="interactionHint">Wheel = zoom, drag = pan, right drag = rotate</div>
 
+    <canvas id="background-canvas"></canvas>
     <canvas id="simulation"></canvas>
     <canvas id="overlay-canvas"></canvas>
     
@@ -482,13 +521,50 @@
       </div>
   </div>
 
-  <script>
-    const glCanvas=document.getElementById('simulation');const gl=glCanvas.getContext('webgl',{preserveDrawingBuffer:true,antialias:true});
+  <script id="mainScript">
+    const bgCanvas=document.getElementById('background-canvas');const bgCtx=bgCanvas.getContext('2d');
+    const glCanvas=document.getElementById('simulation');
+
+    function createGalaxyWebGLContext(canvas) {
+        const attempts = [
+            { label: 'webgl / full quality', type: 'webgl', attrs: { preserveDrawingBuffer: true, antialias: true, alpha: true, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'high-performance' } },
+            { label: 'webgl / no antialias', type: 'webgl', attrs: { preserveDrawingBuffer: true, antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'default' } },
+            { label: 'webgl / safe driver fallback', type: 'webgl', attrs: { preserveDrawingBuffer: false, antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'default' } },
+            { label: 'experimental-webgl / safe fallback', type: 'experimental-webgl', attrs: { preserveDrawingBuffer: false, antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'default' } },
+            { label: 'webgl2 / safe fallback', type: 'webgl2', attrs: { preserveDrawingBuffer: false, antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'default' } }
+        ];
+
+        for (const attempt of attempts) {
+            try {
+                const ctx = canvas.getContext(attempt.type, attempt.attrs);
+                if (ctx) {
+                    window.__galaxyWebGLContext = { label: attempt.label, attrs: attempt.attrs };
+                    console.info('[Galaxy Simulation] WebGL context created:', attempt.label);
+                    return ctx;
+                }
+            } catch (err) {
+                console.warn('[Galaxy Simulation] WebGL context attempt failed:', attempt.label, err);
+            }
+        }
+        return null;
+    }
+
+    function showWebGLFailureMessage() {
+        const container = document.getElementById('sim-container') || document.body;
+        const panel = document.createElement('div');
+        panel.style.cssText = 'position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:620px;background:rgba(15,20,25,.96);border:1px solid #ef4444;color:#e2e8f0;padding:22px;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.7);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;z-index:99999;line-height:1.45;';
+        panel.innerHTML = '<div style="font-size:15px;font-weight:700;color:#fca5a5;margin-bottom:8px;">WebGL could not start</div>' +
+            '<div style="font-size:13px;color:#cbd5e1;">The simulation needs WebGL. This browser/device refused all WebGL context modes, including safe fallback settings.</div>' +
+            '<div style="font-size:12px;color:#94a3b8;margin-top:12px;">Try enabling hardware acceleration, updating the graphics driver, closing other GPU-heavy tabs, or opening the page in Chrome/Edge. In Firefox, also check <strong>about:support</strong> → Graphics → WebGL status.</div>';
+        container.appendChild(panel);
+    }
+
+    const gl=createGalaxyWebGLContext(glCanvas);
     const overlayCanvas=document.getElementById('overlay-canvas');const overlayCtx=overlayCanvas.getContext('2d');
     const specCanvas=document.getElementById('spectrumCanvas');const specCtx=specCanvas.getContext('2d');
     const sciCanvas=document.getElementById('scienceCanvas');const sciCtx=sciCanvas.getContext('2d');
     const sciStats=document.getElementById('scienceStats');
-    if(!gl) throw new Error('WebGL not supported');
+    if(!gl) { showWebGLFailureMessage(); throw new Error('WebGL not supported or blocked by browser/GPU settings'); }
     
     glCanvas.style.cursor = "default";
     
@@ -550,6 +626,110 @@
         }
     });
 
+    //<<PHYSICS>>
+    // ================================================================
+    // WORKER REFACTOR: SHARED PHYSICS CORE.
+    // Everything between the PHYSICS start/end comment markers runs on
+    // BOTH the main thread and the physics Web Worker (the worker
+    // script is assembled from these regions at startup). Code inside
+    // these regions must therefore NEVER touch the DOM. On the main
+    // thread these declarations act as the mirror of the worker's
+    // state, provide pure helpers for the analysis panels, and serve
+    // as a complete same-thread fallback engine if workers are
+    // unavailable.
+    // ================================================================
+    const SIM_SETTINGS = {
+        starCount: 4000, gasAmount: 1.0, mass: 50, inflowRate: 1.0,
+        simMode: 'single', galaxyAType: 'spiral-2', galaxyBType: 'spiral-2',
+        galaxyAStage: 'adult', galaxyBStage: 'adult',
+        initialSeparation: 2000, impactParam: 200, appVel: 100,
+        enableClusters: true, useLeapfrog: true, showJets: true, recordTrails: true,
+        showHIIRegions: true, showJetLobes: true,
+        enableOldStarConsolidation: true, useObservationSynthesis: true, reduceResolvedOldStars: true,
+        protectedStarIds: [] // star ids the main thread wants excluded from consolidation (analysis targets, chase camera, hover)
+    };
+    const SIM_EVENTS = { mergerOccurred: false };
+
+    let jetParticles=[],blackHoles=[],stars=[],gasClouds=[],remnants=[];
+    let isPostMerger = false;
+    let postMergerTimer = 0.0;
+    let cosmologicalInflowReservoir = 0;
+    const G=0.008; let bulgeRadius=250, bulgeMass=500, galaxyRadius=550; let centralBHMass=50;
+    let totalDiskMass = 0;
+    let instantaneousSFR = 0, bhAccretionRateLast = 0;
+    const baseEventHorizon = 0.001; let FORCE_SOFTENING=20;
+    const MAX_TRAIL_LENGTH=15;
+    const dt=0.01,yearsPerStep=15000000;
+    const dtMyr = (dt * yearsPerStep) / 1e6;
+    let elapsedTime=0;
+    let totalPhysicsSteps = 0; // FIX: dedicated step counter for periodic physics-side updates
+    let rho0=25, rs=85;
+    let patternAngle = 0; let barAngle = 0; let ringShockRadius = 0;
+    const SPIRAL_PITCH = 0.2; const DYNAMICAL_FRICTION_COEFF = 0.002;
+    const JET_ACCRETION_SPIKE_THRESHOLD = 0.005; const JET_DURATION = 50; const JET_PARTICLES_PER_STEP = 4;
+    const JET_VELOCITY = 200; const JET_LIFETIME = 150; const JET_INTERACTION_RADIUS = 5; const JET_KICK_FORCE = 2.0; const JET_HEATING = 15;
+    const starMass = 1;
+    const k = 5 / Math.pow(10, 1/3);
+    const MASSIVE_STAR_THRESHOLD = 8.0;
+    const SUPERNOVA_RADIUS = 50; const SUPERNOVA_FORCE = 1.5; const SUPERNOVA_ENRICHMENT = 0.5;
+    let starIdCounter = 0; // WORKER REFACTOR: persistent star ids so UI target references survive state mirroring
+
+    // FEATURE MERGE: physics-owned feature state (mirrored to the main thread each step)
+    let hiiRegions = [], jetLobes = [];
+    let consolidatedStellarPopulations = [{mass:0, light:0, count:0}, {mass:0, light:0, count:0}];
+    let hiiRegionIdCounter = 0, jetLobeIdCounter = 0;
+    const MAX_HII_REGIONS = 900, MAX_JET_LOBES = 90;
+    let updatePhysicsCallCount = 0; // drives old-star consolidation cadence (~every 12th physics batch)
+
+    const GALAXY_PRESETS = {
+        "ring": { name: "Ring Galaxy", type: "disc", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 2.5, armCount: 0, armFraction: 0, gasConcentration: 0.8, thickness: 20 },
+        "spiral-2": { name: "Spiral (2-Arm)", type: "spiral", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 2.0, armCount: 2, armFraction: 0.5, gasConcentration: 0.8, thickness: 20 },
+        "spiral-6": { name: "Spiral (6-Arm)", type: "spiral", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 1.8, armCount: 6, armFraction: 0.6, gasConcentration: 0.9, thickness: 20 },
+        "disc": { name: "Disc Galaxy", type: "disc", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 1.5, armCount: 0, armFraction: 0, gasConcentration: 0.2, thickness: 10 }
+    };
+
+    // WORKER REFACTOR: SFR accumulator lives physics-side; the main
+    // thread's scienceState.sfr points at this object (or the worker's
+    // mirrored copy of it once states start arriving).
+    const sfrState = {
+        bucketWidthYears: 25e6,
+        maxBuckets: 240,
+        currentBucketStart: 0,
+        currentBucketMass: 0,
+        currentBucketCount: 0,
+        history: [],
+        liveQueue: [],
+        cumulativeMassFormed: 0,
+        cumulativeStarsFormed: 0
+    };
+
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+    // WORKER REFACTOR: snapshot of everything the main thread needs for
+    // rendering + analysis. Sent via structured clone after each batch
+    // of physics steps (star trails are Float32Arrays and clone cheaply).
+    function serializeState() {
+        return {
+            blackHoles: blackHoles,
+            stars: stars,
+            gasClouds: gasClouds,
+            jetParticles: jetParticles,
+            remnants: remnants,
+            hiiRegions: hiiRegions,
+            jetLobes: jetLobes,
+            consolidatedStellarPopulations: consolidatedStellarPopulations,
+            liveMassModels: liveMassModels,
+            sfr: sfrState,
+            scalars: {
+                elapsedTime, patternAngle, barAngle, ringShockRadius,
+                isPostMerger, postMergerTimer, cosmologicalInflowReservoir,
+                totalDiskMass, centralBHMass, instantaneousSFR, bhAccretionRateLast
+            },
+            events: { mergerOccurred: SIM_EVENTS.mergerOccurred }
+        };
+    }
+    //<<END_PHYSICS>>
+
     // --- SCIENCE STATE & DUAL LIVE MASS MODEL ---
     const scienceState = {
         enabled: true,
@@ -561,17 +741,10 @@
         metallicityGradient: null,
         gasPhases: { history: [] },
         bhFueling: { history: [] },
-        sfr: {
-            bucketWidthYears: 25e6,
-            maxBuckets: 240,
-            currentBucketStart: 0,
-            currentBucketMass: 0,
-            currentBucketCount: 0,
-            history: [],
-            liveQueue: [] 
-        }
+        sfr: sfrState // WORKER REFACTOR: shared physics-side accumulator; swapped for the worker's mirrored copy on every state update
     };
 
+    //<<PHYSICS>>
     const liveMassModels = [
         { radii: [], enclosedBaryonicMass: [], totalLiveMass: 0, maxRadius: 2000, bins: 40 },
         { radii: [], enclosedBaryonicMass: [], totalLiveMass: 0, maxRadius: 2000, bins: 40 }
@@ -594,6 +767,22 @@
                 let bin = Math.floor(r / binSize);
                 if (bin < model.bins) binMasses[bin] += stars[i].mass;
                 currentTotalMass += stars[i].mass;
+            }
+            // FEATURE MERGE: consolidated (unresolved) old stars still contribute
+            // to the live disk mass model via an exponential-disk annulus split.
+            const consolidated = consolidatedStellarPopulations[g];
+            if (consolidated && consolidated.mass > 0) {
+                const rd = Math.max(80, galaxyRadius * 0.58);
+                const diskNorm = 1.0 - Math.exp(-model.maxRadius / rd) * (1.0 + model.maxRadius / rd);
+                let prevFrac = 0;
+                for (let i = 0; i < model.bins; i++) {
+                    const rOuter = (i + 1) * binSize;
+                    const fracOuter = (1.0 - Math.exp(-rOuter / rd) * (1.0 + rOuter / rd)) / Math.max(0.001, diskNorm);
+                    const annulusFrac = clamp(fracOuter - prevFrac, 0, 1);
+                    binMasses[i] += consolidated.mass * annulusFrac;
+                    prevFrac = fracOuter;
+                }
+                currentTotalMass += consolidated.mass;
             }
             for (let i=0; i<gasClouds.length; i++) {
                 if (gasClouds[i].galaxyIndex !== g) continue;
@@ -705,6 +894,7 @@
         }
         return neighbors;
     }
+    //<<END_PHYSICS>>
 
     const sciTitles = {
         "rotationCurve": "Mass & Rotation Curve (Alpha)",
@@ -727,8 +917,6 @@
     let spectroscopyTarget = null;   
     let hoveredStar = null;
     let projectedOrbitPath = [];
-
-    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
     function updateInteractionHint() {
         if (document.body.classList.contains('presentation-mode')) return;
@@ -790,13 +978,134 @@
 
     const OBSERVATION_MODES = {
         visible: { name: "Visible", desc: "Hubble-like optical imaging. Preserves color, reveals dust lanes via extinction, adds subtle diffraction.", psfCore: 60.0, psfHalo: 8.0, bloomStrength: 0.3, noiseStrength: 0.03, diffraction: 1.0, sparseMode: 0.0, bgFloor: [0.01, 0.015, 0.02], exposureGain: 1.0, exposureShoulder: 1.5 },
+        telescope: { name: "Real Telescope", desc: "Restrained long-exposure optical telescope view: smoother surface brightness, muted color, limited bloom, faint sensor noise and fewer resolved galaxy stars.", psfCore: 74.0, psfHalo: 13.5, bloomStrength: 0.08, noiseStrength: 0.012, diffraction: 0.18, sparseMode: 0.0, bgFloor: [0.006, 0.007, 0.010], exposureGain: 0.78, exposureShoulder: 2.35 },
         infrared: { name: "Infrared", desc: "JWST-like view. Penetrates dust, highlights warm gas/dust emission, softens point sources.", psfCore: 35.0, psfHalo: 5.0, bloomStrength: 0.6, noiseStrength: 0.06, diffraction: 0.4, sparseMode: 0.0, bgFloor: [0.04, 0.01, 0.005], exposureGain: 1.3, exposureShoulder: 1.2 },
         ultraviolet: { name: "Ultraviolet", desc: "GALEX-like view. Traces recent star formation and hot/young populations. Highly attenuated by dust.", psfCore: 50.0, psfHalo: 10.0, bloomStrength: 0.2, noiseStrength: 0.12, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.005, 0.005, 0.015], exposureGain: 1.5, exposureShoulder: 2.0 },
         xray: { name: "X-Ray", desc: "Chandra-like view. Sparse event rendering. Reveals only highly energetic sources (AGN, jets, remnants).", psfCore: 80.0, psfHalo: 15.0, bloomStrength: 0.0, noiseStrength: 0.4, diffraction: 0.0, sparseMode: 1.0, bgFloor: [0.0, 0.0, 0.0], exposureGain: 2.0, exposureShoulder: 1.0 },
+        radio: { name: "Radio / Cold Gas", desc: "False-color H I style cold-gas map. Stars are suppressed while neutral/cold gas structure is highlighted in cyan-green.", psfCore: 95.0, psfHalo: 18.0, bloomStrength: 0.02, noiseStrength: 0.018, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.0, 0.006, 0.006], exposureGain: 1.1, exposureShoulder: 1.8 },
         spectroscopy: { name: "Spectroscopy", desc: "Synthetic spectral analysis. Select an object to generate a readout.", psfCore: 60.0, psfHalo: 5.0, bloomStrength: 0.1, noiseStrength: 0.0, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.0, 0.0, 0.0], exposureGain: 0.8, exposureShoulder: 1.0 }
     };
     
     let currentModeId = 'visible'; let currentMode = OBSERVATION_MODES[currentModeId];
+    function isTelescopeMode(modeId = currentModeId) { return modeId === 'telescope'; }
+    function isRadioMode(modeId = currentModeId) { return modeId === 'radio'; }
+    function isOpticalLikeMode(modeId = currentModeId) { return modeId === 'visible' || modeId === 'telescope'; }
+    function shouldRenderColdGasDiagnostic(modeId = currentModeId) { return showColdGasOverlay || modeId === 'infrared' || modeId === 'spectroscopy' || modeId === 'radio'; }
+
+    function updateDirectorCameraLock(exactCenter = false) {
+        if (!isDirectorMode || isPaused) return;
+        if (!trackingTarget) { rotationY += 0.05 * physicsSteps; return; }
+        if (stars.indexOf(trackingTarget) === -1) { trackingTarget = null; return; }
+
+        let targetRotY = -Math.atan2(trackingTarget.vx, trackingTarget.vz) * 180 / Math.PI;
+        let targetRotX = Math.atan2(trackingTarget.vy, Math.hypot(trackingTarget.vx, trackingTarget.vz)) * 180 / Math.PI;
+        let deltaY = (targetRotY - rotationY) % 360; if (deltaY > 180) deltaY -= 360; if (deltaY < -180) deltaY += 360;
+        rotationY += deltaY * 0.02 * physicsSteps;
+        let deltaX = (targetRotX - rotationX) % 360; if (deltaX > 180) deltaX -= 360; if (deltaX < -180) deltaX += 360;
+        rotationX += deltaX * 0.02 * physicsSteps;
+        scale += (chaseCamZoomTarget - scale) * 0.01 * physicsSteps;
+
+        const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180;
+        const cosY = Math.cos(rY), sinY = Math.sin(rY), cosX = Math.cos(rX), sinX = Math.sin(rX);
+        const x1 = trackingTarget.x * cosY + trackingTarget.z * sinY;
+        const z1 = -trackingTarget.x * sinY + trackingTarget.z * cosY;
+        const y2 = trackingTarget.y * cosX - z1 * sinX;
+        const z2 = trackingTarget.y * sinX + z1 * cosX;
+        const sf = 1000 / (1000 + z2);
+
+        let targetTX = -x1 * sf * scale;
+        let targetTY = -y2 * sf * scale;
+
+        if (exactCenter) {
+            translateX = targetTX;
+            translateY = targetTY;
+        } else {
+            translateX += (targetTX - translateX) * 0.18 * physicsSteps;
+            translateY += (targetTY - translateY) * 0.18 * physicsSteps;
+        }
+    }
+
+    function drawDirectorTrackingReticle(ctx, star, label = 'TRACK A') {
+        if (!star || !stars.includes(star)) return;
+        const p = getRawProjection(star.x, star.y, star.z);
+        let sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+        let sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+        const w = overlayCanvas.width, h = overlayCanvas.height;
+        const pad = 34 * highResMult;
+        const onscreen = sx >= 0 && sx <= w && sy >= 0 && sy <= h;
+        const pulse = 0.78 + 0.22 * Math.sin(frameCount * 0.08);
+
+        ctx.save();
+        ctx.lineWidth = 1.8 * highResMult;
+        ctx.strokeStyle = `rgba(120, 220, 255, ${0.88 * pulse})`;
+        ctx.fillStyle = `rgba(120, 220, 255, ${0.95 * pulse})`;
+        ctx.font = `${11 * highResMult}px Arial`;
+        ctx.setLineDash([]);
+
+        if (onscreen) {
+            const r = 14 * highResMult;
+            const gap = 6 * highResMult;
+            const arm = 9 * highResMult;
+            ctx.beginPath();
+            ctx.arc(sx, sy, r, 0, Math.PI * 2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(sx - r - arm, sy); ctx.lineTo(sx - r + gap, sy);
+            ctx.moveTo(sx + r - gap, sy); ctx.lineTo(sx + r + arm, sy);
+            ctx.moveTo(sx, sy - r - arm); ctx.lineTo(sx, sy - r + gap);
+            ctx.moveTo(sx, sy + r - gap); ctx.lineTo(sx, sy + r + arm);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(sx, sy, 2.2 * highResMult, 0, Math.PI * 2);
+            ctx.fill();
+
+            const boxW = Math.max(64, ctx.measureText(label).width + 14 * highResMult);
+            const boxH = 16 * highResMult;
+            const lx = sx + 18 * highResMult;
+            const ly = sy - 24 * highResMult;
+            ctx.fillStyle = 'rgba(0, 8, 16, 0.68)';
+            ctx.fillRect(lx, ly, boxW, boxH);
+            ctx.strokeStyle = `rgba(120, 220, 255, ${0.78 * pulse})`;
+            ctx.strokeRect(lx, ly, boxW, boxH);
+            ctx.fillStyle = `rgba(210, 245, 255, ${0.96 * pulse})`;
+            ctx.fillText(label, lx + 7 * highResMult, ly + 11.5 * highResMult);
+        } else {
+            const cx = Math.min(Math.max(sx, pad), w - pad);
+            const cy = Math.min(Math.max(sy, pad), h - pad);
+            const dx = sx - cx, dy = sy - cy;
+            const ang = Math.atan2(dy, dx);
+            const len = 12 * highResMult;
+            ctx.translate(cx, cy);
+            ctx.rotate(ang);
+            ctx.beginPath();
+            ctx.moveTo(len, 0);
+            ctx.lineTo(-len * 0.55, len * 0.72);
+            ctx.lineTo(-len * 0.55, -len * 0.72);
+            ctx.closePath();
+            ctx.fill();
+            ctx.rotate(-ang);
+            ctx.translate(-cx, -cy);
+
+            const lx = cx + 14 * highResMult;
+            const ly = cy - 8 * highResMult;
+            const boxW = Math.max(72, ctx.measureText(label).width + 14 * highResMult);
+            const boxH = 16 * highResMult;
+            ctx.fillStyle = 'rgba(0, 8, 16, 0.68)';
+            ctx.fillRect(lx, ly, boxW, boxH);
+            ctx.strokeRect(lx, ly, boxW, boxH);
+            ctx.fillStyle = `rgba(210, 245, 255, ${0.96 * pulse})`;
+            ctx.fillText(label, lx + 7 * highResMult, ly + 11.5 * highResMult);
+        }
+
+        ctx.restore();
+    }
+
+    function telescopeDesaturateRGB(r, g, b, amount = 0.45) {
+        const l = r * 0.30 + g * 0.59 + b * 0.11;
+        return [r * (1 - amount) + l * amount, g * (1 - amount) + l * amount, b * (1 - amount) + l * amount];
+    }
     
     const uiModeSelect = document.getElementById('observationFilter');
     const uiModeDesc = document.getElementById('instrumentDesc');
@@ -823,51 +1132,156 @@
     document.getElementById('showJets').addEventListener('change',(e)=>{showJets=e.target.checked;if(!showJets)jetParticles=[];});
     document.getElementById('showGrid').addEventListener('change',(e)=>{showGrid=e.target.checked;});
     document.getElementById('showStreaks').addEventListener('change',(e)=>{showStreaks=e.target.checked;});
+    document.getElementById('showBackgroundUniverse').addEventListener('change',(e)=>{showBackgroundUniverse=e.target.checked;});
+    document.getElementById('showEnhancedCore').addEventListener('change',(e)=>{showEnhancedCore=e.target.checked;});
+    document.getElementById('cinematicDepth').addEventListener('change',(e)=>{useCinematicDepth=e.target.checked;});
+    document.getElementById('showHIIRegions').addEventListener('change',(e)=>{showHIIRegions=e.target.checked;});
+    document.getElementById('showAccretionDisks').addEventListener('change',(e)=>{showAccretionDisks=e.target.checked;});
+    document.getElementById('showJetLobes').addEventListener('change',(e)=>{showJetLobes=e.target.checked;});
+    document.getElementById('showEvolvingDust').addEventListener('change',(e)=>{showEvolvingDust=e.target.checked;});
+    document.getElementById('showColdGasOverlay').addEventListener('change',(e)=>{showColdGasOverlay=e.target.checked;});
+    document.getElementById('showForegroundStars').addEventListener('change',(e)=>{showForegroundStars=e.target.checked;});
+    document.getElementById('showBackgroundLensing').addEventListener('change',(e)=>{showBackgroundLensing=e.target.checked;});
+    document.getElementById('useObservationSynthesis').addEventListener('change',(e)=>{useObservationSynthesis=e.target.checked;});
+    document.getElementById('reduceResolvedOldStars').addEventListener('change',(e)=>{reduceResolvedOldStars=e.target.checked;});
+    document.getElementById('enableOldStarConsolidation').addEventListener('change',(e)=>{enableOldStarConsolidation=e.target.checked;});
+    document.getElementById('showPopulationMaps').addEventListener('change',(e)=>{showPopulationMaps=e.target.checked;});
+    document.getElementById('showGasPhaseMaps').addEventListener('change',(e)=>{showGasPhaseMaps=e.target.checked;});
 
     let frameCount=0;
-    let jetParticles=[],blackHoles=[],stars=[],gasClouds=[],remnants=[];let isPaused=false;
+    let isPaused=false; // WORKER REFACTOR: particle arrays are declared in the shared physics core above
     let isDirectorMode=false; let trackingTarget = null;
     let chaseCamZoomTarget = 8.0;
-    let showDarkMatter=true,showJets=true,showGrid=true,showStreaks=true;
-    let useRealisticColors = true, useLeapfrog = true;
+    let showDarkMatter=true,showJets=true,showGrid=true,showStreaks=true,showBackgroundUniverse=true,showEnhancedCore=true;
+    let showHIIRegions=true,showAccretionDisks=true,showJetLobes=true,showEvolvingDust=true,showForegroundStars=true,showBackgroundLensing=true,showColdGasOverlay=false;
+    let useRealisticColors = true, useLeapfrog = true, useCinematicDepth = true;
+    let useObservationSynthesis = true, reduceResolvedOldStars = true, enableOldStarConsolidation = true, showPopulationMaps = true, showGasPhaseMaps = true;
+    let bgStars = [], bgGalaxies = [], foregroundStars = [];
+    const MAX_FOREGROUND_STARS = 32;
     
-    // Engine State
-    let isPostMerger = false;
-    let postMergerTimer = 0.0;
-    let mergerFlashGlow = 0.0;
+    let mergerFlashGlow = 0.0; // main-thread visual: set to 1.0 when the worker reports a merger event, decays in draw()
 
     let isDataRecording = false;
     let dataRecordBuffer = [];
     const MAX_RECORD_ROWS = 5000;
+    const DATA_RECORD_HEADERS = [
+        "time_myr", "stability_index", "total_energy", "kinetic_energy", "potential_energy",
+        "primary_bh_mass_sim_units", "resolved_star_count", "consolidated_old_star_count", "gas_cloud_count", "resolved_stellar_mass_sim_units", "total_stellar_mass_sim_units", "gas_mass_sim_units",
+        "instant_sfr_index_sim_units", "cold_gas_mass_sim_units", "hot_gas_mass_sim_units", "cold_gas_fraction", "bh_accretion_index",
+        "stellar_metallicity_gradient", "gas_metallicity_gradient",
+        "rotation_radii_pc", "rotation_model_total_km_s", "rotation_baryonic_km_s", "rotation_dark_matter_km_s", "rotation_star_median_km_s", "rotation_gas_median_km_s",
+        "sfr_history_time_myr", "sfr_history_index_sim_units",
+        "metallicity_radii_pc", "stellar_metallicity_z", "gas_metallicity_z",
+        "observation_filter", "galaxy_a_type", "galaxy_a_stage", "galaxy_b_type", "galaxy_b_stage", "simulation_mode"
+    ];
     let dataRecordPart = 1;
-    let cosmologicalInflowReservoir = 0;
+
+    function csvEscape(value) {
+        if (value === null || value === undefined) return "";
+        let str = String(value);
+        if (str.includes('"')) str = str.replace(/"/g, '""');
+        if (/[",\r\n;]/.test(str)) return `"${str}"`;
+        return str;
+    }
+
+    function makeExcelCsv(rows) {
+        // UTF-8 BOM and sep=, make the file open correctly in Excel, including German regional settings.
+        return "\uFEFFsep=,\r\n" + rows.map(row => row.map(csvEscape).join(",")).join("\r\n") + "\r\n";
+    }
+
+    function downloadTextFile(filename, textContent, mimeType = "text/csv;charset=utf-8;") {
+        const blob = new Blob([textContent], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+    }
+
+    function getDataRecordRow() {
+        let timeMyr = elapsedTime / 1e6;
+        const energy = computeTotalEnergy([...stars, ...blackHoles, ...gasClouds]);
+        stabilityIndex = Math.min(100, Math.max(0, (energy.kinetic / Math.max(Math.abs(energy.potential), 1e-9)) * 100));
+        let starGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.starFit.b : 0;
+        let gasGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.gasFit.b : 0;
+        let resolvedStarMass = stars.reduce((sum, s) => sum + (Number.isFinite(s.mass) ? s.mass : 0), 0);
+        let consolidatedStarMass = consolidatedStellarPopulations.reduce((sum, p) => sum + (Number.isFinite(p.mass) ? p.mass : 0), 0);
+        let tStarMass = resolvedStarMass + consolidatedStarMass;
+        let consolidatedStarCount = consolidatedStellarPopulations.reduce((sum, p) => sum + (p.count || 0), 0);
+
+        let rCurv = scienceState.rotationCurve || {radii:[], modelTotal:[], modelBaryon:[], modelDarkMatter:[], starMedian:[], gasMedian:[]};
+        let mGrad = scienceState.metallicityGradient || {radii:[], starZ:[], gasZ:[]};
+        let sHist = scienceState.sfr.history || [];
+
+        return [
+            timeMyr.toFixed(2), stabilityIndex.toFixed(2), lastEnergy.total.toExponential(4), lastEnergy.kinetic.toExponential(4), lastEnergy.potential.toExponential(4),
+            blackHoles[0] ? blackHoles[0].mass.toFixed(2) : 0, stars.length, consolidatedStarCount, gasClouds.length, resolvedStarMass.toFixed(2), tStarMass.toFixed(2), totalGasMassCached.toFixed(2),
+            instantaneousSFR.toFixed(4), coldGasMass.toFixed(2), hotGasMass.toFixed(2), (coldGasMass/(coldGasMass+hotGasMass+0.001)).toFixed(4), bhAccretionRateLast.toFixed(6),
+            starGrad.toFixed(6), gasGrad.toFixed(6),
+
+            JSON.stringify(rCurv.radii || []),
+            JSON.stringify(rCurv.modelTotal || []),
+            JSON.stringify(rCurv.modelBaryon || []),
+            JSON.stringify(rCurv.modelDarkMatter || []),
+            JSON.stringify(rCurv.starMedian || []),
+            JSON.stringify(rCurv.gasMedian || []),
+
+            JSON.stringify(sHist.map(h=>h.tMid)),
+            JSON.stringify(sHist.map(h=>h.sfrMass)),
+
+            JSON.stringify(mGrad.radii || []),
+            JSON.stringify(mGrad.starZ || []),
+            JSON.stringify(mGrad.gasZ || []),
+
+            currentModeId,
+            galaxyATypeSelect.value,
+            galaxyAStageSelect.value,
+            galaxyBTypeSelect.value,
+            galaxyBStageSelect.value,
+            simModeSelect.value
+        ];
+    }
+
+    function updateRecordStatus(textOverride = null) {
+        const status = document.getElementById('recordStatus');
+        if (!status) return;
+        status.style.display = 'block';
+        if (textOverride) {
+            status.textContent = textOverride;
+            return;
+        }
+        const partInfo = dataRecordPart > 1 ? ` part ${dataRecordPart}` : "";
+        status.textContent = isDataRecording ? `Recording${partInfo}... (${dataRecordBuffer.length} rows buffered)` : `CSV export ready. ${dataRecordBuffer.length} rows buffered.`;
+    }
+
+    function flushDataRecordBuffer(finalFlush = true) {
+        if (!dataRecordBuffer.length) {
+            if (finalFlush) updateRecordStatus("No rows recorded yet.");
+            return;
+        }
+        const rows = [DATA_RECORD_HEADERS, ...dataRecordBuffer];
+        const csv = makeExcelCsv(rows);
+        const timeStamp = new Date().toISOString().replace(/[:.]/g, "-");
+        const filename = `galaxy_data_log_${timeStamp}_part${String(dataRecordPart).padStart(2, "0")}.csv`;
+        downloadTextFile(filename, csv);
+        dataRecordBuffer = [];
+        dataRecordPart += 1;
+        if (finalFlush) updateRecordStatus("CSV exported. Recording stopped.");
+        else updateRecordStatus(`CSV part exported. Continuing with part ${dataRecordPart}.`);
+    }
     
     const inflowRateSlider = document.getElementById('inflowRate');
     const inflowRateValue = document.getElementById('inflowRateValue');
     inflowRateSlider.addEventListener('input', () => { inflowRateValue.textContent = inflowRateSlider.value + ' M☉/yr'; });
     
     let centerX,centerY,centerZ=0,totalSizePc=10000,pcPerPixel; 
-    const G=0.008; let bulgeRadius=250, bulgeMass=500, galaxyRadius=550; let centralBHMass=50;
-    let totalDiskMass = 0, totalGasMassCached = 0; 
-    let instantaneousSFR = 0, coldGasMass = 0, hotGasMass = 0, bhAccretionRateLast = 0;
-
-    const baseEventHorizon = 0.001; let FORCE_SOFTENING=20; 
-    const MAX_TRAIL_LENGTH=15;
-    const dt=0.01,yearsPerStep=15000000;
-    const dtMyr = (dt * yearsPerStep) / 1e6;
-    
-    let elapsedTime=0,physicsSteps=1;let stabilityIndex=0;
-    let totalPhysicsSteps = 0; // FIX: dedicated step counter for periodic physics-side updates
-    let rho0=25, rs=85; // FIX: removed dead constant THETA (Barnes-Hut opening angle; no tree code exists)
-    let patternAngle = 0; let barAngle = 0; let ringShockRadius = 0; 
-    const SPIRAL_PITCH = 0.2; const DYNAMICAL_FRICTION_COEFF = 0.002; 
-    const JET_ACCRETION_SPIKE_THRESHOLD = 0.005; const JET_DURATION = 50; const JET_PARTICLES_PER_STEP = 4;
-    const JET_VELOCITY = 200; const JET_LIFETIME = 150; const JET_INTERACTION_RADIUS = 5; const JET_KICK_FORCE = 2.0; const JET_HEATING = 15;
-    
-    const starMass = 1; 
-    const k = 5 / Math.pow(10, 1/3);
-    const MASSIVE_STAR_THRESHOLD = 8.0; 
-    const SUPERNOVA_RADIUS = 50; const SUPERNOVA_FORCE = 1.5; const SUPERNOVA_ENRICHMENT = 0.5;
+    // WORKER REFACTOR: physics constants/state moved to the shared physics core above
+    let totalGasMassCached = 0; 
+    let coldGasMass = 0, hotGasMass = 0;
+    let physicsSteps=1;let stabilityIndex=0;
     
     let dragStartX = 0, dragStartY = 0;
     let currentMouseX = -1000, currentMouseY = -1000;
@@ -879,13 +1293,6 @@
         }
     });
 
-    const GALAXY_PRESETS = {
-        "ring": { name: "Ring Galaxy", type: "disc", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 2.5, armCount: 0, armFraction: 0, gasConcentration: 0.8, thickness: 20 },
-        "spiral-2": { name: "Spiral (2-Arm)", type: "spiral", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 2.0, armCount: 2, armFraction: 0.5, gasConcentration: 0.8, thickness: 20 },
-        "spiral-6": { name: "Spiral (6-Arm)", type: "spiral", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 1.8, armCount: 6, armFraction: 0.6, gasConcentration: 0.9, thickness: 20 },
-        "disc": { name: "Disc Galaxy", type: "disc", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 1.5, armCount: 0, armFraction: 0, gasConcentration: 0.2, thickness: 10 }
-    };
-    
     const speedSlider=document.getElementById('speed'), speedValue=document.getElementById('speedValue');
     const massSlider=document.getElementById('mass'), massValue=document.getElementById('massValue');
     const starCountSlider=document.getElementById('starCount'), starCountValue=document.getElementById('starCountValue');
@@ -928,11 +1335,167 @@
     const dustBrightnessSlider = document.getElementById('dustBrightness');
     const dustBrightnessValue = document.getElementById('dustBrightnessValue');
     
-    let hotGasVisualMult = 2.0; let coldGasVisualMult = 2.0; let starVisualMult = 2.0; let dustVisualMult = 1.0;
+    let hotGasVisualMult = 2.0; let coldGasVisualMult = 2.0; let coldGasContrastBoost = 1.0; let starVisualMult = 2.0; let dustVisualMult = 1.0;
+
+    function mapDustBiasToMultiplier(val) {
+        // Radiative-transfer style control: this scales optical depth, not black overlay opacity.
+        // Negative values fade dust aggressively; at -1 it is visually off. Positive values raise tau logarithmically.
+        if (val <= -0.99) return 0.0;
+        if (val < 0) return Math.pow(Math.max(0, 1.0 + val), 2.2);
+        return Math.pow(10, val * 0.33);
+    }
+
+    const DUST_FIELD_SIZE = 96;
+    let dustTauField = new Float32Array(DUST_FIELD_SIZE * DUST_FIELD_SIZE);
+    let dustDepthField = new Float32Array(DUST_FIELD_SIZE * DUST_FIELD_SIZE);
+    let dustTempField = new Float32Array(DUST_FIELD_SIZE * DUST_FIELD_SIZE);
+    let dustFieldBuilt = false;
+
+    function smoothstep(edge0, edge1, x) {
+        const t = clamp((x - edge0) / Math.max(0.0001, edge1 - edge0), 0.0, 1.0);
+        return t * t * (3.0 - 2.0 * t);
+    }
+
+    function clearDustField() {
+        dustTauField.fill(0);
+        dustDepthField.fill(0);
+        dustTempField.fill(0);
+        dustFieldBuilt = false;
+    }
+
+    function estimateCloudOpticalDepth(cloud) {
+        if (!cloud || !cloud.mass || !cloud.dustMass) return 0;
+        const ratio = cloud.dustMass / Math.max(cloud.mass, 0.001);
+        if (ratio < 0.00035) return 0;
+        const massFactor = clamp(Math.pow(cloud.mass / 140.0, 0.22), 0.55, 1.85);
+        return clamp(ratio * 24.0 * massFactor * dustVisualMult, 0.0, 0.85);
+    }
+
+    function buildProjectedDustField() {
+        clearDustField();
+        if (!showEvolvingDust || !document.getElementById('tglRealism').checked || !tglDust.checked || dustVisualMult <= 0.0005) return;
+        const w = glCanvas.width || overlayCanvas.width;
+        const h = glCanvas.height || overlayCanvas.height;
+        if (!w || !h) return;
+
+        const maxCloudsForField = 6500;
+        const stride = Math.max(1, Math.ceil(gasClouds.length / maxCloudsForField));
+
+        for (let i = 0; i < gasClouds.length; i += stride) {
+            const c = gasClouds[i];
+            const tauCloud = estimateCloudOpticalDepth(c);
+            if (tauCloud <= 0.0001) continue;
+
+            const p = getRawProjection(c.x, c.y, c.z);
+            const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+            const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+            if (sx < -80 || sx > w + 80 || sy < -80 || sy > h + 80) continue;
+
+            const gx = Math.floor((sx / w) * DUST_FIELD_SIZE);
+            const gy = Math.floor((sy / h) * DUST_FIELD_SIZE);
+            const screenR = Math.max(1.0, c.size * 2.0 * scale * highResMult);
+            const mapR = clamp(Math.ceil((screenR / Math.max(w, h)) * DUST_FIELD_SIZE), 1, 4);
+            const sigma2 = Math.max(1.0, mapR * mapR * 0.72);
+            const dustTemp = c.dustTemp || 22;
+
+            for (let yy = gy - mapR; yy <= gy + mapR; yy++) {
+                if (yy < 0 || yy >= DUST_FIELD_SIZE) continue;
+                for (let xx = gx - mapR; xx <= gx + mapR; xx++) {
+                    if (xx < 0 || xx >= DUST_FIELD_SIZE) continue;
+                    const dx = xx - gx, dy = yy - gy;
+                    const weight = Math.exp(-(dx*dx + dy*dy) / sigma2);
+                    if (weight < 0.04) continue;
+                    const idx = yy * DUST_FIELD_SIZE + xx;
+                    const addTau = tauCloud * weight;
+                    dustTauField[idx] += addTau;
+                    dustDepthField[idx] += addTau * p.depth;
+                    dustTempField[idx] += addTau * dustTemp;
+                }
+            }
+        }
+        dustFieldBuilt = true;
+    }
+
+    function sampleProjectedDustField(sx, sy) {
+        if (!dustFieldBuilt) return { tau: 0, depth: 0, temp: 22 };
+        const w = glCanvas.width || overlayCanvas.width;
+        const h = glCanvas.height || overlayCanvas.height;
+        if (!w || !h || sx < 0 || sy < 0 || sx >= w || sy >= h) return { tau: 0, depth: 0, temp: 22 };
+
+        const fx = (sx / w) * (DUST_FIELD_SIZE - 1);
+        const fy = (sy / h) * (DUST_FIELD_SIZE - 1);
+        const x0 = Math.floor(fx), y0 = Math.floor(fy);
+        const x1 = Math.min(DUST_FIELD_SIZE - 1, x0 + 1);
+        const y1 = Math.min(DUST_FIELD_SIZE - 1, y0 + 1);
+        const tx = fx - x0, ty = fy - y0;
+
+        function read(arr, x, y) { return arr[y * DUST_FIELD_SIZE + x]; }
+        const w00 = (1-tx)*(1-ty), w10 = tx*(1-ty), w01 = (1-tx)*ty, w11 = tx*ty;
+        const tau = read(dustTauField,x0,y0)*w00 + read(dustTauField,x1,y0)*w10 + read(dustTauField,x0,y1)*w01 + read(dustTauField,x1,y1)*w11;
+        if (tau <= 0.00001) return { tau: 0, depth: 0, temp: 22 };
+        const depthWeighted = read(dustDepthField,x0,y0)*w00 + read(dustDepthField,x1,y0)*w10 + read(dustDepthField,x0,y1)*w01 + read(dustDepthField,x1,y1)*w11;
+        const tempWeighted = read(dustTempField,x0,y0)*w00 + read(dustTempField,x1,y0)*w10 + read(dustTempField,x0,y1)*w01 + read(dustTempField,x1,y1)*w11;
+        return { tau, depth: depthWeighted / tau, temp: tempWeighted / tau };
+    }
+
+    function mixedMediumTransmission(tau) {
+        if (tau <= 0.0001) return 1.0;
+        return (1.0 - Math.exp(-tau)) / tau;
+    }
+
+    function porousEffectiveTau(tau, porosity = 0.64) {
+        // Clumpy dust leaves statistical holes, so the same dust mass does not behave like a solid screen.
+        return -Math.log(clamp(porosity + (1.0 - porosity) * Math.exp(-tau), 0.0001, 1.0));
+    }
+
+    function getDustAttenuationForObject(x, y, z, modeId) {
+        if (!document.getElementById('tglRealism').checked || !tglDust.checked || dustVisualMult <= 0.0005 || modeId === 'xray') {
+            return { alpha: 1, r: 1, g: 1, b: 1, tau: 0, foreground: 0, temp: 22 };
+        }
+
+        const p = getRawProjection(x, y, z);
+        const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+        const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+        const sample = sampleProjectedDustField(sx, sy);
+        const analyticHint = getAnalyticDustHint(x, y, z) * 0.12;
+        let tauColumn = sample.tau + analyticHint;
+        if (!showEvolvingDust) tauColumn = analyticHint;
+        if (tauColumn <= 0.0001) return { alpha: 1, r: 1, g: 1, b: 1, tau: 0, foreground: 0, temp: 22 };
+
+        const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+        let tauScale = 0.72, maxTau = 0.55 + edgeOn * 1.35;
+        if (modeId === 'ultraviolet') { tauScale = 2.15; maxTau = 1.25 + edgeOn * 1.85; }
+        else if (modeId === 'infrared') { tauScale = 0.14; maxTau = 0.32; }
+        else if (modeId === 'spectroscopy') { tauScale = 0.65; maxTau = 1.0; }
+        else if (isTelescopeMode(modeId)) { tauScale = 0.42; maxTau = 0.42 + edgeOn * 0.58; }
+
+        const avgDustDepth = sample.tau > 0.0001 ? sample.depth : p.depth;
+        const depthDelta = p.depth - avgDustDepth; // positive = source is behind the dust column
+        let foregroundFraction = sample.tau > 0.0001 ? smoothstep(-45, 170, depthDelta) : 0.0;
+        // Face-on disks are mostly mixed star+dust media. Edge-on disks behave more like foreground screens.
+        foregroundFraction *= (0.18 + edgeOn * 0.72);
+        foregroundFraction = clamp(foregroundFraction, 0, 0.92);
+
+        function channelTransmission(channelScale) {
+            const rawTau = Math.min(maxTau, tauColumn * tauScale * channelScale);
+            const effTau = porousEffectiveTau(rawTau);
+            const mixed = mixedMediumTransmission(effTau);
+            const screen = Math.exp(-effTau);
+            return mixed * (1.0 - foregroundFraction) + screen * foregroundFraction;
+        }
+
+        let rT = channelTransmission(isOpticalLikeMode(modeId) ? 0.55 : 1.0);
+        let gT = channelTransmission(isOpticalLikeMode(modeId) ? 0.85 : 1.0);
+        let bT = channelTransmission(isOpticalLikeMode(modeId) ? 1.22 : 1.0);
+        let aT = channelTransmission(1.0);
+        if (modeId === 'infrared') { rT = gT = bT = aT = Math.max(aT, 0.92); }
+
+        return { alpha: aT, r: rT, g: gT, b: bT, tau: Math.min(maxTau, tauColumn * tauScale), foreground: foregroundFraction, temp: sample.temp || 22 };
+    }
     
     hotGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(hotGasBrightnessSlider.value); hotGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; hotGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
-    coldGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(coldGasBrightnessSlider.value); coldGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; coldGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
-    dustBrightnessSlider.addEventListener('input', () => { const val = parseFloat(dustBrightnessSlider.value); dustBrightnessValue.textContent = (val > 0 ? '+' : '') + val; dustVisualMult = Math.max(0, 1.0 + val); });
+    coldGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(coldGasBrightnessSlider.value); coldGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; coldGasVisualMult = Math.max(0.15, 0.45 + Math.pow(1.9, val + 1.0)); coldGasContrastBoost = clamp(0.9 + Math.max(0, val) * 0.5, 0.9, 2.4); });
+    dustBrightnessSlider.addEventListener('input', () => { const val = parseFloat(dustBrightnessSlider.value); const shown = val.toFixed(2); dustBrightnessValue.textContent = (val > 0 ? '+' : '') + shown; dustVisualMult = mapDustBiasToMultiplier(val); });
 
     const starScaleSlider = document.getElementById('starScale');
     const starScaleValue = document.getElementById('starScaleValue');
@@ -1066,16 +1629,17 @@
     
     function onResize() {
       const w=document.getElementById('sim-container').clientWidth, h=document.getElementById('sim-container').clientHeight;
-      glCanvas.width=overlayCanvas.width=w; glCanvas.height=overlayCanvas.height=h; centerX=w/2; centerY=h/2; pcPerPixel=totalSizePc/w; gl.viewport(0,0,w,h);
+      bgCanvas.width=glCanvas.width=overlayCanvas.width=w; bgCanvas.height=glCanvas.height=overlayCanvas.height=h; centerX=w/2; centerY=h/2; pcPerPixel=totalSizePc/w; gl.viewport(0,0,w,h);
       sciCanvas.width = sciCanvas.parentElement.clientWidth - 16;
       resizeSpecCanvas();
       sampleDiagnostics();
       updateSciencePanels(true);
     }
 
+    //<<PHYSICS>>
     // Returns DM mass for a specific galaxy index
     function getDarkMatterMass(r, galaxyIndex){ 
-        const presetId = galaxyIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+        const presetId = galaxyIndex === 0 ? SIM_SETTINGS.galaxyAType : SIM_SETTINGS.galaxyBType;
         const preset=GALAXY_PRESETS[presetId]; 
         const x=r/rs; 
         if(x===0) return 0; 
@@ -1094,7 +1658,7 @@
         const diskAccel = getBaryonicAccel(r_cyl, 0, 0, galaxyIndex);
         const a_disk = -diskAccel.ax;
 
-        const presetId = galaxyIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+        const presetId = galaxyIndex === 0 ? SIM_SETTINGS.galaxyAType : SIM_SETTINGS.galaxyBType;
         const scale = GALAXY_PRESETS[presetId].INITIAL_VELOCITY_SCALE;
 
         const vDM = Math.sqrt(r_cyl * a_DM) * scale;
@@ -1120,7 +1684,7 @@
             // Skip self-gravity for BH
             if (p === bh) continue;
 
-            const presetId = g === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+            const presetId = g === 0 ? SIM_SETTINGS.galaxyAType : SIM_SETTINGS.galaxyBType;
             const preset = GALAXY_PRESETS[presetId];
             const morphologyType = preset.type; 
             const armCount = preset.armCount; 
@@ -1180,31 +1744,32 @@
     }
 
     function recordStarFormationEvent(mass, count, timeMyr) {
-        scienceState.sfr.currentBucketMass += mass;
-        scienceState.sfr.currentBucketCount += count;
-        scienceState.sfr.cumulativeMassFormed += mass;
-        scienceState.sfr.cumulativeStarsFormed += count;
-        scienceState.sfr.liveQueue.push({ mass: mass, time: timeMyr });
+        sfrState.currentBucketMass += mass;
+        sfrState.currentBucketCount += count;
+        sfrState.cumulativeMassFormed += mass;
+        sfrState.cumulativeStarsFormed += count;
+        sfrState.liveQueue.push({ mass: mass, time: timeMyr });
     }
 
     function checkSFRBucket() {
         const currentMyr = elapsedTime / 1e6;
         
-        scienceState.sfr.liveQueue = scienceState.sfr.liveQueue.filter(e => currentMyr - e.time < 10.0);
-        instantaneousSFR = scienceState.sfr.liveQueue.reduce((sum, e) => sum + e.mass, 0) / 10.0;
+        sfrState.liveQueue = sfrState.liveQueue.filter(e => currentMyr - e.time < 10.0);
+        instantaneousSFR = sfrState.liveQueue.reduce((sum, e) => sum + e.mass, 0) / 10.0;
 
-        const bucketWidth = scienceState.sfr.bucketWidthYears / 1e6;
-        while (currentMyr >= scienceState.sfr.currentBucketStart + bucketWidth) {
-            scienceState.sfr.history.push({
-                tMid: scienceState.sfr.currentBucketStart + bucketWidth/2,
-                sfrMass: scienceState.sfr.currentBucketMass / bucketWidth
+        const bucketWidth = sfrState.bucketWidthYears / 1e6;
+        while (currentMyr >= sfrState.currentBucketStart + bucketWidth) {
+            sfrState.history.push({
+                tMid: sfrState.currentBucketStart + bucketWidth/2,
+                sfrMass: sfrState.currentBucketMass / bucketWidth
             });
-            if (scienceState.sfr.history.length > scienceState.sfr.maxBuckets) scienceState.sfr.history.shift();
-            scienceState.sfr.currentBucketStart += bucketWidth;
-            scienceState.sfr.currentBucketMass = 0;
-            scienceState.sfr.currentBucketCount = 0;
+            if (sfrState.history.length > sfrState.maxBuckets) sfrState.history.shift();
+            sfrState.currentBucketStart += bucketWidth;
+            sfrState.currentBucketMass = 0;
+            sfrState.currentBucketCount = 0;
         }
     }
+    //<<END_PHYSICS>>
 
     function buildRotationCurveData() {
         const bhA = blackHoles[0];
@@ -1468,6 +2033,7 @@
         }
     }
 
+    //<<PHYSICS>>
     function gaussianRandom(m=0,s=1){const u1=1-Math.random(),u2=Math.random();return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2)*s+m;} // FIX: 1-Math.random() keeps u1 in (0,1], preventing log(0) = -Infinity / NaN velocities
     
     function generateStarMass(heatFactor = 0) {
@@ -1545,6 +2111,7 @@
         
         return type + lumClass;
     }
+    //<<END_PHYSICS>>
 
     let lastEnergy = {kinetic: 0, potential: 0, total: 0};
     function computeTotalEnergy(allParticles){
@@ -1603,9 +2170,219 @@
         return bestStar;
     }
 
-    function updatePhysics(steps) {
-      let targetsChanged = false;
+    function getDepthVisualModifier(x, y, z) {
+        if (!useCinematicDepth) return { alpha: 1.0, size: 1.0, far: 0.5, strength: 0.0 };
+        const p = getRawProjection(x, y, z);
+        const edgeOnStrength = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+        const far = clamp((p.depth + galaxyRadius * 2.5) / (galaxyRadius * 5.0), 0.0, 1.0);
+        let alpha = 1.0 + edgeOnStrength * ((1.0 - far) * 0.18 - far * 0.30);
+        let size = 1.0 + edgeOnStrength * ((1.0 - far) * 0.10 - far * 0.07);
 
+        if (isPaused && astrometryTargets.length > 0) {
+            const t = astrometryTargets[0];
+            const d = Math.hypot(x - t.x, y - t.y, z - t.z);
+            const focus = Math.exp(-d / 420.0);
+            alpha *= 0.58 + 0.42 * focus;
+            size *= 0.92 + 0.18 * focus;
+        }
+
+        return { alpha: clamp(alpha, 0.35, 1.35), size: clamp(size, 0.75, 1.25), far, strength: edgeOnStrength };
+    }
+
+    //<<PHYSICS>>
+    // ================================================================
+    // FEATURE MERGE: physics-side feature systems (evolving dust,
+    // H II regions, AGN jet lobes, BH disk state, old-star
+    // consolidation). Runs in the worker; mirrored to the main thread.
+    // ================================================================
+    function dustToGasRatioFromMetallicity(z) {
+        return clamp((z || 0.05) * 0.01, 0.001, 0.035);
+    }
+
+    function ensureCloudDust(cloud) {
+        if (cloud.dustMass === undefined) {
+            const ratio = dustToGasRatioFromMetallicity(cloud.metallicity || 0.05);
+            cloud.dustMass = Math.max(0, cloud.mass * ratio);
+            cloud.dustTemp = 20 + Math.max(0, cloud.heat || 0) * 0.15;
+            cloud.dustOpacity = clamp(ratio * 70, 0.03, 3.0);
+            cloud.dustDestroyed = 0;
+        }
+    }
+
+    function destroyCloudDust(cloud, amount) {
+        if (!cloud || cloud.mass <= 0) return;
+        ensureCloudDust(cloud);
+        const a = clamp(amount, 0, 0.95);
+        const destroyed = cloud.dustMass * a;
+        cloud.dustMass = Math.max(0, cloud.dustMass - destroyed);
+        cloud.dustDestroyed = clamp((cloud.dustDestroyed || 0) + a * 0.25, 0, 1);
+        cloud.dustOpacity = clamp((cloud.dustMass / Math.max(cloud.mass, 0.001)) * 85.0, 0, 4.5);
+    }
+
+    function updateCloudDust(cloud, density) {
+        ensureCloudDust(cloud);
+        const coldFactor = clamp(1.0 - cloud.heat / 85.0, 0.0, 1.0);
+        const densityFactor = clamp(density / 20.0, 0.0, 2.2);
+        const metalFactor = clamp((cloud.metallicity || 0.05) / 1.0, 0.05, 2.2);
+        const turbulencePenalty = 1.0 / (1.0 + (cloud.turbulence || 0) * 0.05);
+        const growthRate = 0.00008 * coldFactor * densityFactor * metalFactor * turbulencePenalty;
+        const maxDustMass = cloud.mass * clamp((cloud.metallicity || 0.05) * 0.03, 0.001, 0.055);
+        cloud.dustMass += cloud.mass * growthRate * dt;
+        cloud.dustMass = Math.min(cloud.dustMass, maxDustMass);
+
+        const heatDestruction = clamp((cloud.heat - 120) / 1000.0, 0, 0.022);
+        cloud.dustMass *= 1.0 - heatDestruction * dt;
+
+        const baseTemp = 18;
+        const gasHeat = clamp(cloud.heat * 0.15, 0, 320);
+        const densityHeat = clamp(density * 0.8, 0, 70);
+        let agnHeat = 0;
+        const bh = blackHoles[cloud.galaxyIndex];
+        if (bh) {
+            const d = Math.hypot(cloud.x - bh.x, cloud.y - bh.y, cloud.z - bh.z);
+            agnHeat = bh.accretionGlow * 220 * Math.exp(-d / 260);
+        }
+        const targetTemp = baseTemp + gasHeat + densityHeat + agnHeat;
+        cloud.dustTemp = (cloud.dustTemp || 20) * 0.95 + targetTemp * 0.05;
+        cloud.dustOpacity = clamp((cloud.dustMass / Math.max(cloud.mass, 0.001)) * 85.0, 0, 4.5);
+    }
+
+    function initBlackHoleVisualState(bh) {
+        bh.diskAngle = Math.random() * Math.PI * 2;
+        bh.diskSpin = 0.035 + Math.random() * 0.035;
+        bh.diskFlicker = Math.random();
+        bh.jetAxis = {x: 0, y: 0, z: 1};
+        return bh;
+    }
+
+    function spawnHIIRegion(star, cloud, localDensity) {
+        if (!SIM_SETTINGS.showHIIRegions) return; // WORKER REFACTOR: DOM-backed flag -> SIM_SETTINGS
+        if (hiiRegions.length >= MAX_HII_REGIONS) hiiRegions.shift();
+        const strengthFromMass = clamp((star.initialMass - 6.0) / 20.0, 0.2, 2.2);
+        const strengthFromDensity = clamp(localDensity / 20.0, 0.35, 1.6);
+        const z = cloud.metallicity || star.metallicity || 0.1;
+        hiiRegions.push({
+            id: hiiRegionIdCounter++, x: star.x, y: star.y, z: star.z,
+            vx: star.vx, vy: star.vy, vz: star.vz,
+            galaxyIndex: star.galaxyIndex, parentStar: star,
+            ageMyr: 0, lifetimeMyr: 8 + Math.random() * 12,
+            radius: 8 + Math.random() * 10,
+            maxRadius: 34 + strengthFromMass * 36,
+            intensity: strengthFromMass * strengthFromDensity,
+            temperature: 10000 + star.temperature * 0.1,
+            metallicity: z, gasDensity: localDensity,
+            dustOpacity: clamp(z * 0.2, 0.02, 0.5), currentIntensity: 0
+        });
+    }
+
+    function updateHIIRegions() {
+        for (let i = hiiRegions.length - 1; i >= 0; i--) {
+            const r = hiiRegions[i];
+            r.ageMyr += dtMyr;
+            const lifeT = r.ageMyr / r.lifetimeMyr;
+            if (lifeT >= 1 || !r.parentStar || !stars.includes(r.parentStar) || r.parentStar.stage !== 'MS') {
+                hiiRegions.splice(i, 1);
+                continue;
+            }
+            r.x += r.vx * dt; r.y += r.vy * dt; r.z += r.vz * dt;
+            r.x += (r.parentStar.x - r.x) * 0.035;
+            r.y += (r.parentStar.y - r.y) * 0.035;
+            r.z += (r.parentStar.z - r.z) * 0.035;
+            const expandT = 1.0 - Math.exp(-lifeT * 4.0);
+            r.radius = r.radius * 0.97 + r.maxRadius * expandT * 0.03;
+            r.currentIntensity = r.intensity * Math.sin(Math.PI * clamp(lifeT, 0, 1));
+            if (totalPhysicsSteps % 10 === 0) heatGasAroundHIIRegion(r);
+        }
+    }
+
+    function heatGasAroundHIIRegion(region) {
+        const neighbors = getLocalClouds(region.x, region.y);
+        for (const cloud of neighbors) {
+            if (cloud.mass < 0.5) continue;
+            const dx = cloud.x - region.x, dy = cloud.y - region.y, dz = cloud.z - region.z;
+            const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+            if (d > region.radius || d <= 0) continue;
+            const influence = 1.0 - d / region.radius;
+            cloud.heat += region.currentIntensity * influence * 4.0 * dt;
+            cloud.turbulence += region.currentIntensity * influence * 0.45 * dt;
+            cloud.mass *= 1.0 - 0.00002 * influence * dt;
+            destroyCloudDust(cloud, 0.002 * influence * region.currentIntensity);
+        }
+    }
+
+    function maybeSpawnJetLobes(bh, galaxyIndex) {
+        if (!SIM_SETTINGS.showJetLobes || bh.jetTimer <= 0 || totalPhysicsSteps % 25 !== 0) return; // WORKER REFACTOR
+        spawnJetLobe(bh, galaxyIndex, 1);
+        spawnJetLobe(bh, galaxyIndex, -1);
+    }
+
+    function spawnJetLobe(bh, galaxyIndex, side) {
+        if (jetLobes.length >= MAX_JET_LOBES) jetLobes.shift();
+        const distance = 250 + Math.random() * 180;
+        jetLobes.push({
+            id: jetLobeIdCounter++, galaxyIndex, bh,
+            x: bh.x, y: bh.y, z: bh.z + side * distance,
+            vx: bh.vx, vy: bh.vy, vz: bh.vz + side * 8,
+            age: 0, lifetime: 180 + Math.random() * 130,
+            radius: 20, maxRadius: 120 + clamp(bh.accretionGlow,0,1) * 170,
+            energy: clamp(bh.accretionGlow + 0.25, 0.2, 1.6), side, currentEnergy: 1
+        });
+    }
+
+    function updateJetLobes() {
+        for (let i = jetLobes.length - 1; i >= 0; i--) {
+            const l = jetLobes[i];
+            l.age += 1;
+            const t = l.age / l.lifetime;
+            if (t >= 1) { jetLobes.splice(i, 1); continue; }
+            l.x += l.vx * dt; l.y += l.vy * dt; l.z += l.vz * dt;
+            l.radius = l.radius * 0.98 + l.maxRadius * (1 - Math.exp(-t * 3.0)) * 0.02;
+            l.currentEnergy = l.energy * Math.pow(1 - t, 1.5);
+        }
+    }
+
+    // WORKER REFACTOR: the worker cannot see main-thread target object references,
+    // so protection is by persistent star id, supplied via SIM_SETTINGS each step.
+    function isProtectedStar(star) {
+        return SIM_SETTINGS.protectedStarIds.indexOf(star.id) !== -1;
+    }
+
+    function shouldConsolidateStar(star) {
+        if (!SIM_SETTINGS.enableOldStarConsolidation || !SIM_SETTINGS.useObservationSynthesis || !SIM_SETTINGS.reduceResolvedOldStars) return false; // WORKER REFACTOR
+        if (!star || isProtectedStar(star)) return false;
+        if ((elapsedTime / 1e6) < 500) return false;
+        if (star.ageMyr < 520) return false;
+        if (star.initialMass > 2.2) return false;
+        if (star.stage === 'GIANT' || star.stage === 'SN') return false;
+        if ((star.luminosity || 0) > 8.0) return false;
+        return true;
+    }
+
+    function consolidateOldStellarPopulations() {
+        if (!SIM_SETTINGS.enableOldStarConsolidation || !SIM_SETTINGS.useObservationSynthesis) return; // WORKER REFACTOR
+        const timeMyr = elapsedTime / 1e6;
+        if (timeMyr < 500 || stars.length < 1000) return;
+        const targetCapacity = Math.max(2000, SIM_SETTINGS.starCount || 20000); // WORKER REFACTOR: DOM read -> SIM_SETTINGS
+        const softCap = Math.floor(targetCapacity * (timeMyr < 800 ? 1.75 : 1.20));
+        if (stars.length <= softCap) return;
+        const maxRemove = Math.min(260, Math.max(20, Math.floor((stars.length - softCap) * 0.015)));
+        let removed = 0;
+        for (let i = stars.length - 1; i >= 0 && removed < maxRemove; i--) {
+            const s = stars[i];
+            if (!shouldConsolidateStar(s)) continue;
+            const gi = clamp(s.galaxyIndex || 0, 0, consolidatedStellarPopulations.length - 1);
+            const pop = consolidatedStellarPopulations[gi];
+            pop.mass += Number.isFinite(s.mass) ? s.mass : (s.initialMass || 0);
+            pop.light += Math.max(0.001, s.luminosity || 0.001);
+            pop.count += 1;
+            stars.splice(i, 1);
+            removed++;
+        }
+    }
+    //<<END_PHYSICS>>
+
+    //<<PHYSICS>>
+    function updatePhysics(steps) {
       for (let step = 0; step < steps; step++) {
         elapsedTime += dt * yearsPerStep;
         patternAngle += 0.0005 * dt; barAngle += 0.0015 * dt; 
@@ -1614,8 +2391,8 @@
             postMergerTimer += 0.0005 * dt; 
         }
 
-        if (galaxyATypeSelect.value === "ring" && blackHoles.length > 0) ringShockRadius += 10.0 * dt; 
-        if (blackHoles.length > 1 && galaxyBTypeSelect.value === "ring") ringShockRadius += 10.0 * dt;
+        if (SIM_SETTINGS.galaxyAType === "ring" && blackHoles.length > 0) ringShockRadius += 10.0 * dt; 
+        if (blackHoles.length > 1 && SIM_SETTINGS.galaxyBType === "ring") ringShockRadius += 10.0 * dt;
 
         checkSFRBucket();
         // FIX: was `frameCount % 30 === 0`, which ran the full-particle rebuild
@@ -1624,11 +2401,11 @@
         totalPhysicsSteps++;
         if (totalPhysicsSteps % 30 === 0) updateLiveMassModel();
         
-        let inflowRateVal = parseFloat(inflowRateSlider.value) * 100; 
+        let inflowRateVal = SIM_SETTINGS.inflowRate * 100; // WORKER REFACTOR: DOM read -> SIM_SETTINGS
         cosmologicalInflowReservoir += inflowRateVal * dt;
         
         let spawnMass = 150;
-        let maxClouds = parseInt(starCountSlider.value) * 1.5;
+        let maxClouds = SIM_SETTINGS.starCount * 1.5; // WORKER REFACTOR: DOM read -> SIM_SETTINGS
         
         // FIX: clamp reservoir (~20 spawns worth) so it can't accumulate unboundedly
         // while the cloud cap is hit and then burst-spawn when the cap is raised.
@@ -1647,7 +2424,7 @@
             let cy = spawnRadius * Math.sin(theta);
             let cz = gaussianRandom(0, 50); 
             
-            const presetId = targetGIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+            const presetId = targetGIndex === 0 ? SIM_SETTINGS.galaxyAType : SIM_SETTINGS.galaxyBType;
             const M_enc = getLiveDiskMassAtRadius(spawnRadius, targetGIndex) + getDarkMatterMass(spawnRadius, targetGIndex) + centralBHMass + bulgeMass;
             const v_circ = Math.sqrt((G * M_enc) / spawnRadius) * GALAXY_PRESETS[presetId].INITIAL_VELOCITY_SCALE;
             
@@ -1670,13 +2447,25 @@
                 galaxyIndex: targetGIndex, 
                 starsCreated: 0, 
                 stellarMassReservoir: 0, 
-                metallicity: 0.01 
+                metallicity: 0.01,
+                dustMass: spawnMass * 0.001,
+                dustTemp: 22,
+                dustOpacity: 0.08,
+                dustDestroyed: 0
             });
         }
         
         buildSpatialHash();
+        updateHIIRegions();
+        updateJetLobes();
 
-        for(const bh of blackHoles) { bh.massAccretedThisFrame = 0; bh.accretionGlow *= 0.95; }
+        for(const bh of blackHoles) { 
+            bh.massAccretedThisFrame = 0; 
+            bh.accretionGlow *= 0.95; 
+            if (bh.diskAngle === undefined) initBlackHoleVisualState(bh);
+            bh.diskAngle += (bh.diskSpin || 0.04) * (0.5 + bh.accretionGlow) * dt;
+            bh.diskFlicker = (bh.diskFlicker || 0) * 0.88 + Math.random() * 0.12;
+        }
 
         let collisionChecks = Math.min(gasClouds.length, 350); 
         for (let c = 0; c < collisionChecks; c++) {
@@ -1742,7 +2531,7 @@
         }
 
         const allParticles = [...blackHoles, ...stars, ...gasClouds];
-        if (useLeapfrog) {
+        if (SIM_SETTINGS.useLeapfrog) { // WORKER REFACTOR: DOM-backed flag -> SIM_SETTINGS
             for(let i=0; i<allParticles.length; i++) {
                 const p = allParticles[i];
                 p.vx += p.ax * 0.5 * dt; p.vy += p.ay * 0.5 * dt; p.vz += p.az * 0.5 * dt;
@@ -1781,10 +2570,10 @@
                 for(let g of gasClouds) g.galaxyIndex = 0;
 
                 blackHoles.splice(1, 1);
-                document.getElementById('hud-card-b').style.display = 'none';
-                
+                // WORKER REFACTOR: HUD visibility is derived from blackHoles.length in draw();
+                // the visual flash is signaled to the main thread as an event.
                 isPostMerger = true;
-                mergerFlashGlow = 1.0; 
+                SIM_EVENTS.mergerOccurred = true;
             }
         }
 
@@ -1846,6 +2635,7 @@
                         let heatingFactor = 1.0 / (fd.dist * 0.1 + 1.0);
                         fd.cloud.heat += (bh.massAccretedThisFrame * 500 * heatingFactor) * dt;
                         fd.cloud.turbulence += (bh.massAccretedThisFrame * 100 * heatingFactor) * dt;
+                        destroyCloudDust(fd.cloud, 0.002 * heatingFactor * bh.massAccretedThisFrame);
                     }
                 }
 
@@ -1855,8 +2645,9 @@
 
         for (let g = 0; g < blackHoles.length; g++) {
             const bh = blackHoles[g];
-            if (showJets && bh && bh.jetTimer > 0) {
+            if (SIM_SETTINGS.showJets && bh && bh.jetTimer > 0) { // WORKER REFACTOR
                 bh.jetTimer--;
+                maybeSpawnJetLobes(bh, g);
                 for (let i = 0; i < JET_PARTICLES_PER_STEP; i++) {
                     const rVx = gaussianRandom(0, JET_VELOCITY * 0.05), rVy = gaussianRandom(0, JET_VELOCITY * 0.05);
                     jetParticles.push({ x: bh.x, y: bh.y, z: bh.z, vx: bh.vx + rVx, vy: bh.vy + rVy, vz: bh.vz + JET_VELOCITY, lifetime: JET_LIFETIME });
@@ -1878,13 +2669,14 @@
                     const dist = Math.max(0.1, Math.sqrt(distSq)), kick = (JET_KICK_FORCE / (dist + 1)) * dt;
                     cloud.vx += kick * (dx / dist); cloud.vy += kick * (dy / dist); cloud.vz += kick * (dz / dist); 
                     cloud.heat += JET_HEATING * 10 * dt; 
+                    destroyCloudDust(cloud, 0.05);
                 }
             }
         }
 
         for (let i = gasClouds.length - 1; i >= 0; i--) {
           const cloud = gasClouds[i];
-          const presetId = cloud.galaxyIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+          const presetId = cloud.galaxyIndex === 0 ? SIM_SETTINGS.galaxyAType : SIM_SETTINGS.galaxyBType;
           const presetType = GALAXY_PRESETS[presetId].type;
           
           if (cloud.mass < 0.5) {
@@ -1898,7 +2690,7 @@
               if (opposingBH) {
                   let odx = cloud.x - opposingBH.x, ody = cloud.y - opposingBH.y, odz = cloud.z - opposingBH.z;
                   let oDist = Math.max(0.1, Math.sqrt(odx*odx + ody*ody + odz*odz));
-                  let oPreset = GALAXY_PRESETS[opposingGIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value];
+                  let oPreset = GALAXY_PRESETS[opposingGIndex === 0 ? SIM_SETTINGS.galaxyAType : SIM_SETTINGS.galaxyBType];
                   
                   let x_rs = oDist / rs;
                   let density = (rho0 * oPreset.HALO_DENSITY_SCALE) / (x_rs * Math.pow(1+x_rs, 2) + 0.1);
@@ -1976,6 +2768,7 @@
               }
           }
           
+          if (totalPhysicsSteps % 3 === 0) updateCloudDust(cloud, currentRho);
           cloud.coldFraction = clamp(1.0 - cloud.heat / 50.0, 0.0, 1.0);
           
           const CRITICAL_DENSITY = 5.0; 
@@ -2001,6 +2794,7 @@
                   massVariation = Math.min(massVariation, cloud.stellarMassReservoir); 
                   
                   let newStar = { 
+                      id: starIdCounter++, // WORKER REFACTOR: persistent id
                       x: cloud.x+(Math.random()-.5)*cloud.size, 
                       y: cloud.y+(Math.random()-.5)*cloud.size, 
                       z: cloud.z+(Math.random()-.5)*cloud.size, 
@@ -2015,6 +2809,9 @@
                   };
                   initStarPhysics(newStar);
                   stars.push(newStar);
+                  if (newStar.initialMass > MASSIVE_STAR_THRESHOLD || newStar.temperature > 15000 || newStar.luminosity > 1000) {
+                      spawnHIIRegion(newStar, cloud, currentRho);
+                  }
                   
                   cloud.mass -= massVariation; 
                   cloud.stellarMassReservoir -= massVariation;
@@ -2035,7 +2832,7 @@
             star.ageMyr += dtMyr;
             updateStarEvolution(star);
             
-            if (showStreaks && currentModeId !== 'spectroscopy') {
+            if (SIM_SETTINGS.recordTrails) { // WORKER REFACTOR: main thread precomputes showStreaks && observation mode
                 star.trail[star.trailIdx*3] = star.x; star.trail[star.trailIdx*3+1] = star.y; star.trail[star.trailIdx*3+2] = star.z;
                 star.trailIdx = (star.trailIdx + 1) % MAX_TRAIL_LENGTH;
                 if(star.trailCount < MAX_TRAIL_LENGTH) star.trailCount++;
@@ -2061,7 +2858,8 @@
                         vy: star.vy + (dirY * explosionVelocity * 0.3), 
                         vz: star.vz + (dirZ * explosionVelocity * 0.3),
                         ax: 0, ay: 0, az: 0, mass: massPerFragment, heat: 5000, turbulence: 20, size: k * Math.pow(massPerFragment, 1/3) * 1.5,
-                        galaxyIndex: star.galaxyIndex, starsCreated: 0, stellarMassReservoir: 0, metallicity: star.metallicity + SUPERNOVA_ENRICHMENT
+                        galaxyIndex: star.galaxyIndex, starsCreated: 0, stellarMassReservoir: 0, metallicity: star.metallicity + SUPERNOVA_ENRICHMENT,
+                        dustMass: Math.max(0, massPerFragment * 0.005), dustTemp: 320, dustOpacity: 0.25, dustDestroyed: 0.5
                     });
                 }
 
@@ -2074,11 +2872,11 @@
                         other.vx += force * (dx/r); other.vy += force * (dy/r); other.vz += force * (dz/r);
                         other.heat += 400; other.turbulence += 15;
                         other.metallicity += (star.initialMass * 0.5) / (r2 * 0.05 + 1);
+                        destroyCloudDust(other, 0.15 * (1.0 - r / SUPERNOVA_RADIUS));
                     }
                 }
                 
-                if (astrometryTargets.includes(star) || spectroscopyTarget === star) targetsChanged = true;
-                if (hoveredStar === star) { hoveredStar = null; }
+                // WORKER REFACTOR: UI target invalidation is handled by remapTargetsById() on the main thread
                 stars.splice(i, 1);
             }
         }
@@ -2090,17 +2888,19 @@
         }
       }
 
-      if (targetsChanged) {
-          purgeInvalidTargets();
-          refreshAnalysisUI();
-      }
+      // FEATURE MERGE: gradual old-star consolidation runs physics-side (the worker
+      // owns the stars array); UI-protected stars are excluded via the persistent
+      // ids in SIM_SETTINGS.protectedStarIds sent by the main thread each step.
+      updatePhysicsCallCount++;
+      if (updatePhysicsCallCount % 12 === 0) consolidateOldStellarPopulations();
     }
+    //<<END_PHYSICS>>
     
     function drawDarkMatterHalo(ctx) { 
         if(!showDarkMatter || currentModeId === 'xray') return;
         for(let g = 0; g < blackHoles.length; g++){
             const bh = blackHoles[g];
-            const presetId = g === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+            const presetId = g === 0 ? SIM_SETTINGS.galaxyAType : SIM_SETTINGS.galaxyBType;
             const preset = GALAXY_PRESETS[presetId];
 
             let p = getRawProjection(bh.x, bh.y, bh.z);
@@ -2223,6 +3023,40 @@
         captureScreenshotRequest = { pending: true, mult: nextReq.mult, label: nextReq.label };
     }
 
+    function getAnalyticDustHint(x, y, z) {
+        let bestG = 0; let minDist = Infinity;
+        for(let g=0; g<blackHoles.length; g++){
+            if(!blackHoles[g]) continue;
+            let dSq = Math.pow(x-blackHoles[g].x, 2) + Math.pow(y-blackHoles[g].y, 2);
+            if(dSq < minDist){ minDist = dSq; bestG = g; }
+        }
+        const bh = blackHoles[bestG];
+        if (!bh) return 0;
+        const lx = x - bh.x; const ly = y - bh.y; const lz = z - bh.z;
+        const r_cyl = Math.max(0.1, Math.sqrt(lx*lx + ly*ly));
+        const zDensity = Math.exp(-Math.abs(lz) / 22.0);
+        const presetId = bestG === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+        const preset = GALAXY_PRESETS[presetId];
+        let rDensity = 0;
+        if (presetId === "ring") {
+            const ringRadius = galaxyRadius * 0.75;
+            rDensity = Math.exp(-Math.pow(r_cyl - ringRadius, 2) / 2400.0) * 0.65;
+        } else if (preset && preset.type === "spiral" && !isPostMerger) {
+            const coreClearance = Math.min(1.0, Math.pow(r_cyl / (bulgeRadius * 0.95), 2.0));
+            rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.72)) * coreClearance * 0.35;
+            if (r_cyl > 60 && r_cyl < galaxyRadius * 1.10) {
+                const theta = Math.atan2(ly, lx);
+                const phase = preset.armCount * (theta - patternAngle) - (preset.armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
+                // This is now only a weak density hint, not a visible dark ribbon.
+                const dustLane = Math.pow(Math.max(0, Math.cos(phase + 0.9)), 3.0);
+                rDensity += dustLane * Math.exp(-r_cyl / galaxyRadius) * 0.45;
+            }
+        } else {
+            rDensity = Math.exp(-r_cyl / (galaxyRadius * 0.72)) * 0.28;
+        }
+        return Math.max(0, zDensity * rDensity * (totalGasMassCached / 60000.0) * dustVisualMult);
+    }
+
     function getApproxDustDensity(x, y, z) {
         let bestG = 0; let minDist = Infinity;
         for(let g=0; g<blackHoles.length; g++){
@@ -2237,7 +3071,7 @@
         const r_cyl = Math.max(0.1, Math.sqrt(lx*lx + ly*ly));
         const zDensity = Math.exp(-Math.abs(lz) / 15.0); 
         
-        const presetId = bestG === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+        const presetId = bestG === 0 ? SIM_SETTINGS.galaxyAType : SIM_SETTINGS.galaxyBType;
         const preset = GALAXY_PRESETS[presetId];
         
         let rDensity = 0;
@@ -2285,6 +3119,873 @@
         return [Math.max(0, rNorm), Math.max(0, gNorm), Math.max(0, bNorm)];
     }
 
+    function getNearestGalaxyContextForPoint(x, y, z, preferredIndex = null) {
+        let bestIndex = 0, bestDist = Infinity, bestBH = null;
+        if (preferredIndex !== null && blackHoles[preferredIndex]) {
+            const bh = blackHoles[preferredIndex];
+            const dx = x - bh.x, dy = y - bh.y, dz = z - bh.z;
+            return { index: preferredIndex, bh, dx, dy, dz, rCyl: Math.hypot(dx, dy), r3: Math.hypot(dx, dy, dz) };
+        }
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g];
+            if (!bh) continue;
+            const dx = x - bh.x, dy = y - bh.y, dz = z - bh.z;
+            const d = dx*dx + dy*dy + dz*dz;
+            if (d < bestDist) { bestDist = d; bestIndex = g; bestBH = bh; }
+        }
+        if (!bestBH) return { index: 0, bh: null, dx: x, dy: y, dz: z, rCyl: Math.hypot(x, y), r3: Math.hypot(x, y, z) };
+        const dx = x - bestBH.x, dy = y - bestBH.y, dz = z - bestBH.z;
+        return { index: bestIndex, bh: bestBH, dx, dy, dz, rCyl: Math.hypot(dx, dy), r3: Math.hypot(dx, dy, dz) };
+    }
+
+    function getVisibleSpiralPopulationModifier(x, y, z, preferredIndex = null) {
+        const ctx = getNearestGalaxyContextForPoint(x, y, z, preferredIndex);
+        const presetId = ctx.index === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+        const preset = GALAXY_PRESETS[presetId];
+        let alpha = 1.0, size = 1.0, warmMix = 0.0;
+
+        const r = ctx.rCyl;
+        const diskFalloff = clamp(0.42 + 0.74 * Math.exp(-r / (galaxyRadius * 0.82)), 0.46, 1.08);
+        alpha *= diskFalloff;
+
+        // Smooth the unresolved old-star bulge: fewer glittering white points, warmer integrated light.
+        if (r < bulgeRadius * 1.15) {
+            const t = clamp(r / (bulgeRadius * 1.15), 0, 1);
+            alpha *= 0.38 + 0.52 * t;
+            size *= 0.62 + 0.26 * t;
+            warmMix = 0.52 * (1.0 - t);
+        }
+
+        if (preset && preset.type === 'spiral' && !isPostMerger && r > bulgeRadius * 0.55 && r < galaxyRadius * 1.18) {
+            const theta = Math.atan2(ctx.dy, ctx.dx);
+            const phase = preset.armCount * (theta - patternAngle) - (preset.armCount / Math.tan(SPIRAL_PITCH)) * Math.log(Math.max(r, 51) / 50.0);
+            const c = Math.cos(phase);
+            const ridge = clamp((c - 0.42) / 0.58, 0, 1);
+            const interArm = clamp((0.35 - c) / 1.35, 0, 1);
+            alpha *= (1.0 + ridge * 0.16) * (1.0 - interArm * 0.12);
+            size *= 1.0 + ridge * 0.05;
+        }
+        return { alpha, size, warmMix };
+    }
+
+    function getGalaxyMaturityFactor(galaxyIndex) {
+        const timeMyr = elapsedTime / 1e6;
+        const timeFactor = smoothstep(180, 1050, timeMyr);
+        const resolvedCount = stars.reduce((sum, s) => sum + (s.galaxyIndex === galaxyIndex ? 1 : 0), 0);
+        const consolidatedCount = consolidatedStellarPopulations[galaxyIndex] ? consolidatedStellarPopulations[galaxyIndex].count : 0;
+        const targetCount = Math.max(2000, parseInt(starCountSlider.value || "20000", 10) / Math.max(1, blackHoles.length));
+        const populationFactor = clamp((resolvedCount + consolidatedCount * 0.35) / targetCount, 0.25, 1.0);
+        return clamp(0.18 + 0.82 * Math.max(timeFactor, populationFactor * 0.65), 0.18, 1.0);
+    }
+
+    function initBackgroundUniverse() {
+        bgStars = [];
+        bgGalaxies = [];
+        for (let i = 0; i < 430; i++) {
+            // Quieter deep-field stars: visible enough for scale, not bright enough to compete with the main galaxy.
+            bgStars.push({ x: Math.random(), y: Math.random(), mag: Math.pow(Math.random(), 3.6), temp: 2800 + Math.random() * 11000, twinkle: Math.random() * Math.PI * 2 });
+        }
+        for (let i = 0; i < 62; i++) {
+            bgGalaxies.push({
+                x: Math.random(), y: Math.random(), size: 2.0 + Math.pow(Math.random(), 2.0) * 12.0,
+                type: Math.random() < 0.55 ? 'elliptical' : (Math.random() < 0.55 ? 'edge' : 'spiral'),
+                angle: Math.random() * Math.PI, redshift: Math.random(), brightness: Math.pow(Math.random(), 2.4)
+            });
+        }
+        initForegroundStars();
+    }
+
+    function drawWrappedPoint(ctx, x, y, drawFn) {
+        const w = ctx.canvas.width, h = ctx.canvas.height;
+        const sx = ((x % w) + w) % w;
+        const sy = ((y % h) + h) % h;
+        drawFn(sx, sy);
+        if (sx < 20) drawFn(sx + w, sy);
+        if (sx > w - 20) drawFn(sx - w, sy);
+        if (sy < 20) drawFn(sx, sy + h);
+        if (sy > h - 20) drawFn(sx, sy - h);
+    }
+
+    function drawBackgroundUniverse(ctx) {
+        const w = ctx.canvas.width, h = ctx.canvas.height;
+        if (!w || !h) return;
+        const bgR = Math.round((currentMode ? currentMode.bgFloor[0] : 0.01) * 255);
+        const bgG = Math.round((currentMode ? currentMode.bgFloor[1] : 0.012) * 255);
+        const bgB = Math.round((currentMode ? currentMode.bgFloor[2] : 0.018) * 255);
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = `rgb(${bgR},${bgG},${bgB})`;
+        ctx.fillRect(0, 0, w, h);
+        if (!showBackgroundUniverse) return;
+
+        const m = highResMult;
+        const px = translateX * 0.025 * m;
+        const py = translateY * 0.025 * m;
+        const realism = document.getElementById('tglRealism').checked;
+        const exposureBoost = clamp(currentExposure, 0.4, 2.5);
+        const modeMult = currentModeId === 'xray' ? 0.18 : currentModeId === 'ultraviolet' ? 0.55 : currentModeId === 'infrared' ? 1.25 : isTelescopeMode() ? 0.38 : 1.0;
+
+        for (const g of bgGalaxies) {
+            let alpha = (0.014 + g.brightness * 0.060) * modeMult * exposureBoost;
+            if (currentModeId === 'xray') alpha *= g.redshift > 0.85 ? 1.5 : 0.35;
+            if (alpha <= 0.003) continue;
+            const size = g.size * m * (0.7 + g.redshift * 1.4);
+            drawWrappedPoint(ctx, g.x * w + px * (0.2 + g.redshift * 0.2), g.y * h + py * (0.2 + g.redshift * 0.2), (sx, sy) => {
+                const lens = applyBackgroundLensing(ctx, g, sx, sy);
+                const localAlpha = clamp(alpha * lens.alphaBoost, 0, 0.55);
+                ctx.save();
+                ctx.translate(lens.x, lens.y);
+                ctx.rotate(lens.angle);
+                const warm = currentModeId === 'infrared' || g.redshift > 0.5;
+                const c1 = warm ? `rgba(255,150,90,${localAlpha})` : `rgba(170,190,255,${localAlpha})`;
+                const c2 = warm ? 'rgba(180,80,45,0)' : 'rgba(70,110,255,0)';
+                const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, size);
+                grad.addColorStop(0, c1); grad.addColorStop(1, c2);
+                ctx.fillStyle = grad;
+                ctx.scale((g.type === 'edge' ? 2.8 : 1.4) * lens.stretch, g.type === 'elliptical' ? 0.9 : 0.35);
+                ctx.beginPath(); ctx.arc(0, 0, size, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            });
+        }
+
+        for (const s of bgStars) {
+            let a = (0.006 + s.mag * 0.22) * modeMult * exposureBoost;
+            if (currentModeId === 'xray') a *= s.mag > 0.85 ? 0.8 : 0.12;
+            if (a <= 0.004) continue;
+            if (realism && currentModeId !== 'xray') a *= 0.92 + Math.sin(frameCount * 0.025 + s.twinkle) * 0.08;
+            const pc = getPlanckColor(s.temp);
+            const radius = (0.24 + s.mag * 0.82) * m;
+            drawWrappedPoint(ctx, s.x * w + px, s.y * h + py, (sx, sy) => {
+                ctx.fillStyle = `rgba(${Math.round(pc[0]*255)},${Math.round(pc[1]*255)},${Math.round(pc[2]*255)},${clamp(a,0,0.75)})`;
+                ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.fill();
+            });
+        }
+
+        const vignette = ctx.createRadialGradient(w/2, h/2, Math.min(w,h)*0.15, w/2, h/2, Math.max(w,h)*0.72);
+        vignette.addColorStop(0, 'rgba(0,0,0,0)');
+        vignette.addColorStop(1, currentModeId === 'infrared' ? 'rgba(30,5,0,0.28)' : 'rgba(0,0,10,0.32)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, w, h);
+    }
+
+    function projectGalaxyPoint(x, y, z) {
+        const p = getRawProjection(x, y, z);
+        return {
+            raw: p,
+            sx: p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX,
+            sy: p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY,
+            depth: p.depth,
+            sf: isOrthographicRender ? 1.0 : (1000 / (1000 + p.depth))
+        };
+    }
+
+    function getModePopulationStyle(stage) {
+        if (isTelescopeMode()) {
+            return stage === 'dying'
+                ? { old:[205,154,105], oldA:0.040, bulge:[226,184,132], bulgeA:0.060, young:[125,145,190], youngA:0.007, hii:[205,84,92], hiiA:0.006 }
+                : stage === 'new'
+                    ? { old:[178,180,196], oldA:0.032, bulge:[218,198,158], bulgeA:0.046, young:[132,154,208], youngA:0.020, hii:[218,82,96], hiiA:0.016 }
+                    : { old:[205,177,136], oldA:0.038, bulge:[232,202,154], bulgeA:0.058, young:[128,151,205], youngA:0.014, hii:[214,82,94], hiiA:0.011 };
+        }
+        if (currentModeId === 'infrared') {
+            return { old:[255,145,72], oldA:0.075, bulge:[255,176,92], bulgeA:0.105, young:[255,104,45], youngA:0.026, hii:[255,118,42], hiiA:0.030 };
+        }
+        if (currentModeId === 'ultraviolet') {
+            return { old:[80,75,180], oldA: stage === 'new' ? 0.020 : 0.006, bulge:[110,92,230], bulgeA: stage === 'new' ? 0.022 : 0.006, young:[125,120,255], youngA:0.090, hii:[150,95,255], hiiA:0.090 };
+        }
+        if (currentModeId === 'xray') {
+            return { old:[40,90,130], oldA:0.000, bulge:[85,220,255], bulgeA:0.004, young:[60,210,255], youngA:0.010, hii:[80,220,255], hiiA:0.010 };
+        }
+        return stage === 'dying'
+            ? { old:[235,155,92], oldA:0.070, bulge:[246,184,112], bulgeA:0.115, young:[155,175,225], youngA:0.016, hii:[255,86,110], hiiA:0.012 }
+            : stage === 'new'
+                ? { old:[205,208,235], oldA:0.052, bulge:[235,220,182], bulgeA:0.076, young:[170,198,255], youngA:0.062, hii:[255,72,112], hiiA:0.050 }
+                : { old:[230,184,118], oldA:0.066, bulge:[248,202,137], bulgeA:0.108, young:[165,195,255], youngA:0.048, hii:[255,74,112], hiiA:0.040 };
+    }
+
+    function applyDiffuseDustAttenuationAtScreen(sx, sy, depth, color, alpha, channelMode='stellar') {
+        if (!document.getElementById('tglRealism').checked || !tglDust.checked || dustVisualMult <= 0.0005 || currentModeId === 'xray') {
+            return { color, alpha };
+        }
+        const sample = sampleProjectedDustField(sx, sy);
+        if (sample.tau <= 0.0001) return { color, alpha };
+        const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+        const avgDustDepth = sample.depth;
+        const foreground = clamp(smoothstep(-70, 190, depth - avgDustDepth) * (0.12 + edgeOn * 0.62), 0, 0.82);
+        let tauScale = 0.52;
+        if (currentModeId === 'ultraviolet') tauScale = 1.95;
+        if (currentModeId === 'infrared') tauScale = 0.10;
+        if (isTelescopeMode()) tauScale = 0.36;
+        if (channelMode === 'hii') tauScale *= 1.18;
+        const maxTau = currentModeId === 'ultraviolet' ? 1.55 : currentModeId === 'infrared' ? 0.22 : isTelescopeMode() ? 0.38 + edgeOn * 0.52 : 0.72 + edgeOn * 0.95;
+        const tau = porousEffectiveTau(Math.min(maxTau, sample.tau * tauScale));
+        const mixed = mixedMediumTransmission(tau);
+        const screen = Math.exp(-tau);
+        const trans = mixed * (1 - foreground) + screen * foreground;
+        const bluePenalty = isOpticalLikeMode() ? Math.exp(-tau * 0.28 * foreground) : 1.0;
+        return { color:[color[0], color[1] * (0.96 + 0.04 * trans), color[2] * bluePenalty], alpha: alpha * (0.74 + 0.26 * trans) };
+    }
+
+    function drawEllipticalRadial(ctx, sx, sy, rx, ry, angle, stops, comp='screen') {
+        ctx.save();
+        ctx.globalCompositeOperation = comp;
+        ctx.translate(sx, sy);
+        ctx.rotate(angle);
+        ctx.scale(1, Math.max(0.05, ry / Math.max(rx, 0.001)));
+        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+        for (const s of stops) grad.addColorStop(s[0], s[1]);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(0, 0, rx, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+    }
+
+    function drawSpiralPath(ctx, bh, preset, armIndex, r0, r1, offset, color, alpha, widthPc, comp='screen') {
+        const m = highResMult;
+        const armCount = Math.max(1, preset.armCount || 2);
+        ctx.save();
+        ctx.globalCompositeOperation = comp;
+        ctx.beginPath();
+        let started = false;
+        const step = 18;
+        for (let r = r0; r <= r1; r += step) {
+            const theta = (2 * Math.PI / armCount) * armIndex + Math.log(r / Math.max(40, bulgeRadius * 0.75)) / Math.tan(SPIRAL_PITCH) + patternAngle + offset;
+            const jitter = Math.sin(r * 0.033 + armIndex * 3.1 + offset * 7.0) * 3.0;
+            const x = bh.x + (r + jitter) * Math.cos(theta);
+            const y = bh.y + (r + jitter) * Math.sin(theta);
+            const z = bh.z + Math.sin(r * 0.017 + armIndex) * 2.5;
+            const p = projectGalaxyPoint(x, y, z);
+            if (!started) { ctx.moveTo(p.sx, p.sy); started = true; }
+            else ctx.lineTo(p.sx, p.sy);
+        }
+        ctx.strokeStyle = `rgba(${color[0]},${color[1]},${color[2]},${alpha})`;
+        ctx.lineWidth = Math.max(0.35 * m, widthPc * scale * m);
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawYoungClusterKnots(ctx, bh, preset, gIndex, style) {
+        if (currentModeId === 'xray' || currentModeId === 'spectroscopy') return;
+        const m = highResMult;
+        const armCount = Math.max(1, preset.armCount || 2);
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (let arm = 0; arm < armCount; arm++) {
+            for (let r = bulgeRadius * 0.86; r <= galaxyRadius * 1.04; r += 42) {
+                const seed = Math.sin(r * 12.9898 + arm * 78.233 + gIndex * 17.17) * 43758.5453;
+                const frac = seed - Math.floor(seed);
+                if (frac < 0.38) continue;
+                const theta = (2 * Math.PI / armCount) * arm + Math.log(r / Math.max(40, bulgeRadius * 0.75)) / Math.tan(SPIRAL_PITCH) + patternAngle + 0.20;
+                const radialScatter = (frac - 0.5) * 22;
+                const tangentialScatter = Math.sin(seed) * 0.055;
+                const x = bh.x + (r + radialScatter) * Math.cos(theta + tangentialScatter);
+                const y = bh.y + (r + radialScatter) * Math.sin(theta + tangentialScatter);
+                const z = bh.z + Math.sin(r * 0.025 + arm) * 3.0;
+                const p = projectGalaxyPoint(x, y, z);
+                const size = Math.max(1.2 * m, (7 + frac * 13) * scale * m);
+                if (p.sx < -size || p.sx > ctx.canvas.width + size || p.sy < -size || p.sy > ctx.canvas.height + size) continue;
+                let c = currentModeId === 'ultraviolet' ? [130,120,255] : currentModeId === 'infrared' ? [255,120,55] : [170,205,255];
+                let a = style.youngA * (0.38 + frac * 0.62) * (currentModeId === 'ultraviolet' ? 1.55 : 1.0);
+                const att = applyDiffuseDustAttenuationAtScreen(p.sx, p.sy, p.depth, c, a, 'young');
+                c = att.color; a = att.alpha;
+                const grad = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, size);
+                grad.addColorStop(0, `rgba(${c[0]},${c[1]},${c[2]},${a})`);
+                grad.addColorStop(0.42, `rgba(${c[0]},${c[1]},${c[2]},${a * 0.25})`);
+                grad.addColorStop(1, `rgba(${c[0]},${c[1]},${c[2]},0)`);
+                ctx.fillStyle = grad;
+                ctx.beginPath(); ctx.arc(p.sx, p.sy, size, 0, Math.PI * 2); ctx.fill();
+            }
+        }
+        ctx.restore();
+    }
+
+    function drawObservationSynthesisMaps(ctx) {
+        if (!useObservationSynthesis) return;
+        if (!showPopulationMaps && !showGasPhaseMaps) return;
+        const m = highResMult;
+        if (showPopulationMaps && currentModeId !== 'spectroscopy' && currentModeId !== 'radio') {
+            for (let g = 0; g < blackHoles.length; g++) {
+                const bh = blackHoles[g];
+                if (!bh) continue;
+                const stage = g === 0 ? galaxyAStageSelect.value : galaxyBStageSelect.value;
+                const presetId = g === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+                const preset = GALAXY_PRESETS[presetId];
+                const style = getModePopulationStyle(stage);
+                const p = projectGalaxyPoint(bh.x, bh.y, bh.z);
+                const tilt = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+                const flatten = clamp(1.0 - 0.56 * tilt, 0.25, 1.0);
+                const angle = rotationY * Math.PI / 180;
+                const diskR = Math.max(28 * m, galaxyRadius * p.sf * scale * m * 1.24);
+                if (diskR > 3 && p.sx > -diskR && p.sx < ctx.canvas.width + diskR && p.sy > -diskR && p.sy < ctx.canvas.height + diskR) {
+                    let oldCol = style.old.slice(); let oldA = style.oldA;
+                    const maturity = getGalaxyMaturityFactor(g);
+                    const consolidated = consolidatedStellarPopulations[g] || {mass:0, light:0, count:0};
+                    const consolidatedBoost = clamp(Math.log10(1 + consolidated.mass) * 0.12, 0, 0.55);
+                    oldA *= (0.32 + 0.68 * maturity) * (1.0 + consolidatedBoost * maturity);
+                    const att = applyDiffuseDustAttenuationAtScreen(p.sx, p.sy, p.depth, oldCol, oldA, 'old');
+                    oldCol = att.color; oldA = att.alpha;
+                    drawEllipticalRadial(ctx, p.sx, p.sy, diskR, diskR * flatten, angle, [
+                        [0.0, `rgba(${oldCol[0]},${oldCol[1]},${oldCol[2]},${oldA * 0.72})`],
+                        [0.32, `rgba(${oldCol[0]},${oldCol[1]},${oldCol[2]},${oldA * 0.46})`],
+                        [0.68, `rgba(${oldCol[0]},${oldCol[1]},${oldCol[2]},${oldA * 0.20})`],
+                        [1.0, `rgba(${oldCol[0]},${oldCol[1]},${oldCol[2]},0)`]
+                    ]);
+                }
+                const bulgeR = Math.max(18 * m, bulgeRadius * p.sf * scale * m * 1.05);
+                if (bulgeR > 2) {
+                    let bCol = style.bulge.slice(); let bA = style.bulgeA;
+                    const maturityB = getGalaxyMaturityFactor(g);
+                    bA *= (0.46 + 0.54 * maturityB);
+                    const attB = applyDiffuseDustAttenuationAtScreen(p.sx, p.sy, p.depth, bCol, bA, 'bulge');
+                    bCol = attB.color; bA = attB.alpha;
+                    drawEllipticalRadial(ctx, p.sx, p.sy, bulgeR, bulgeR * clamp(flatten + 0.08, 0.35, 1.0), angle, [
+                        [0.0, `rgba(255,238,190,${bA * 1.20})`],
+                        [0.18, `rgba(${bCol[0]},${bCol[1]},${bCol[2]},${bA * 0.92})`],
+                        [0.55, `rgba(${bCol[0]},${bCol[1]},${bCol[2]},${bA * 0.38})`],
+                        [1.0, `rgba(${bCol[0]},${bCol[1]},${bCol[2]},0)`]
+                    ]);
+                }
+                if (preset && preset.type === 'spiral' && !isPostMerger && currentModeId !== 'xray') {
+                    const armA = style.youngA * (stage === 'dying' ? 0.55 : 1.0) * (0.58 + 0.42 * getGalaxyMaturityFactor(g));
+                    const armCol = style.young;
+                    for (let arm = 0; arm < Math.max(1, preset.armCount || 2); arm++) {
+                        drawSpiralPath(ctx, bh, preset, arm, bulgeRadius * 0.72, galaxyRadius * 1.10, 0.18, armCol, armA * 0.55, 28, 'screen');
+                        drawSpiralPath(ctx, bh, preset, arm, bulgeRadius * 0.86, galaxyRadius * 1.02, 0.26, armCol, armA * 0.32, 9, 'screen');
+                    }
+                    drawYoungClusterKnots(ctx, bh, preset, g, style);
+                }
+            }
+        }
+        if (showGasPhaseMaps) {
+            drawGasPhaseEmissionMap(ctx);
+            drawDustEmissionObservationMap(ctx);
+        }
+    }
+
+    function drawGasPhaseEmissionMap(ctx) {
+        if (currentModeId === 'spectroscopy') return;
+        if (!gasClouds.length) return;
+        const maxSamples = isTelescopeMode() ? 1000 : isOpticalLikeMode() ? 1800 : 2600;
+        const stride = Math.max(1, Math.ceil(gasClouds.length / maxSamples));
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (let i = 0; i < gasClouds.length; i += stride) {
+            const c = gasClouds[i];
+            if (!c || c.mass <= 0.5) continue;
+            const heat = c.heat || 0;
+            let color = null, alpha = 0, radiusMult = 1.0;
+            if (isOpticalLikeMode()) {
+                if (heat < 40) continue; // cold gas is not visible light fog
+                color = heat > 900 ? [145,90,210] : [255,74,112];
+                alpha = heat > 900 ? 0.018 : 0.012;
+                radiusMult = heat > 900 ? 1.25 : 0.68;
+            } else if (currentModeId === 'ultraviolet') {
+                if (heat < 35) continue;
+                color = [120,80,255]; alpha = clamp(0.020 + heat / 120000, 0.012, 0.065); radiusMult = 0.92;
+            } else if (currentModeId === 'xray') {
+                if (heat < 800) continue;
+                color = [80,220,255]; alpha = clamp(0.018 + heat / 160000, 0.015, 0.09); radiusMult = 1.15;
+            } else if (currentModeId === 'infrared') {
+                if (heat > 1200) continue;
+                color = [255,112,38]; alpha = 0.010; radiusMult = 1.3;
+            } else if (currentModeId === 'radio') {
+                const coldness = clamp(1.0 - (heat - 12.0) / 55.0, 0.0, 1.0);
+                if (coldness < 0.25) continue;
+                color = [40,255,195]; alpha = 0.020 + coldness * 0.050; radiusMult = 1.85;
+            }
+            if (!color) continue;
+            const p = projectGalaxyPoint(c.x, c.y, c.z);
+            const sr = Math.max(1.0, c.size * radiusMult * scale * highResMult);
+            if (sr < 1 || p.sx < -sr || p.sx > ctx.canvas.width + sr || p.sy < -sr || p.sy > ctx.canvas.height + sr) continue;
+            const att = applyDiffuseDustAttenuationAtScreen(p.sx, p.sy, p.depth, color, alpha, heat > 40 ? 'hii' : 'gas');
+            color = att.color; alpha = att.alpha;
+            if (alpha < 0.002) continue;
+            const grad = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, sr);
+            grad.addColorStop(0, `rgba(${color[0]},${color[1]},${color[2]},${alpha})`);
+            grad.addColorStop(0.55, `rgba(${color[0]},${color[1]},${color[2]},${alpha * 0.22})`);
+            grad.addColorStop(1, `rgba(${color[0]},${color[1]},${color[2]},0)`);
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(p.sx, p.sy, sr, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    function drawDustEmissionObservationMap(ctx) {
+        if (!showEvolvingDust || !document.getElementById('tglRealism').checked || dustVisualMult <= 0.0005) return;
+        if (currentModeId !== 'infrared') return;
+        const maxSamples = 2400;
+        const stride = Math.max(1, Math.ceil(gasClouds.length / maxSamples));
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (let i = 0; i < gasClouds.length; i += stride) {
+            const c = gasClouds[i];
+            if (!c || !c.dustMass || c.mass <= 0.5) continue;
+            const ratio = c.dustMass / Math.max(c.mass, 0.001);
+            if (ratio < 0.00035) continue;
+            const warm = clamp(((c.dustTemp || 20) - 18) / 260, 0, 1);
+            const alpha = clamp(ratio * 8.5 * dustVisualMult * (0.28 + warm), 0.002, 0.09);
+            const p = projectGalaxyPoint(c.x, c.y, c.z);
+            const sr = Math.max(1.2, c.size * (2.0 + warm * 2.2) * scale * highResMult);
+            if (p.sx < -sr || p.sx > ctx.canvas.width + sr || p.sy < -sr || p.sy > ctx.canvas.height + sr) continue;
+            const col = [170 + warm * 85, 72 + warm * 70, 26];
+            const grad = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, sr);
+            grad.addColorStop(0, `rgba(${Math.round(col[0])},${Math.round(col[1])},${Math.round(col[2])},${alpha})`);
+            grad.addColorStop(1, `rgba(${Math.round(col[0])},${Math.round(col[1])},${Math.round(col[2])},0)`);
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(p.sx, p.sy, sr, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    function drawDiffuseOldStellarDisks(ctx) {
+        if (useObservationSynthesis) return;
+        if (!showEnhancedCore) return;
+        if (currentModeId === 'xray' || currentModeId === 'spectroscopy') return;
+        const m = highResMult;
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g];
+            if (!bh) continue;
+            const p = getRawProjection(bh.x, bh.y, bh.z);
+            const sf = isOrthographicRender ? 1.0 : (1000 / (1000 + p.depth));
+            const sx = p.rawX * (scale * m) + (translateX * m) + centerX;
+            const sy = p.rawY * (scale * m) + (translateY * m) + centerY;
+            const diskR = Math.max(24 * m, galaxyRadius * sf * scale * m * 1.05);
+            if (diskR < 3 || sx < -diskR || sx > ctx.canvas.width + diskR || sy < -diskR || sy > ctx.canvas.height + diskR) continue;
+            const stage = g === 0 ? galaxyAStageSelect.value : galaxyBStageSelect.value;
+            const tilt = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+            const flatten = clamp(1.0 - 0.52 * tilt, 0.28, 1.0);
+            const angle = rotationY * Math.PI / 180;
+            let col = stage === 'new' ? [205, 215, 245] : stage === 'dying' ? [230, 145, 95] : [226, 178, 116];
+            let alpha = stage === 'new' ? 0.042 : stage === 'dying' ? 0.064 : 0.058;
+            if (currentModeId === 'infrared') { col = [255, 145, 70]; alpha *= 1.45; }
+            if (currentModeId === 'ultraviolet') { col = [95, 90, 210]; alpha *= stage === 'new' ? 0.65 : 0.22; }
+            ctx.save();
+            ctx.translate(sx, sy);
+            ctx.rotate(angle);
+            ctx.scale(1.0, flatten);
+            const grad = ctx.createRadialGradient(0, 0, diskR * 0.08, 0, 0, diskR);
+            grad.addColorStop(0.0, `rgba(${col[0]},${col[1]},${col[2]},${alpha * 0.85})`);
+            grad.addColorStop(0.38, `rgba(${col[0]},${col[1]},${col[2]},${alpha * 0.42})`);
+            grad.addColorStop(0.72, `rgba(${col[0]},${col[1]},${col[2]},${alpha * 0.16})`);
+            grad.addColorStop(1.0, `rgba(${col[0]},${col[1]},${col[2]},0)`);
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(0, 0, diskR, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+        }
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
+    function drawEnhancedGalaxyCores(ctx) {
+        const realism = document.getElementById('tglRealism').checked;
+        const m = highResMult;
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g];
+            if (!bh) continue;
+            const p = getRawProjection(bh.x, bh.y, bh.z);
+            const sf = isOrthographicRender ? 1.0 : (1000 / (1000 + p.depth));
+            const sx = p.rawX * (scale * m) + (translateX * m) + centerX;
+            const sy = p.rawY * (scale * m) + (translateY * m) + centerY;
+            const baseR = Math.max(18 * m, bulgeRadius * sf * scale * m * 0.95);
+            if (baseR < 2 || sx < -baseR || sx > ctx.canvas.width + baseR || sy < -baseR || sy > ctx.canvas.height + baseR) continue;
+
+            const presetId = g === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+            const stage = g === 0 ? galaxyAStageSelect.value : galaxyBStageSelect.value;
+            const tilt = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+            const flatten = clamp(1.0 - 0.58 * tilt, 0.22, 1.0);
+            const angle = rotationY * Math.PI / 180;
+            let core = stage === 'new' ? [218, 218, 245] : stage === 'dying' ? [224, 125, 78] : [226, 168, 98];
+            let alpha = stage === 'new' ? 0.070 : stage === 'dying' ? 0.095 : 0.085;
+            if (currentModeId === 'infrared') { core = [255, 135, 60]; alpha *= 1.65; }
+            if (currentModeId === 'ultraviolet') { core = [110, 95, 255]; alpha *= stage === 'new' ? 1.05 : 0.35; }
+            if (currentModeId === 'xray') { alpha = 0.015 + bh.accretionGlow * 0.05; core = [120, 230, 255]; }
+            if (currentModeId === 'spectroscopy') alpha *= 0.55;
+            if (useObservationSynthesis) alpha *= 0.68;
+            if (isTelescopeMode()) alpha *= 0.64;
+
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            ctx.translate(sx, sy); ctx.rotate(angle); ctx.scale(1.0, flatten);
+            const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, baseR);
+            grad.addColorStop(0.0, `rgba(255,235,188,${alpha * 1.18})`);
+            grad.addColorStop(0.22, `rgba(232,178,108,${alpha * 0.92})`);
+            grad.addColorStop(0.58, `rgba(${core[0]},${core[1]},${core[2]},${alpha * 0.54})`);
+            grad.addColorStop(1.0, `rgba(${core[0]},${core[1]},${core[2]},0)`);
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(0, 0, baseR, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            const nuclearR = Math.max(4 * m, baseR * 0.10);
+            const nGrad = ctx.createRadialGradient(sx, sy, 0, sx, sy, nuclearR);
+            nGrad.addColorStop(0, currentModeId === 'xray' ? `rgba(220,250,255,${0.38 + bh.accretionGlow * 0.75})` : `rgba(255,232,178,${0.17 + bh.accretionGlow * 0.28})`);
+            nGrad.addColorStop(1, 'rgba(255,210,120,0)');
+            ctx.fillStyle = nGrad;
+            ctx.beginPath(); ctx.arc(sx, sy, nuclearR, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+
+            if (realism && presetId !== 'ring' && currentModeId !== 'xray') {
+                const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+                const dustAlphaBase = currentModeId === 'infrared' ? 0.006 : currentModeId === 'ultraviolet' ? 0.13 : 0.040;
+                const dustAlpha = clamp(dustAlphaBase * (0.18 + edgeOn * 0.95) * dustVisualMult, 0.0, isOpticalLikeMode() ? 0.09 : 0.22);
+                if (dustAlpha > 0.010) {
+                    ctx.save();
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.translate(sx, sy);
+                    ctx.rotate(angle + 0.08 * Math.sin(frameCount * 0.01 + g));
+                    ctx.strokeStyle = `rgba(16,10,7,${dustAlpha})`;
+                    ctx.lineCap = 'round';
+                    ctx.lineWidth = Math.max(1.2 * m, baseR * (0.035 + 0.055 * edgeOn));
+                    ctx.beginPath();
+                    ctx.moveTo(-baseR * 0.95, Math.sin(frameCount * 0.008 + g) * baseR * 0.04);
+                    ctx.bezierCurveTo(-baseR * 0.30, -baseR * 0.16, baseR * 0.30, baseR * 0.16, baseR * 0.95, -baseR * 0.03);
+                    ctx.stroke();
+                    ctx.strokeStyle = `rgba(75,43,22,${dustAlpha * 0.45})`;
+                    ctx.lineWidth *= 0.45;
+                    ctx.beginPath();
+                    ctx.moveTo(-baseR * 0.75, baseR * 0.16);
+                    ctx.bezierCurveTo(-baseR * 0.15, baseR * 0.05, baseR * 0.18, -baseR * 0.10, baseR * 0.78, baseR * 0.12);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            }
+
+            if (bh.accretionGlow > 0.03 || bh.jetTimer > 0 || currentModeId === 'xray') {
+                const diskAlpha = clamp(0.18 + bh.accretionGlow * 0.55, 0.12, 0.85);
+                const diskR = Math.max(5 * m, baseR * 0.16);
+                ctx.save();
+                ctx.globalCompositeOperation = 'screen';
+                ctx.translate(sx, sy); ctx.rotate(angle + frameCount * 0.01); ctx.scale(1.0, 0.28);
+                const dGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, diskR);
+                dGrad.addColorStop(0.0, `rgba(255,255,255,${diskAlpha})`);
+                dGrad.addColorStop(0.35, `rgba(255,160,45,${diskAlpha * 0.75})`);
+                dGrad.addColorStop(1.0, 'rgba(255,80,20,0)');
+                ctx.fillStyle = dGrad;
+                ctx.beginPath(); ctx.arc(0, 0, diskR, 0, Math.PI * 2); ctx.fill();
+                ctx.restore();
+            }
+        }
+    }
+
+    function initForegroundStars() {
+        foregroundStars = [];
+        for (let i = 0; i < MAX_FOREGROUND_STARS; i++) {
+            const brightness = Math.pow(Math.random(), 3.0);
+            foregroundStars.push({
+                x: Math.random(), y: Math.random(), brightness,
+                size: 1.1 + brightness * 5.5,
+                temp: 3200 + Math.random() * 10000,
+                spikeStrength: Math.random() < 0.38 ? brightness : 0,
+                twinkleSeed: Math.random() * 1000
+            });
+        }
+    }
+
+    function applyBackgroundLensing(ctx, bgObj, sx, sy) {
+        if (!showBackgroundLensing || currentModeId === 'xray') {
+            return { x: sx, y: sy, stretch: 1, angle: bgObj.angle || 0, alphaBoost: 1 };
+        }
+        let finalX = sx, finalY = sy, stretch = 1, angle = bgObj.angle || 0, alphaBoost = 1;
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g];
+            if (!bh) continue;
+            const p = getRawProjection(bh.x, bh.y, bh.z);
+            const cx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+            const cy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+            const dx = sx - cx, dy = sy - cy;
+            const d = Math.max(1, Math.hypot(dx, dy));
+            const lensRadius = 260 * highResMult * clamp(scale, 0.35, 2.8);
+            if (d > lensRadius) continue;
+            const massFactor = clamp((bh.mass + bulgeMass) / 850.0, 0.25, 2.5);
+            const t = 1.0 - d / lensRadius;
+            const bend = t * t * 7.0 * massFactor;
+            finalX += (dx / d) * bend;
+            finalY += (dy / d) * bend;
+            stretch += t * t * 0.55 * massFactor;
+            angle = Math.atan2(dy, dx) + Math.PI / 2;
+            alphaBoost += t * 0.18;
+            if (d < 34 * highResMult && bgObj.brightness > 0.45 && bgObj.redshift > 0.45) {
+                drawLensingArc(ctx, cx, cy, bgObj, d);
+            }
+        }
+        return {x: finalX, y: finalY, stretch: clamp(stretch, 1, 3.2), angle, alphaBoost: clamp(alphaBoost, 1, 1.8)};
+    }
+
+    function drawLensingArc(ctx, cx, cy, bgObj, d) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        const radius = (42 + d * 0.35) * highResMult;
+        const start = bgObj.angle || 0;
+        const span = Math.PI * (0.22 + bgObj.brightness * 0.42);
+        const alpha = currentModeId === 'infrared' ? 0.20 : 0.15;
+        ctx.strokeStyle = `rgba(180,210,255,${alpha * bgObj.brightness})`;
+        ctx.lineWidth = Math.max(0.8, 1.5 * highResMult);
+        ctx.beginPath();
+        ctx.arc(cx, cy, radius, start, start + span);
+        ctx.stroke();
+        ctx.restore();
+    }
+
+    function drawVisibleSpiralDustLanes(ctx) {
+        if (!showEvolvingDust || !document.getElementById('tglRealism').checked) return;
+        if (dustVisualMult < 0.025) return;
+        if (currentModeId !== 'visible' && currentModeId !== 'ultraviolet') return;
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        const m = highResMult;
+        const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g];
+            if (!bh) continue;
+            const presetId = g === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+            const preset = GALAXY_PRESETS[presetId];
+            if (!preset || preset.type !== 'spiral' || isPostMerger) continue;
+            const armCount = Math.max(1, preset.armCount || 2);
+            const baseAlpha = currentModeId === 'ultraviolet' ? 0.095 : 0.030;
+            const orientation = 0.45 + edgeOn * 0.95;
+            for (let arm = 0; arm < armCount; arm++) {
+                for (let lane = 0; lane < 2; lane++) {
+                    const offset = lane === 0 ? -0.30 : 0.16;
+                    ctx.beginPath();
+                    let started = false;
+                    for (let r = bulgeRadius * 0.64; r <= galaxyRadius * 1.03; r += 20) {
+                        const theta = (2 * Math.PI / armCount) * arm + Math.log(r / bulgeRadius) / Math.tan(SPIRAL_PITCH) + patternAngle + offset;
+                        const wobble = Math.sin(r * 0.041 + arm * 2.0 + lane * 1.7) * 4.2;
+                        const wx = bh.x + (r + wobble) * Math.cos(theta);
+                        const wy = bh.y + (r + wobble) * Math.sin(theta);
+                        const wz = bh.z + Math.sin(r * 0.021 + arm) * 2.0;
+                        const p = getRawProjection(wx, wy, wz);
+                        const sx = p.rawX * (scale * m) + (translateX * m) + centerX;
+                        const sy = p.rawY * (scale * m) + (translateY * m) + centerY;
+                        if (!started) { ctx.moveTo(sx, sy); started = true; }
+                        else ctx.lineTo(sx, sy);
+                    }
+                    const laneAlpha = clamp(baseAlpha * orientation * dustVisualMult * (lane === 0 ? 1.0 : 0.42), 0.0, isOpticalLikeMode() ? 0.10 : 0.20);
+                    if (laneAlpha < 0.004) continue;
+                    ctx.strokeStyle = lane === 0 ? `rgba(30,19,12,${laneAlpha})` : `rgba(82,51,30,${laneAlpha * 0.65})`;
+                    ctx.lineWidth = Math.max(0.45 * m, (lane === 0 ? 2.15 : 1.15) * scale * m * (1.0 + edgeOn * 0.75));
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.stroke();
+                }
+            }
+        }
+        ctx.restore();
+        ctx.globalCompositeOperation = 'source-over';
+    }
+
+    function drawHIIRegions(ctx) {
+        if (!showHIIRegions) return;
+        ctx.save();
+        ctx.globalCompositeOperation = 'screen';
+        for (const r of hiiRegions) {
+            if (r.currentIntensity <= 0.005) continue;
+            const p = getRawProjection(r.x, r.y, r.z);
+            const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+            const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+            const sr = r.radius * scale * highResMult * (isTelescopeMode() ? 0.46 : isOpticalLikeMode() ? 0.82 : 1.0);
+            if (sr < 1 || sx < -sr || sx > ctx.canvas.width + sr || sy < -sr || sy > ctx.canvas.height + sr) continue;
+            let color = [255, 68, 108];
+            let alphaMult = isTelescopeMode() ? 0.38 : isOpticalLikeMode() ? 0.78 : 1.0;
+            if (currentModeId === 'infrared') { color = [255, 130, 40]; alphaMult = 0.8; }
+            else if (currentModeId === 'ultraviolet') { color = [120, 80, 255]; alphaMult = 2.0; }
+            else if (currentModeId === 'xray') { color = [80, 200, 255]; alphaMult = 0.1; }
+            let alpha = 0.115 * r.currentIntensity * alphaMult;
+            const dust = getApproxDustDensity(r.x, r.y, r.z);
+            if (isOpticalLikeMode()) alpha *= Math.exp(-dust * 0.8);
+            if (currentModeId === 'ultraviolet') alpha *= Math.exp(-dust * 2.0);
+            const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+            grad.addColorStop(0.0, `rgba(${color[0]},${color[1]},${color[2]},${alpha})`);
+            grad.addColorStop(0.38, `rgba(${color[0]},${color[1]},${color[2]},${alpha * 0.30})`);
+            grad.addColorStop(1.0, `rgba(${color[0]},${color[1]},${color[2]},0)`);
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    function drawJetLobes(ctx) {
+        if (!showJetLobes) return;
+        ctx.save(); ctx.globalCompositeOperation = 'screen';
+        for (const l of jetLobes) {
+            if (l.currentEnergy <= 0.01) continue;
+            const p = getRawProjection(l.x, l.y, l.z);
+            const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+            const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+            const sr = l.radius * scale * highResMult;
+            if (sr < 2) continue;
+            let color = [130, 180, 255], alphaMult = 0.35;
+            if (currentModeId === 'xray') { color = [80, 220, 255]; alphaMult = 1.5; }
+            else if (currentModeId === 'ultraviolet') { color = [110, 110, 255]; alphaMult = 0.8; }
+            else if (currentModeId === 'infrared') { color = [255, 120, 40]; alphaMult = 0.25; }
+            const alpha = 0.16 * l.currentEnergy * alphaMult;
+            const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+            grad.addColorStop(0.0, `rgba(${color[0]},${color[1]},${color[2]},${alpha * 0.3})`);
+            grad.addColorStop(0.55, `rgba(${color[0]},${color[1]},${color[2]},${alpha})`);
+            grad.addColorStop(1.0, `rgba(${color[0]},${color[1]},${color[2]},0)`);
+            ctx.fillStyle = grad;
+            ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+    }
+
+    function drawJetCones(ctx) {
+        if (!showJetLobes || !showJets) return;
+        for (const bh of blackHoles) {
+            if (!bh || bh.jetTimer <= 0) continue;
+            const strength = clamp(bh.jetTimer / JET_DURATION, 0, 1) * clamp(bh.accretionGlow + 0.25, 0, 1);
+            drawOneJetSide(ctx, bh, 1, strength);
+            drawOneJetSide(ctx, bh, -1, strength);
+        }
+    }
+
+    function drawOneJetSide(ctx, bh, sign, strength) {
+        const lengthPc = 300 + 620 * strength, widthPc = 35 + 85 * strength;
+        const start = getRawProjection(bh.x, bh.y, bh.z);
+        const end = getRawProjection(bh.x, bh.y, bh.z + sign * lengthPc);
+        const sx = start.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+        const sy = start.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+        const ex = end.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+        const ey = end.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+        const dx = ex - sx, dy = ey - sy, len = Math.max(1, Math.hypot(dx, dy));
+        const nx = -dy / len, ny = dx / len, width = widthPc * scale * highResMult;
+        let color = currentModeId === 'xray' ? [80,220,255] : currentModeId === 'ultraviolet' ? [120,120,255] : [160,210,255];
+        const grad = ctx.createLinearGradient(sx, sy, ex, ey);
+        grad.addColorStop(0.0, `rgba(${color[0]},${color[1]},${color[2]},${0.20 * strength})`);
+        grad.addColorStop(0.72, `rgba(${color[0]},${color[1]},${color[2]},${0.07 * strength})`);
+        grad.addColorStop(1.0, `rgba(${color[0]},${color[1]},${color[2]},0)`);
+        ctx.save(); ctx.globalCompositeOperation = 'screen'; ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(sx + nx * width * 0.15, sy + ny * width * 0.15);
+        ctx.lineTo(ex + nx * width, ey + ny * width);
+        ctx.lineTo(ex - nx * width, ey - ny * width);
+        ctx.lineTo(sx - nx * width * 0.15, sy - ny * width * 0.15);
+        ctx.closePath(); ctx.fill(); ctx.restore();
+    }
+
+    function drawAccretionDisks(ctx) {
+        if (!showAccretionDisks) return;
+        for (let g = 0; g < blackHoles.length; g++) drawAccretionDisk(ctx, blackHoles[g], g);
+    }
+
+    function drawAccretionDisk(ctx, bh, galaxyIndex) {
+        if (!bh || (bh.accretionGlow < 0.02 && currentModeId !== 'xray')) return;
+        if (bh.diskAngle === undefined) initBlackHoleVisualState(bh);
+        const p = getRawProjection(bh.x, bh.y, bh.z);
+        const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+        const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+        const glow = clamp(bh.accretionGlow, currentModeId === 'xray' ? 0.08 : 0, 1);
+        const flicker = 0.85 + 0.3 * (bh.diskFlicker || 0.2);
+        const baseRadius = (10 + Math.sqrt(Math.max(1,bh.mass)) * 0.5) * scale * highResMult;
+        const rx = clamp(baseRadius * (1.4 + glow), 4, 90);
+        const ry = clamp(baseRadius * (0.25 + 0.25 * Math.abs(Math.sin(rotationX * Math.PI / 180))), 2, 34);
+        ctx.save(); ctx.globalCompositeOperation = 'screen'; ctx.translate(sx, sy); ctx.rotate((bh.diskAngle || 0) + rotationY * Math.PI / 180);
+        let inner = [255,245,210], outer = [255,130,40];
+        if (currentModeId === 'xray') { inner = [220,245,255]; outer = [80,180,255]; }
+        if (currentModeId === 'infrared') { inner = [255,230,170]; outer = [255,90,20]; }
+        const grad = ctx.createRadialGradient(0, 0, 0, 0, 0, rx);
+        grad.addColorStop(0.0, `rgba(${inner[0]},${inner[1]},${inner[2]},${0.62 * glow * flicker})`);
+        grad.addColorStop(0.35, `rgba(${outer[0]},${outer[1]},${outer[2]},${0.24 * glow})`);
+        grad.addColorStop(1.0, 'rgba(0,0,0,0)');
+        ctx.scale(1, ry / rx); ctx.fillStyle = grad;
+        ctx.beginPath(); ctx.arc(0, 0, rx, 0, Math.PI * 2); ctx.fill();
+        const hot = ctx.createRadialGradient(rx * 0.32, 0, 0, rx * 0.32, 0, rx * 0.52);
+        hot.addColorStop(0, `rgba(255,255,255,${0.32 * glow})`); hot.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = hot; ctx.beginPath(); ctx.arc(rx * 0.32, 0, rx * 0.52, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+    }
+
+    function drawEvolvingDustClouds(ctx) {
+        if (!showEvolvingDust || currentModeId === 'xray' || dustVisualMult < 0.006) return;
+        const maxDraw = isTelescopeMode() ? 900 : isOpticalLikeMode() ? 1600 : 2200;
+        const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
+        let drawn = 0;
+        ctx.save();
+        for (const c of gasClouds) {
+            if (drawn >= maxDraw) break;
+            if (!c.dustMass || c.dustMass <= 0 || c.mass <= 0) continue;
+            const ratio = c.dustMass / Math.max(c.mass, 0.001);
+            if (ratio < 0.00045) continue;
+            const p = getRawProjection(c.x, c.y, c.z);
+            const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
+            const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
+            const sr = Math.max(1, c.size * (isTelescopeMode() ? 0.85 : isOpticalLikeMode() ? 1.45 : 2.45) * scale * highResMult);
+            if (sr < 1.2 || sx < -sr || sx > ctx.canvas.width + sr || sy < -sr || sy > ctx.canvas.height + sr) continue;
+            let color, alpha;
+            if (isOpticalLikeMode()) {
+                // Visible dust is mostly subtractive attenuation in the particle pass. Only draw the densest foreground seams.
+                const localTau = estimateCloudOpticalDepth(c);
+                if (localTau < 0.045) continue;
+                color = [38, 25, 16];
+                alpha = clamp(localTau * (isTelescopeMode() ? 0.010 : 0.030) * (0.25 + edgeOn * 0.85), 0.0, isTelescopeMode() ? 0.010 : 0.030);
+                if (alpha < 0.003) continue;
+                ctx.globalCompositeOperation = 'multiply';
+            }
+            else if (currentModeId === 'infrared') {
+                const w = clamp(((c.dustTemp || 20) - 20) / 260, 0, 1);
+                color = [120 + w*135, 52 + w*82, 22];
+                alpha = clamp(ratio * 12.0 * (0.35 + w) * dustVisualMult, 0.004, 0.22);
+                ctx.globalCompositeOperation = 'screen';
+            }
+            else if (currentModeId === 'ultraviolet') {
+                const localTau = estimateCloudOpticalDepth(c);
+                if (localTau < 0.035) continue;
+                color = [18, 9, 32];
+                alpha = clamp(localTau * 0.09 * (0.45 + edgeOn), 0.0, 0.12);
+                ctx.globalCompositeOperation = 'multiply';
+            }
+            else continue;
+            const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+            grad.addColorStop(0, `rgba(${Math.round(color[0])},${Math.round(color[1])},${Math.round(color[2])},${alpha})`);
+            grad.addColorStop(1, `rgba(${Math.round(color[0])},${Math.round(color[1])},${Math.round(color[2])},0)`);
+            ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+            drawn++;
+        }
+        ctx.restore(); ctx.globalCompositeOperation = 'source-over';
+    }
+
+    function drawForegroundStars(ctx) {
+        if (!showForegroundStars || !foregroundStars.length) return;
+        const w = ctx.canvas.width, h = ctx.canvas.height;
+        ctx.save(); ctx.globalCompositeOperation = 'screen';
+        for (const s of foregroundStars) {
+            const sx = s.x * w, sy = s.y * h;
+            const twinkle = 0.9 + 0.1 * Math.sin(frameCount * 0.02 + s.twinkleSeed);
+            const pc = getPlanckColor(s.temp);
+            let alpha = (0.045 + s.brightness * 0.32) * twinkle;
+            if (currentModeId === 'xray') alpha *= 0.05;
+            if (currentModeId === 'ultraviolet' && s.temp < 7000) alpha *= 0.22;
+            if (currentModeId === 'infrared' && s.temp < 5000) alpha *= 1.35;
+            if (alpha < 0.01) continue;
+            const r = Math.round(pc[0]*255), g = Math.round(pc[1]*255), b = Math.round(pc[2]*255);
+            const radius = s.size * highResMult;
+            const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, radius * 4);
+            grad.addColorStop(0, `rgba(${r},${g},${b},${alpha})`);
+            grad.addColorStop(0.4, `rgba(${r},${g},${b},${alpha * 0.24})`);
+            grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+            ctx.fillStyle = grad; ctx.beginPath(); ctx.arc(sx, sy, radius * 4, 0, Math.PI * 2); ctx.fill();
+            if (s.spikeStrength > 0 && currentModeId !== 'xray') drawDiffractionSpike(ctx, sx, sy, radius, s.spikeStrength, r, g, b, alpha);
+        }
+        ctx.restore();
+    }
+
+    function drawDiffractionSpike(ctx, sx, sy, radius, strength, r, g, b, alpha) {
+        ctx.save();
+        ctx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.35 * strength})`;
+        ctx.lineWidth = Math.max(0.5, radius * 0.28);
+        const len = radius * (8 + strength * 18);
+        ctx.beginPath();
+        ctx.moveTo(sx - len, sy); ctx.lineTo(sx + len, sy);
+        ctx.moveTo(sx, sy - len); ctx.lineTo(sx, sy + len);
+        ctx.stroke();
+        ctx.restore();
+    }
+
     function getStarRenderParams(star, modeId) {
         let r, g, b, a;
         let baseA = Math.min(1.0, 0.4 + (Math.min(1, Math.pow(star.mass/starMass, 0.05) * (star.temperature/6000))) * 0.6);
@@ -2298,33 +3999,89 @@
         } else { const pc = getPlanckColor(star.temperature); r=pc[0]; g=pc[1]; b=pc[2]; }
 
         const useRealism = document.getElementById('tglRealism').checked;
-        const dust = getApproxDustDensity(star.x, star.y, star.z);
+        const dustAtt = getDustAttenuationForObject(star.x, star.y, star.z, modeId);
 
-        const viewAngleFactor = 0.3 + 2.7 * Math.pow(Math.sin(rotationX * Math.PI / 180), 2);
-
-        if (modeId === 'visible') {
+        if (isOpticalLikeMode(modeId)) {
             if (useRealism && tglDust.checked) { 
-                let effectiveDust = dust * viewAngleFactor;
-                a = baseA * Math.exp(-effectiveDust * 1.2); 
-                r *= Math.exp(-effectiveDust * 0.6); 
-                g *= Math.exp(-effectiveDust * 1.8); 
-                b *= Math.exp(-effectiveDust * 3.0); 
+                a = baseA * dustAtt.alpha; 
+                r *= dustAtt.r; 
+                g *= dustAtt.g; 
+                b *= dustAtt.b; 
             } else { a = baseA; }
             if (star.initialMass > MASSIVE_STAR_THRESHOLD && star.stage === 'MS') { pType = 6.0; sSize *= 2.0; }
         } else if (modeId === 'infrared') {
-            a = baseA * Math.exp(-dust * 0.3); 
+            a = baseA * dustAtt.alpha; 
             if (star.temperature > 8000) a *= 0.1; 
             else { r = 1.0; g = 0.6; b = 0.2; if (star.temperature < 4000) { r=1.0; g=0.2; b=0.0; a*=1.5; sSize*=1.2; } }
         } else if (modeId === 'ultraviolet') {
-            a = baseA * Math.exp(-dust * 3.0); 
+            a = baseA * dustAtt.alpha; 
             if (star.temperature > 8000) { r = 0.5; g = 0.2; b = 1.0; a *= 1.5; sSize *= 1.5; } else { a *= 0.05; }
         } else if (modeId === 'xray') {
             a = 0.0; 
             if (star.temperature > 25000) { r=0.0; g=0.8; b=1.0; a = baseA * 0.5; sSize *= 0.8; }
+        } else if (modeId === 'radio') {
+            r = 0.05; g = 0.22; b = 0.18;
+            a = baseA * (star.initialMass > 8.0 ? 0.045 : 0.012);
+            sSize *= 0.35;
         } else if (modeId === 'spectroscopy') {
             let z = Math.min(2.0, star.metallicity);
             if (z < 0.5) { r = z*2; g = 0.5+z; b = 1.0; } else if (z < 1.0) { r = 1.0; g = 1.0 - (z-0.5)*0.5; b = 1.0 - (z-0.5)*2; } else { r = 1.0; g = 0.75 - (z-1.0)*0.5; b = 0.0; } 
             a = baseA * 0.5;
+        }
+
+        if (isOpticalLikeMode(modeId)) {
+            const popMod = getVisibleSpiralPopulationModifier(star.x, star.y, star.z, star.galaxyIndex);
+            a *= popMod.alpha;
+            sSize *= popMod.size;
+            if (popMod.warmMix > 0) {
+                const wr = 1.0, wg = 0.78, wb = 0.48;
+                r = r * (1.0 - popMod.warmMix) + wr * popMod.warmMix;
+                g = g * (1.0 - popMod.warmMix) + wg * popMod.warmMix;
+                b = b * (1.0 - popMod.warmMix) + wb * popMod.warmMix;
+            }
+        }
+
+        if (useObservationSynthesis && reduceResolvedOldStars && (isOpticalLikeMode(modeId) || modeId === 'infrared')) {
+            const isYoungTracer = (star.ageMyr < 180) || (star.initialMass > 5.0) || (star.temperature > 9000 && star.stage === 'MS');
+            if (!isYoungTracer) {
+                const local = getNearestGalaxyContextForPoint(star.x, star.y, star.z, star.galaxyIndex);
+                const coreBlend = clamp(1.0 - local.rCyl / Math.max(1, bulgeRadius * 1.15), 0, 1);
+                // Most old stars are now represented by the diffuse population map; keep them as texture, not glitter.
+                a *= 0.52 - coreBlend * 0.16;
+                sSize *= 0.70 - coreBlend * 0.10;
+                if (isOpticalLikeMode(modeId)) {
+                    r = r * 0.68 + 1.0 * 0.32;
+                    g = g * 0.68 + 0.78 * 0.32;
+                    b = b * 0.68 + 0.48 * 0.32;
+                }
+            }
+        }
+
+        if (useRealism && useCinematicDepth && modeId !== 'xray') {
+            const depthMod = getDepthVisualModifier(star.x, star.y, star.z);
+            a *= depthMod.alpha;
+            sSize *= depthMod.size;
+            if (depthMod.strength > 0.05 && depthMod.far > 0.55) {
+                const cool = (depthMod.far - 0.55) * depthMod.strength;
+                r *= 1.0 - cool * 0.10;
+                g *= 1.0 - cool * 0.06;
+                b *= 1.0 + cool * 0.04;
+            }
+        }
+
+        if (isTelescopeMode(modeId)) {
+            const isYoungTracer = (star.ageMyr < 120) || (star.initialMass > 7.0) || (star.temperature > 12000 && star.stage === 'MS');
+            const rgb = telescopeDesaturateRGB(r, g, b, isYoungTracer ? 0.38 : 0.62);
+            r = rgb[0]; g = rgb[1]; b = rgb[2];
+            if (isYoungTracer) {
+                a *= 0.46;
+                sSize *= 0.58;
+            } else {
+                a *= 0.18;
+                sSize *= 0.42;
+            }
+            // Real telescope images resolve only the brightest clusters in the target galaxy.
+            if (star.stage === 'GIANT' || star.stage === 'WD') a *= 0.55;
         }
 
         return {r, g, b, a, size: sSize, type: pType};
@@ -2332,60 +4089,159 @@
 
     function getGasRenderParams(cloud, modeId) {
         let shimmer = 0.95 + Math.sin(frameCount * 0.015 + cloud.id) * 0.05;
-        
-        let heatRatio = clamp((cloud.heat - 15) / 35, 0.0, 1.0); 
-        let visualMult = coldGasVisualMult * (1.0 - heatRatio) + hotGasVisualMult * heatRatio;
 
-        let baseAlpha = (cloud.heat > 50 ? 0.05 : 0.04) * shimmer * visualMult; 
-        let cSize = cloud.size * visualMult * 1.1; 
-        
+        const coldness = clamp(1.0 - (cloud.heat - 12.0) / 45.0, 0.0, 1.0);
+        const heatRatio = 1.0 - coldness;
+        const coldVisual = coldGasVisualMult * (0.45 + coldness * 0.95);
+        const hotVisual = hotGasVisualMult * (0.35 + heatRatio * 0.95);
+        let visualMult = coldVisual * coldness + hotVisual * heatRatio;
+
+        let baseAlpha = (coldness > 0.6 ? 0.055 : cloud.heat > 50 ? 0.05 : 0.042) * shimmer * visualMult;
+        let cSize = cloud.size * (coldness > 0.6 ? 1.25 : 1.1) * visualMult;
+
         let r=0.0, g=0.0, b=0.0, a=baseAlpha;
 
         const useRealism = document.getElementById('tglRealism').checked;
-        const dust = getApproxDustDensity(cloud.x, cloud.y, cloud.z);
-        const viewAngleFactor = 0.3 + 2.7 * Math.pow(Math.sin(rotationX * Math.PI / 180), 2);
+        const dustAtt = getDustAttenuationForObject(cloud.x, cloud.y, cloud.z, modeId);
+        const coldGain = clamp((coldGasVisualMult / 2.0), 0.2, 8.0);
+        const contrast = coldGasContrastBoost;
+        const coldDiagnosticVisible = shouldRenderColdGasDiagnostic(modeId);
 
-       if (modeId === 'visible') { 
-            if (cloud.heat > 1000) { 
-                r=0.9; g=0.2; b=1.0; a*=1.5; 
-            } 
-            else if (cloud.heat > 30) { 
-                r=0.4; g=0.5; b=1.0; a*=1.8; 
-            } 
-            else { 
-               r=0.85; g=0.3; b=0.0; a*=1.5; 
-                cSize *= 0.01; 
+       if (isOpticalLikeMode(modeId)) {
+            if (coldness > 0.55) {
+                if (coldDiagnosticVisible) {
+                    // Distinct cold-gas tracer: teal / aqua and visibly diffuse, clearly separated from hot gas and stars.
+                    r = 0.06;
+                    g = 0.72 + 0.08 * Math.min(1.0, contrast - 0.9);
+                    b = 0.50 + 0.10 * Math.min(1.0, contrast - 0.9);
+                    a = (0.05 + 0.06 * coldness + Math.max(0, coldGain - 1.0) * 0.028) * shimmer;
+                    cSize *= 0.24 + 0.16 * Math.min(2.0, coldGain);
+                } else {
+                    // In realistic optical views cold gas should be almost invisible; dust and H II regions carry the signal instead.
+                    r = 0.16; g = 0.13; b = 0.12;
+                    a = 0.0025 * shimmer;
+                    cSize *= 0.06;
+                }
             }
-            
+            else if (cloud.heat > 1000) {
+                r=0.72; g=0.28; b=0.95; a*=1.05; cSize *= 0.82;
+            }
+            else if (cloud.heat > 30) {
+                r=0.35; g=0.42; b=0.78; a*=0.72; cSize *= 0.68;
+            }
+            else {
+                r=0.22; g=0.62; b=0.46; a*=0.26; cSize *= 0.08;
+            }
+
+            const armMod = getVisibleSpiralPopulationModifier(cloud.x, cloud.y, cloud.z, cloud.galaxyIndex);
+            a *= clamp(armMod.alpha * 0.92, 0.35, 1.15);
+            cSize *= clamp(armMod.size, 0.85, 1.12);
             if (useRealism && tglDust.checked) {
-                let effectiveDust = dust * viewAngleFactor;
-                a *= Math.exp(-effectiveDust * 1.0);
-                r *= Math.exp(-effectiveDust * 0.6);
-                g *= Math.exp(-effectiveDust * 1.8);
-                b *= Math.exp(-effectiveDust * 3.0);
+                a *= dustAtt.alpha;
+                r *= dustAtt.r;
+                g *= dustAtt.g;
+                b *= dustAtt.b;
             }
-        } 
-        else if (modeId === 'infrared') { 
-            if (cloud.heat < 30) { r=1.0; g=0.4; b=0.0; a = (0.05 + cloud.metallicity*0.1) * shimmer * visualMult; } 
-            else { a*=0.2; } 
-            if (useRealism && tglDust.checked) a *= Math.exp(-dust * 0.3);
-        } 
-        else if (modeId === 'ultraviolet') { 
-            if (cloud.heat > 40) { r=0.5; g=0.0; b=1.0; a*=1.5; } 
-            else { a=0.0; } 
-            if (useRealism && tglDust.checked) a *= Math.exp(-dust * 3.0);
-        } 
-        else if (modeId === 'xray') { 
-            if (cloud.heat > 1000) { r=0.0; g=0.8; b=1.0; a = Math.min(1.0, a*5.0); } 
-            else { a=0.0; } 
+        }
+        else if (modeId === 'infrared') {
+            if (coldness > 0.55) {
+                // Cold dust / molecular gas tracer in IR: amber-orange, clearly warmer than stars and less purple than hot gas.
+                r = 1.0;
+                g = 0.42;
+                b = 0.08;
+                a = (0.075 + 0.065 * coldness + Math.max(0, coldGain - 1.0) * 0.04) * shimmer;
+                cSize *= 0.32 + 0.18 * Math.min(2.5, coldGain);
+            }
+            else if (cloud.heat > 30) {
+                r = 0.45; g = 0.12; b = 0.85; a *= 0.22; cSize *= 0.55;
+            }
+            else {
+                r = 0.85; g = 0.30; b = 0.05; a *= 0.18; cSize *= 0.28;
+            }
+            if (useRealism && tglDust.checked) a *= dustAtt.alpha;
+        }
+        else if (modeId === 'ultraviolet') {
+            if (coldness > 0.55) {
+                if (coldDiagnosticVisible) {
+                    // Diagnostic cold-gas tracer in UV: green-cyan so it stands apart from violet hot/young UV structures.
+                    r = 0.18; g = 0.95; b = 0.52;
+                    a = (0.045 + 0.045 * coldness + Math.max(0, coldGain - 1.0) * 0.026) * shimmer;
+                    cSize *= 0.22 + 0.14 * Math.min(2.0, coldGain);
+                } else {
+                    a = 0.0;
+                }
+            }
+            else if (cloud.heat > 40) {
+                r=0.5; g=0.0; b=1.0; a*=1.5;
+            }
+            else {
+                a=0.0;
+            }
+            if (useRealism && tglDust.checked) a *= dustAtt.alpha;
+        }
+        else if (modeId === 'xray') {
+            if (coldness > 0.55) {
+                if (coldDiagnosticVisible) {
+                    // Faint diagnostic tracer only: real cold gas would be absent in X-ray, but this keeps it visible for interpretation.
+                    r = 1.0; g = 0.08; b = 0.26;
+                    a = (0.012 + Math.max(0, coldGain - 1.0) * 0.01) * shimmer;
+                    cSize *= 0.16 + 0.10 * Math.min(1.5, coldGain);
+                } else {
+                    a = 0.0;
+                }
+            }
+            else if (cloud.heat > 1000) {
+                r=0.0; g=0.8; b=1.0; a = Math.min(1.0, a*5.0);
+            }
+            else {
+                a=0.0;
+            }
+        }
+        else if (modeId === 'radio') {
+            if (coldness > 0.35) {
+                r = 0.04; g = 0.95; b = 0.72;
+                a = (0.10 + 0.16 * coldness + Math.max(0, coldGain - 1.0) * 0.055) * shimmer;
+                cSize *= 0.46 + 0.28 * Math.min(2.5, coldGain);
+            } else {
+                r = 0.10; g = 0.32; b = 0.78;
+                a *= 0.035;
+                cSize *= 0.45;
+            }
         }
         else if (modeId === 'spectroscopy') {
             let z = Math.min(2.0, cloud.metallicity);
-            if (z < 0.5) { r = z*2; g = 0.5+z; b = 1.0; } 
-            else if (z < 1.0) { r = 1.0; g = 1.0 - (z-0.5)*0.5; b = 1.0 - (z-0.5)*2; } 
+            if (coldness > 0.55) {
+                r = 0.15; g = 0.95; b = 0.60;
+                a = 0.45 + Math.max(0, coldGain - 1.0) * 0.08;
+                cSize *= 0.30 + 0.18 * Math.min(2.0, coldGain);
+            } else if (z < 0.5) { r = z*2; g = 0.5+z; b = 1.0; }
+            else if (z < 1.0) { r = 1.0; g = 1.0 - (z-0.5)*0.5; b = 1.0 - (z-0.5)*2; }
             else { r = 1.0; g = 0.75 - (z-1.0)*0.5; b = 0.0; }
-            a *= 0.8; 
+            a *= 0.8;
         }
+        if (useRealism && useCinematicDepth && modeId !== 'xray') {
+            const depthMod = getDepthVisualModifier(cloud.x, cloud.y, cloud.z);
+            a *= clamp(depthMod.alpha * (1.0 - depthMod.far * depthMod.strength * 0.18), 0.25, 1.25);
+            cSize *= clamp(depthMod.size, 0.80, 1.18);
+        }
+
+        if (isTelescopeMode(modeId)) {
+            const rgb = telescopeDesaturateRGB(r, g, b, coldness > 0.55 ? 0.35 : 0.55);
+            r = rgb[0]; g = rgb[1]; b = rgb[2];
+            if (coldness > 0.55) {
+                if (coldDiagnosticVisible) {
+                    a *= 0.58 + Math.max(0, coldGain - 1.0) * 0.08;
+                    cSize *= 0.92;
+                } else {
+                    a *= 0.18;
+                    cSize *= 0.55;
+                }
+            }
+            else if (cloud.heat < 40) { a *= 0.08; cSize *= 0.45; }
+            else if (cloud.heat < 900) { a *= 0.16; cSize *= 0.52; }
+            else { a *= 0.24; cSize *= 0.60; }
+        }
+
         return {r, g, b, a, size: cSize, mult: visualMult};
     }
 
@@ -2572,6 +4428,8 @@
     }
 
     function draw() {
+      // WORKER REFACTOR: nothing to render until the first physics state arrives
+      if (!hasFirstState && !workerFailed) { frameCount++; requestAnimationFrame(draw); return; }
       if (captureScreenshotRequest.pending) {
           highResMult = captureScreenshotRequest.mult;
           captureScreenshotRequest.pending = false;
@@ -2580,8 +4438,8 @@
           if (highResMult > 1) {
               const w = document.getElementById('sim-container').clientWidth * highResMult;
               const h = document.getElementById('sim-container').clientHeight * highResMult;
-              glCanvas.width = overlayCanvas.width = w;
-              glCanvas.height = overlayCanvas.height = h;
+              bgCanvas.width = glCanvas.width = overlayCanvas.width = w;
+              bgCanvas.height = glCanvas.height = overlayCanvas.height = h;
               centerX = w / 2; centerY = h / 2;
               gl.viewport(0, 0, w, h);
           }
@@ -2590,32 +4448,34 @@
       let isCapturingSequence = captureScreenshotRequest.pending || isProcessingScreenshots || screenshotQueue.length > 0;
 
       if (isDirectorMode && !isPaused) {
-          if (trackingTarget) {
-              if (stars.indexOf(trackingTarget) === -1) { trackingTarget = null; } 
-              else {
-                  let targetRotY = -Math.atan2(trackingTarget.vx, trackingTarget.vz) * 180 / Math.PI;
-                  let targetRotX = Math.atan2(trackingTarget.vy, Math.hypot(trackingTarget.vx, trackingTarget.vz)) * 180 / Math.PI;
-                  let deltaY = (targetRotY - rotationY) % 360; if (deltaY > 180) deltaY -= 360; if (deltaY < -180) deltaY += 360;
-                  rotationY += deltaY * 0.02 * physicsSteps;
-                  let deltaX = (targetRotX - rotationX) % 360; if (deltaX > 180) deltaX -= 360; if (deltaX < -180) deltaX += 360;
-                  rotationX += deltaX * 0.02 * physicsSteps;
-                  scale += (chaseCamZoomTarget - scale) * 0.01 * physicsSteps; 
-
-                  const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180;
-                  const cosY = Math.cos(rY), sinY = Math.sin(rY), cosX = Math.cos(rX), sinX = Math.sin(rX);
-                  const x1 = trackingTarget.x * cosY + trackingTarget.z * sinY; const z1 = -trackingTarget.x * sinY + trackingTarget.z * cosY;
-                  const y2 = trackingTarget.y * cosX - z1 * sinX; const z2 = trackingTarget.y * sinX + z1 * cosX;
-                  const sf = 1000 / (1000 + z2);
-
-                  let targetTX = -x1 * sf * scale; let targetTY = -y2 * sf * scale; 
-                  translateX += (targetTX - translateX) * 0.05 * physicsSteps; translateY += (targetTY - translateY) * 0.05 * physicsSteps;
-              }
-          } else { rotationY += 0.05 * physicsSteps; }
+          updateDirectorCameraLock(false);
       }
 
-      if(!isPaused && !isCapturingSequence) updatePhysics(physicsSteps);
+      // WORKER REFACTOR: physics runs asynchronously in the worker. At most one
+      // step request is in flight; the render loop keeps drawing the latest
+      // mirrored state at full frame rate even when physics runs slower.
+      if (workerFailed) {
+          if (!isPaused && !isCapturingSequence) {
+              Object.assign(SIM_SETTINGS, readSimSettings());
+              updatePhysics(physicsSteps);
+              if (SIM_EVENTS.mergerOccurred) { mergerFlashGlow = 1.0; SIM_EVENTS.mergerOccurred = false; }
+              remapTargetsById();
+          }
+      } else if (!isPaused && !isCapturingSequence && outstandingSteps === 0) {
+          outstandingSteps++;
+          physicsWorker.postMessage({ type: 'step', steps: physicsSteps, settings: readSimSettings() });
+      }
+
+      if (isDirectorMode && !isPaused) {
+          updateDirectorCameraLock(true);
+      }
+
+      totalGasMassCached = gasClouds.reduce((acc, c) => acc + c.mass, 0);
+      buildProjectedDustField();
+      drawBackgroundUniverse(bgCtx);
+      drawObservationSynthesisMaps(bgCtx);
       
-      gl.clearColor(currentMode.bgFloor[0], currentMode.bgFloor[1], currentMode.bgFloor[2], 1.0); 
+      gl.clearColor(0.0, 0.0, 0.0, 0.0); 
       gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
       
       if (tglHDR.checked) {
@@ -2638,8 +4498,6 @@
       gl.uniform1f(uSparseLoc, currentMode.sparseMode); gl.uniform1f(uGainLoc, currentMode.exposureGain); gl.uniform1f(uShoulderLoc, currentMode.exposureShoulder);
       gl.uniform1f(uIsOrthoLoc, isOrthographicRender ? 1.0 : 0.0); 
       
-      totalGasMassCached = gasClouds.reduce((acc, c) => acc + c.mass, 0);
-
       let pIdx = 0;
       function addPoint(x,y,z,size,type,r,g,b,a) {
           if(pIdx >= MAX_RENDER_PARTICLES) return;
@@ -2696,6 +4554,14 @@
       }
       
       overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+      drawDiffuseOldStellarDisks(overlayCtx);
+      if(showEnhancedCore) drawEnhancedGalaxyCores(overlayCtx);
+      drawEvolvingDustClouds(overlayCtx);
+      drawVisibleSpiralDustLanes(overlayCtx);
+      drawJetLobes(overlayCtx);
+      drawHIIRegions(overlayCtx);
+      drawJetCones(overlayCtx);
+      drawAccretionDisks(overlayCtx);
       if(showGrid)drawGridOverlay(overlayCtx); if(showDarkMatter)drawDarkMatterHalo(overlayCtx);
 
       if(useRealism && tglNoise.checked && currentMode.noiseStrength > 0 && currentModeId !== 'xray') {
@@ -2706,6 +4572,13 @@
           overlayCtx.fillStyle = `rgba(200, 230, 255, ${mergerFlashGlow * 0.8})`;
           overlayCtx.fillRect(0, 0, overlayCanvas.width, overlayCanvas.height);
           mergerFlashGlow = Math.max(0, mergerFlashGlow - 0.02 * physicsSteps);
+      }
+      drawForegroundStars(overlayCtx);
+
+      if (isDirectorMode && trackingTarget && currentModeId !== 'spectroscopy') {
+          drawDirectorTrackingReticle(overlayCtx, trackingTarget, 'TRACK A');
+      } else if (!isPaused && astrometryTargets.length > 0 && currentModeId !== 'spectroscopy') {
+          drawDirectorTrackingReticle(overlayCtx, astrometryTargets[0], 'TARGET A');
       }
 
       hoveredStar = null;
@@ -2821,7 +4694,7 @@
           hudPhase.className = "hud-value val-cool";
       }
       
-      document.getElementById('hud-sfr').textContent = instantaneousSFR.toFixed(2) + ' M☉/Myr';
+      document.getElementById('hud-sfr').textContent = instantaneousSFR.toFixed(2) + ' sim';
       document.getElementById('hud-bh-a').textContent = blackHoles[0] ? blackHoles[0].mass.toFixed(1) + ' M☉' : '0 M☉';
       
       // Hide Beta BH UI in Single Mode
@@ -2838,41 +4711,9 @@
           updateSciencePanels();
 
           if (isDataRecording) {
-              let timeMyr = elapsedTime / 1e6;
-              const energy=computeTotalEnergy([...stars, ...blackHoles, ...gasClouds]);
-              stabilityIndex=Math.min(100,Math.max(0,(energy.kinetic/Math.abs(energy.potential))*100));
-              let starGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.starFit.b : 0;
-              let gasGrad = scienceState.metallicityGradient ? scienceState.metallicityGradient.gasFit.b : 0;
-              let tStarMass = stars.reduce((sum, s) => sum + s.mass, 0);
-              
-              let rCurv = scienceState.rotationCurve || {radii:[], modelTotal:[], modelBaryon:[], modelDarkMatter:[], starMedian:[], gasMedian:[]};
-              let mGrad = scienceState.metallicityGradient || {radii:[], starZ:[], gasZ:[]};
-              let sHist = scienceState.sfr.history || [];
+              dataRecordBuffer.push(getDataRecordRow());
+              updateRecordStatus();
 
-              let row = [
-                  timeMyr.toFixed(2), stabilityIndex.toFixed(2), lastEnergy.total.toExponential(4), lastEnergy.kinetic.toExponential(4), lastEnergy.potential.toExponential(4),
-                  blackHoles[0] ? blackHoles[0].mass.toFixed(2) : 0, stars.length, gasClouds.length, tStarMass.toFixed(2), totalGasMassCached.toFixed(2),
-                  instantaneousSFR.toFixed(4), coldGasMass.toFixed(2), hotGasMass.toFixed(2), (coldGasMass/(coldGasMass+hotGasMass+0.001)).toFixed(4), bhAccretionRateLast.toFixed(6),
-                  starGrad.toFixed(6), gasGrad.toFixed(6),
-                  
-                  `"${JSON.stringify(rCurv.radii)}"`,
-                  `"${JSON.stringify(rCurv.modelTotal)}"`,
-                  `"${JSON.stringify(rCurv.modelBaryon)}"`,
-                  `"${JSON.stringify(rCurv.modelDarkMatter)}"`,
-                  `"${JSON.stringify(rCurv.starMedian)}"`,
-                  `"${JSON.stringify(rCurv.gasMedian)}"`,
-                  
-                  `"${JSON.stringify(sHist.map(h=>h.tMid))}"`,
-                  `"${JSON.stringify(sHist.map(h=>h.sfrMass))}"`,
-                  
-                  `"${JSON.stringify(mGrad.radii)}"`,
-                  `"${JSON.stringify(mGrad.starZ)}"`,
-                  `"${JSON.stringify(mGrad.gasZ)}"`
-              ];
-              
-              dataRecordBuffer.push(row.join(","));
-              document.getElementById('recordStatus').textContent = `Recording... (${dataRecordBuffer.length} rows)`;
-              
               if (dataRecordBuffer.length >= MAX_RECORD_ROWS) {
                   flushDataRecordBuffer(false);
               }
@@ -2885,6 +4726,7 @@
           compCanvas.height = glCanvas.height;
           const compCtx = compCanvas.getContext('2d');
           
+          compCtx.drawImage(bgCanvas, 0, 0);
           compCtx.drawImage(glCanvas, 0, 0);
           compCtx.drawImage(overlayCanvas, 0, 0);
           
@@ -2938,17 +4780,21 @@
       frameCount++; requestAnimationFrame(draw);
     }
 
-    function initSimulation() {
-      const peakStarCapacity = parseInt(starCountSlider.value); 
-      const gasAmountMultiplier = parseFloat(gasAmountSlider.value);
-      const useClusters = document.getElementById('enableClusters').checked;
-      const isCollisionMode = document.getElementById('simMode').value === 'collision';
+    //<<PHYSICS>>
+    // WORKER REFACTOR: the physics half of the old initSimulation().
+    // Reads SIM_SETTINGS instead of the DOM; UI resets live in the new
+    // main-thread initSimulation() wrapper further down.
+    function physicsInitSimulation() {
+      const peakStarCapacity = SIM_SETTINGS.starCount; 
+      const gasAmountMultiplier = SIM_SETTINGS.gasAmount;
+      const useClusters = SIM_SETTINGS.enableClusters;
+      const isCollisionMode = SIM_SETTINGS.simMode === 'collision';
       
-      centralBHMass = parseInt(massSlider.value);
+      centralBHMass = SIM_SETTINGS.mass;
       
-      const startDist = parseFloat(initialSeparationSlider.value) / 2;
-      const bParam = parseFloat(impactParamSlider.value);
-      const vAppDisplay = parseFloat(appVelSlider.value);
+      const startDist = SIM_SETTINGS.initialSeparation / 2;
+      const bParam = SIM_SETTINGS.impactParam;
+      const vAppDisplay = SIM_SETTINGS.appVel;
       
       const vAppEngine = vAppDisplay * 0.002; 
 
@@ -2963,7 +4809,10 @@
           ];
       }
 
-      stars = []; gasClouds = []; jetParticles = []; astrometryTargets = []; spectroscopyTarget = null; remnants = []; 
+      blackHoles.forEach(initBlackHoleVisualState);
+      stars = []; gasClouds = []; jetParticles = []; remnants = []; // WORKER REFACTOR: UI target resets moved to initSimulation()
+      hiiRegions = []; jetLobes = []; consolidatedStellarPopulations = [{mass:0, light:0, count:0}, {mass:0, light:0, count:0}];
+      hiiRegionIdCounter = 0; jetLobeIdCounter = 0; updatePhysicsCallCount = 0;
       
       for(let g=0; g<blackHoles.length; g++) {
           liveMassModels[g].radii = [];
@@ -2971,22 +4820,18 @@
           liveMassModels[g].totalLiveMass = 0;
       }
 
-      cloudIdCounter = 0; 
+      cloudIdCounter = 0; starIdCounter = 0; totalPhysicsSteps = 0;
       cosmologicalInflowReservoir = 0; 
       
       isPostMerger = false;
       postMergerTimer = 0.0;
-      mergerFlashGlow = 0.0;
-      
-      refreshAnalysisUI();
-      
-      glCanvas.style.cursor = "default"; isDirectorMode = false; document.getElementById('directorModeBtn').textContent = "Toggle Cinematic Track";
+      SIM_EVENTS.mergerOccurred = false; // WORKER REFACTOR: mergerFlashGlow is reset on the main thread
 
       totalDiskMass = 0;
 
       for (let gIndex = 0; gIndex < blackHoles.length; gIndex++) {
-          const stage = gIndex === 0 ? galaxyAStageSelect.value : galaxyBStageSelect.value;
-          const presetId = gIndex === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+          const stage = gIndex === 0 ? SIM_SETTINGS.galaxyAStage : SIM_SETTINGS.galaxyBStage;
+          const presetId = gIndex === 0 ? SIM_SETTINGS.galaxyAType : SIM_SETTINGS.galaxyBType;
           const preset = GALAXY_PRESETS[presetId];
 
           const stageParams = {
@@ -3062,6 +4907,7 @@
             let initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
             
             let newStar = { 
+                id: starIdCounter++, // WORKER REFACTOR: persistent id so UI target references survive state mirroring
                 x: bhLocal.x + lx, y: bhLocal.y + ly, z: bhLocal.z + z, 
                 vx: bhLocal.vx + localVx, vy: bhLocal.vy + localVy, vz: bhLocal.vz + localVz, 
                 initialMass: massVar, 
@@ -3133,33 +4979,69 @@
                 x: bhLocal.x + lx, y: bhLocal.y + ly, z: bhLocal.z + z, 
                 vx: bhLocal.vx + localVx, vy: bhLocal.vy + localVy, vz: bhLocal.vz + localVz, 
                 ax:0, ay:0, az:0, mass, heat: initialHeat, turbulence: initialTurbulence, size:k*Math.pow(mass,1/3), 
-                galaxyIndex: gIndex, starsCreated:0, stellarMassReservoir:0, metallicity: initialZ
+                galaxyIndex: gIndex, starsCreated:0, stellarMassReservoir:0, metallicity: initialZ,
+                dustMass: mass * dustToGasRatioFromMetallicity(initialZ), dustTemp: initialHeat * 0.25 + 20, dustOpacity: clamp(dustToGasRatioFromMetallicity(initialZ) * 80, 0.05, 3.0), dustDestroyed: 0
             });
           }
       }
 
-      scale = 1.0; translateX = 0; translateY = 0; pcPerPixel = totalSizePc / glCanvas.width;
       patternAngle = 0; barAngle = 0; ringShockRadius = bulgeRadius * 0.5; 
       
-      const starCapacityControl = document.getElementById('starCountValue');
-      if (starCapacityControl) starCapacityControl.textContent = `${peakStarCapacity}`;
-
-      elapsedTime=0;snapshots=[];
+      elapsedTime=0;
       updateLiveMassModel();
       computeAccelerations([...blackHoles, ...stars, ...gasClouds]);
       
-      scienceState.sfr.history = []; scienceState.sfr.currentBucketStart = 0; scienceState.sfr.currentBucketMass = 0;
-      scienceState.sfr.currentBucketCount = 0; scienceState.sfr.cumulativeMassFormed = 0; scienceState.sfr.cumulativeStarsFormed = 0;
-      scienceState.sfr.liveQueue = [];
-      sampleDiagnostics();
-      updateSciencePanels(true);
+      sfrState.history = []; sfrState.currentBucketStart = 0; sfrState.currentBucketMass = 0;
+      sfrState.currentBucketCount = 0; sfrState.cumulativeMassFormed = 0; sfrState.cumulativeStarsFormed = 0;
+      sfrState.liveQueue = [];
+    }
+    //<<END_PHYSICS>>
+
+    // ================================================================
+    // WORKER REFACTOR: UI half of the old initSimulation(). Resets
+    // camera/targets, syncs settings from the DOM, then (re)initializes
+    // physics: in the worker normally, or locally in fallback mode.
+    // ================================================================
+    function initSimulation() {
+      Object.assign(SIM_SETTINGS, readSimSettings());
+      
+      astrometryTargets = []; spectroscopyTarget = null; hoveredStar = null; trackingTarget = null; projectedOrbitPath = [];
+      mergerFlashGlow = 0.0;
+      snapshots = [];
+      scale = 1.0; translateX = 0; translateY = 0; pcPerPixel = totalSizePc / glCanvas.width;
+      
+      refreshAnalysisUI();
+      glCanvas.style.cursor = "default"; isDirectorMode = false; document.getElementById('directorModeBtn').textContent = "Toggle Cinematic Track";
+      
+      const starCapacityControl = document.getElementById('starCountValue');
+      if (starCapacityControl) starCapacityControl.textContent = `${SIM_SETTINGS.starCount}`;
+      
+      if (workerFailed) {
+          physicsInitSimulation();
+          scienceState.sfr = sfrState;
+          hasFirstState = true;
+          sampleDiagnostics();
+          updateSciencePanels(true);
+      } else {
+          physicsWorker.postMessage({ type: 'init', settings: SIM_SETTINGS });
+      }
       updateInteractionHint();
     }
     
     timeWarpBtn.addEventListener('click', () => { 
-        updatePhysics(100); 
-        sampleDiagnostics();
-        updateSciencePanels(true); 
+        // WORKER REFACTOR: warp runs in the worker; diagnostics refresh when its state lands
+        if (workerFailed) {
+            Object.assign(SIM_SETTINGS, readSimSettings());
+            updatePhysics(100);
+            if (SIM_EVENTS.mergerOccurred) { mergerFlashGlow = 1.0; SIM_EVENTS.mergerOccurred = false; }
+            remapTargetsById();
+            sampleDiagnostics();
+            updateSciencePanels(true);
+            return;
+        }
+        outstandingSteps++;
+        pendingForceDiagnostics = true;
+        physicsWorker.postMessage({ type: 'step', steps: 100, settings: readSimSettings() });
     });
     directorModeBtn.addEventListener('click', () => {
         isDirectorMode = !isDirectorMode; directorModeBtn.textContent = isDirectorMode ? "Stop Cinematic Track" : "Toggle Cinematic Track";
@@ -3198,6 +5080,23 @@
     // FIX: 'mouseup' never fires on touch devices; 'change' fires on release for both mouse and touch.
     starCountSlider.addEventListener('change', initSimulation); gasAmountSlider.addEventListener('change', initSimulation);
     takeScreenshotButton.addEventListener('click', () => takeCustomScreenshot(false));
+
+    const recordDataBtn = document.getElementById('recordDataBtn');
+    recordDataBtn.addEventListener('click', () => {
+        if (!isDataRecording) {
+            isDataRecording = true;
+            dataRecordBuffer = [];
+            dataRecordPart = 1;
+            recordDataBtn.textContent = "Stop & Export CSV Data Log";
+            recordDataBtn.classList.add("btn-danger");
+            updateRecordStatus("Recording... (0 rows buffered)");
+        } else {
+            isDataRecording = false;
+            recordDataBtn.textContent = "Start CSV Data Log";
+            recordDataBtn.classList.remove("btn-danger");
+            flushDataRecordBuffer(true);
+        }
+    });
     
     pauseSimButton.addEventListener('click', () => { 
         isPaused = !isPaused; pauseSimButton.textContent = isPaused ? "▶ Resume Simulation" : "⏸ Pause Simulation"; 
@@ -3236,6 +5135,13 @@
     });
 
     window.addEventListener('mouseup', () => { isCanvasMouseDown = false; isDragging = false; isRotating = false; });
+
+    window.addEventListener('beforeunload', (e) => {
+        if (isDataRecording && dataRecordBuffer.length > 0) {
+            e.preventDefault();
+            e.returnValue = "A CSV data log is still recording. Stop and export it before leaving.";
+        }
+    });
     
     glCanvas.addEventListener('click', (e) => {
         if (!isPaused) return; 
@@ -3274,6 +5180,157 @@
     glCanvas.addEventListener('mouseout', () => { currentMouseX = -1000; currentMouseY = -1000; });
     glCanvas.addEventListener('contextmenu',e=>e.preventDefault());
     
+    // ================================================================
+    // WORKER REFACTOR: physics Web Worker plumbing.
+    // The worker script is assembled at runtime from the sections of
+    // this file wrapped in PHYSICS start/end comment markers (those
+    // sections also run here on the main thread, providing mirrored
+    // state, pure helpers for the analysis panels, and a complete
+    // same-thread fallback engine).
+    // Protocol:
+    //   main -> worker: {type:'init', settings} | {type:'step', steps, settings}
+    //   worker -> main: {type:'state', justInit, payload}
+    // ================================================================
+    let physicsWorker = null;
+    let workerFailed = false;
+    let hasFirstState = false;
+    let outstandingSteps = 0;
+    let pendingForceDiagnostics = false;
+
+    // Star ids the physics side must never consolidate away: analysis targets,
+    // the spectroscopy selection, the chase-camera star, and the hovered star.
+    function collectProtectedStarIds() {
+        const ids = [];
+        if (trackingTarget && trackingTarget.id !== undefined) ids.push(trackingTarget.id);
+        if (spectroscopyTarget && spectroscopyTarget.id !== undefined) ids.push(spectroscopyTarget.id);
+        if (hoveredStar && hoveredStar.id !== undefined) ids.push(hoveredStar.id);
+        for (const t of astrometryTargets) if (t && t.id !== undefined) ids.push(t.id);
+        return ids;
+    }
+
+    function readSimSettings() {
+        return {
+            starCount: parseInt(starCountSlider.value),
+            gasAmount: parseFloat(gasAmountSlider.value),
+            mass: parseInt(massSlider.value),
+            inflowRate: parseFloat(inflowRateSlider.value),
+            simMode: simModeSelect.value,
+            galaxyAType: galaxyATypeSelect.value,
+            galaxyBType: galaxyBTypeSelect.value,
+            galaxyAStage: galaxyAStageSelect.value,
+            galaxyBStage: galaxyBStageSelect.value,
+            initialSeparation: parseFloat(initialSeparationSlider.value),
+            impactParam: parseFloat(impactParamSlider.value),
+            appVel: parseFloat(appVelSlider.value),
+            enableClusters: document.getElementById('enableClusters').checked,
+            useLeapfrog: useLeapfrog,
+            showHIIRegions: showHIIRegions,
+            showJetLobes: showJetLobes,
+            enableOldStarConsolidation: enableOldStarConsolidation,
+            useObservationSynthesis: useObservationSynthesis,
+            reduceResolvedOldStars: reduceResolvedOldStars,
+            protectedStarIds: collectProtectedStarIds(),
+            showJets: showJets,
+            recordTrails: showStreaks && currentModeId !== 'spectroscopy'
+        };
+    }
+
+    // Re-links UI selections (analysis targets, chase camera, hover) to the
+    // freshly mirrored star objects by persistent id; stars that died (SN)
+    // drop out automatically.
+    function remapTargetsById() {
+        const byId = new Map();
+        for (const s of stars) byId.set(s.id, s);
+        let changed = false;
+        const remapped = [];
+        for (const t of astrometryTargets) {
+            const n = byId.get(t.id);
+            if (n) remapped.push(n); else changed = true;
+        }
+        astrometryTargets = remapped;
+        if (spectroscopyTarget) {
+            const n = byId.get(spectroscopyTarget.id);
+            if (!n) changed = true;
+            spectroscopyTarget = n || null;
+        }
+        if (hoveredStar) hoveredStar = byId.get(hoveredStar.id) || null;
+        if (trackingTarget) trackingTarget = byId.get(trackingTarget.id) || null;
+        if (changed) { projectedOrbitPath = []; refreshAnalysisUI(); updateInteractionHint(); }
+    }
+
+    function applyWorkerState(msg) {
+        const p = msg.payload;
+        blackHoles = p.blackHoles; stars = p.stars; gasClouds = p.gasClouds;
+        jetParticles = p.jetParticles; remnants = p.remnants;
+        hiiRegions = p.hiiRegions; jetLobes = p.jetLobes;
+        consolidatedStellarPopulations = p.consolidatedStellarPopulations;
+        for (let g = 0; g < liveMassModels.length && g < p.liveMassModels.length; g++) {
+            liveMassModels[g].radii = p.liveMassModels[g].radii;
+            liveMassModels[g].enclosedBaryonicMass = p.liveMassModels[g].enclosedBaryonicMass;
+            liveMassModels[g].totalLiveMass = p.liveMassModels[g].totalLiveMass;
+        }
+        scienceState.sfr = p.sfr;
+        const s = p.scalars;
+        elapsedTime = s.elapsedTime; patternAngle = s.patternAngle; barAngle = s.barAngle;
+        ringShockRadius = s.ringShockRadius; isPostMerger = s.isPostMerger; postMergerTimer = s.postMergerTimer;
+        cosmologicalInflowReservoir = s.cosmologicalInflowReservoir; totalDiskMass = s.totalDiskMass;
+        centralBHMass = s.centralBHMass; instantaneousSFR = s.instantaneousSFR; bhAccretionRateLast = s.bhAccretionRateLast;
+        if (p.events.mergerOccurred) mergerFlashGlow = 1.0;
+        remapTargetsById();
+        outstandingSteps = Math.max(0, outstandingSteps - 1);
+        if (msg.justInit || !hasFirstState) {
+            hasFirstState = true;
+            sampleDiagnostics();
+            updateSciencePanels(true);
+        }
+        if (pendingForceDiagnostics && outstandingSteps === 0) {
+            pendingForceDiagnostics = false;
+            sampleDiagnostics();
+            updateSciencePanels(true);
+        }
+    }
+
+    function enableMainThreadFallback(reason) {
+        if (workerFailed) return;
+        console.error('Physics worker unavailable, falling back to main-thread physics:', reason);
+        workerFailed = true;
+        if (physicsWorker) { try { physicsWorker.terminate(); } catch (e) {} physicsWorker = null; }
+        Object.assign(SIM_SETTINGS, readSimSettings());
+        physicsInitSimulation();
+        scienceState.sfr = sfrState;
+        hasFirstState = true;
+        sampleDiagnostics();
+        updateSciencePanels(true);
+    }
+
+    try {
+        const mainScriptEl = document.getElementById('mainScript');
+        const markerRe = new RegExp('\\/\\/<<' + 'PHYSICS>>([\\s\\S]*?)\\/\\/<<END_' + 'PHYSICS>>', 'g');
+        const physicsSrc = [...mainScriptEl.textContent.matchAll(markerRe)].map(m => m[1]).join('\n');
+        const harness = [
+            'self.onmessage = function(e) {',
+            '  const msg = e.data;',
+            '  if (msg.type === "init") {',
+            '    Object.assign(SIM_SETTINGS, msg.settings);',
+            '    physicsInitSimulation();',
+            '    self.postMessage({ type: "state", justInit: true, payload: serializeState() });',
+            '    SIM_EVENTS.mergerOccurred = false;',
+            '  } else if (msg.type === "step") {',
+            '    if (msg.settings) Object.assign(SIM_SETTINGS, msg.settings);',
+            '    updatePhysics(msg.steps);',
+            '    self.postMessage({ type: "state", justInit: false, payload: serializeState() });',
+            '    SIM_EVENTS.mergerOccurred = false;',
+            '  }',
+            '};'
+        ].join('\n');
+        const blobURL = URL.createObjectURL(new Blob([physicsSrc + '\n' + harness], { type: 'application/javascript' }));
+        physicsWorker = new Worker(blobURL);
+        physicsWorker.onmessage = (e) => { if (e.data && e.data.type === 'state') applyWorkerState(e.data); };
+        physicsWorker.onerror = (err) => { enableMainThreadFallback(err.message || 'worker error'); };
+    } catch (err) {
+        enableMainThreadFallback(err.message || String(err));
+    }
+
     // FIX: canvases now resize with the browser window (debounced; skipped
     // mid-screenshot so high-res capture dimensions aren't clobbered).
     let resizeDebounce = null;
@@ -3284,7 +5341,7 @@
         }, 150);
     });
 
-    onResize(); initSimulation(); requestAnimationFrame(draw);
+    initBackgroundUniverse(); onResize(); initSimulation(); requestAnimationFrame(draw);
     updateInteractionHint();
   </script>
 </body>
