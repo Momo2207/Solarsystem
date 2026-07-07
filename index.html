@@ -352,11 +352,14 @@
         <label for="mass">Initial BH Seed Mass: <span id="massValue">100</span> M☉</label>
         <input type="range" id="mass" min="50" max="500" step="50" value="100">
         
-        <label for="starCount">Particle Capacity (Total): <span id="starCountValue">20000</span></label>
-        <input type="range" id="starCount" min="5000" max="25000" step="1000" value="20000">
+        <label for="starCount">Star Particle Capacity: <span id="starCountValue">40000</span></label>
+        <input type="range" id="starCount" min="5000" max="400000" step="5000" value="40000">
         
         <label for="gasAmount">Initial Gas Multiplier: <span id="gasAmountValue">100%</span></label>
-        <input type="range" id="gasAmount" min="0.1" max="8.0" step="0.1" value="1.0">
+        <input type="range" id="gasAmount" min="0.1" max="20.0" step="0.1" value="1.0">
+        
+        <label for="dustDetail">Max Dust Detail (rendered clouds): <span id="dustDetailValue">8000</span></label>
+        <input type="range" id="dustDetail" min="1000" max="60000" step="1000" value="8000">
       </div>
     </div>
     
@@ -639,7 +642,7 @@
     // unavailable.
     // ================================================================
     const SIM_SETTINGS = {
-        starCount: 4000, gasAmount: 1.0, mass: 50, inflowRate: 1.0,
+        starCount: 40000, gasAmount: 1.0, mass: 50, inflowRate: 1.0,
         simMode: 'single', galaxyAType: 'spiral-2', galaxyBType: 'spiral-2',
         galaxyAStage: 'adult', galaxyBStage: 'adult',
         initialSeparation: 2000, impactParam: 200, appVel: 100,
@@ -708,15 +711,70 @@
     // WORKER REFACTOR: snapshot of everything the main thread needs for
     // rendering + analysis. Sent via structured clone after each batch
     // of physics steps (star trails are Float32Arrays and clone cheaply).
+    // PERF (#1): stage <-> int code maps so star stage survives the flat-array
+    // transport. Shared region, so both the worker (pack) and the main thread
+    // (unpack) see them.
+    const STAGE_CODES = { MS: 0, GIANT: 1, WD: 2, SN: 3 };
+    const STAGE_NAMES = ['MS', 'GIANT', 'WD', 'SN'];
+
+    // Star fields packed per index (12 Float32 lanes). Order is mirrored by
+    // unpackStars() on the main thread; keep the two in lockstep.
+    const STAR_STRIDE = 12;
+    // Gas fields packed per index (13 Float32 lanes, incl. velocity for
+    // main-thread energy accounting).
+    const GAS_STRIDE = 13;
+
+    // PERF (#1): the heavy star/gas arrays are packed into flat typed arrays and
+    // the backing ArrayBuffers are transferred (zero-copy) instead of the browser
+    // structured-cloning an object graph of hundreds of thousands of stars every
+    // frame. Physics keeps its float64 object state untouched; only the
+    // render-bound copy is float32 (#accuracy: float64 stays authoritative).
+    // PERF (#2): trails are no longer stored on stars or shipped here; the main
+    // thread reconstructs them from the position stream.
+    // getTransferables() returns the buffer list to hand to postMessage.
     function serializeState() {
+        const n = stars.length;
+        const sF = new Float32Array(n * STAR_STRIDE);
+        const sId = new Float64Array(n);
+        const sStage = new Int8Array(n);
+        const sGalaxy = new Int8Array(n);
+        for (let i = 0; i < n; i++) {
+            const s = stars[i], o = i * STAR_STRIDE;
+            sF[o] = s.x; sF[o+1] = s.y; sF[o+2] = s.z;
+            sF[o+3] = s.vx; sF[o+4] = s.vy; sF[o+5] = s.vz;
+            sF[o+6] = s.mass; sF[o+7] = s.initialMass; sF[o+8] = s.temperature;
+            sF[o+9] = s.luminosity; sF[o+10] = s.metallicity; sF[o+11] = s.ageMyr;
+            sId[i] = s.id;
+            sStage[i] = (STAGE_CODES[s.stage] !== undefined ? STAGE_CODES[s.stage] : 0);
+            sGalaxy[i] = s.galaxyIndex | 0;
+        }
+        const m = gasClouds.length;
+        const gF = new Float32Array(m * GAS_STRIDE);
+        const gId = new Float64Array(m);
+        const gGalaxy = new Int8Array(m);
+        for (let i = 0; i < m; i++) {
+            const c = gasClouds[i], o = i * GAS_STRIDE;
+            gF[o] = c.x; gF[o+1] = c.y; gF[o+2] = c.z;
+            gF[o+3] = c.vx; gF[o+4] = c.vy; gF[o+5] = c.vz;
+            gF[o+6] = c.mass; gF[o+7] = c.size; gF[o+8] = c.heat;
+            gF[o+9] = c.metallicity; gF[o+10] = (c.coldFraction || 0);
+            gF[o+11] = (c.dustMass || 0); gF[o+12] = (c.dustTemp || 0);
+            gId[i] = c.id; gGalaxy[i] = c.galaxyIndex | 0;
+        }
+        // Small collections stay as plain (structured-cloned) objects; they are
+        // tiny. Strip heavy back-references so they don't drag star/BH graphs
+        // along in the clone.
+        const hii = hiiRegions.map(r => ({ x: r.x, y: r.y, z: r.z, radius: r.radius, currentIntensity: r.currentIntensity }));
+        const lobes = jetLobes.map(l => ({ x: l.x, y: l.y, z: l.z, radius: l.radius, currentEnergy: l.currentEnergy }));
         return {
+            counts: { stars: n, gas: m },
+            sF: sF, sId: sId, sStage: sStage, sGalaxy: sGalaxy,
+            gF: gF, gId: gId, gGalaxy: gGalaxy,
             blackHoles: blackHoles,
-            stars: stars,
-            gasClouds: gasClouds,
             jetParticles: jetParticles,
             remnants: remnants,
-            hiiRegions: hiiRegions,
-            jetLobes: jetLobes,
+            hiiRegions: hii,
+            jetLobes: lobes,
             consolidatedStellarPopulations: consolidatedStellarPopulations,
             liveMassModels: liveMassModels,
             sfr: sfrState,
@@ -727,6 +785,14 @@
             },
             events: { mergerOccurred: SIM_EVENTS.mergerOccurred }
         };
+    }
+
+    // Buffers to hand to postMessage as its transfer list (zero-copy hand-off).
+    function getTransferables(payload) {
+        return [
+            payload.sF.buffer, payload.sId.buffer, payload.sStage.buffer, payload.sGalaxy.buffer,
+            payload.gF.buffer, payload.gId.buffer, payload.gGalaxy.buffer
+        ];
     }
     //<<END_PHYSICS>>
 
@@ -1336,6 +1402,7 @@
     const dustBrightnessValue = document.getElementById('dustBrightnessValue');
     
     let hotGasVisualMult = 2.0; let coldGasVisualMult = 2.0; let coldGasContrastBoost = 1.0; let starVisualMult = 2.0; let dustVisualMult = 1.0;
+    let dustRenderBudget = 8000; // PERF: max dust-bearing clouds sampled for the dust field / dust rendering
 
     function mapDustBiasToMultiplier(val) {
         // Radiative-transfer style control: this scales optical depth, not black overlay opacity.
@@ -1378,7 +1445,7 @@
         const h = glCanvas.height || overlayCanvas.height;
         if (!w || !h) return;
 
-        const maxCloudsForField = 6500;
+        const maxCloudsForField = dustRenderBudget; // dust field resolution scales with the Max Dust Detail control
         const stride = Math.max(1, Math.ceil(gasClouds.length / maxCloudsForField));
 
         for (let i = 0; i < gasClouds.length; i += stride) {
@@ -1496,6 +1563,8 @@
     hotGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(hotGasBrightnessSlider.value); hotGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; hotGasVisualMult = Math.max(0, 2.0 + (val * 2.0)); });
     coldGasBrightnessSlider.addEventListener('input', () => { const val = parseFloat(coldGasBrightnessSlider.value); coldGasBrightnessValue.textContent = (val > 0 ? '+' : '') + val; coldGasVisualMult = Math.max(0.15, 0.45 + Math.pow(1.9, val + 1.0)); coldGasContrastBoost = clamp(0.9 + Math.max(0, val) * 0.5, 0.9, 2.4); });
     dustBrightnessSlider.addEventListener('input', () => { const val = parseFloat(dustBrightnessSlider.value); const shown = val.toFixed(2); dustBrightnessValue.textContent = (val > 0 ? '+' : '') + shown; dustVisualMult = mapDustBiasToMultiplier(val); });
+    const dustDetailSlider = document.getElementById('dustDetail'), dustDetailValue = document.getElementById('dustDetailValue');
+    dustDetailSlider.addEventListener('input', () => { dustRenderBudget = parseInt(dustDetailSlider.value); dustDetailValue.textContent = dustRenderBudget; });
 
     const starScaleSlider = document.getElementById('starScale');
     const starScaleValue = document.getElementById('starScaleValue');
@@ -1507,7 +1576,7 @@
     let scale = 1.0, translateX = 0, translateY = 0;
     let isDragging = false, lastX = 0, lastY = 0; let rotationX = 45, rotationY = 0; let isRotating = false, lastMouseX = 0, lastMouseY = 0;
     
-    const MAX_RENDER_PARTICLES = 300000;
+    const MAX_RENDER_PARTICLES = 600000; // PERF (#1): raised with the transfer refactor so more stars can actually be drawn
     const posData = new Float32Array(MAX_RENDER_PARTICLES * 3), sizData = new Float32Array(MAX_RENDER_PARTICLES);
     const typData = new Float32Array(MAX_RENDER_PARTICLES), colData = new Float32Array(MAX_RENDER_PARTICLES * 4);
     
@@ -2405,7 +2474,7 @@
         cosmologicalInflowReservoir += inflowRateVal * dt;
         
         let spawnMass = 150;
-        let maxClouds = SIM_SETTINGS.starCount * 1.5; // WORKER REFACTOR: DOM read -> SIM_SETTINGS
+        let maxClouds = SIM_SETTINGS.starCount * 2.0; // WORKER REFACTOR: DOM read -> SIM_SETTINGS (raised gas growth ceiling)
         
         // FIX: clamp reservoir (~20 spawns worth) so it can't accumulate unboundedly
         // while the cloud cap is hit and then burst-spawn when the cap is raised.
@@ -2800,8 +2869,6 @@
                       z: cloud.z+(Math.random()-.5)*cloud.size, 
                       vx: cloud.vx, vy: cloud.vy, vz: cloud.vz, 
                       initialMass: massVariation, 
-                      trail: new Float32Array(MAX_TRAIL_LENGTH*3), 
-                      trailIdx:0, trailCount:0, 
                       ageMyr:0, 
                       metallicity: cloud.metallicity, 
                       ax: cloud.ax, ay: cloud.ay, az: cloud.az,
@@ -2831,12 +2898,8 @@
             const star = stars[i]; 
             star.ageMyr += dtMyr;
             updateStarEvolution(star);
-            
-            if (SIM_SETTINGS.recordTrails) { // WORKER REFACTOR: main thread precomputes showStreaks && observation mode
-                star.trail[star.trailIdx*3] = star.x; star.trail[star.trailIdx*3+1] = star.y; star.trail[star.trailIdx*3+2] = star.z;
-                star.trailIdx = (star.trailIdx + 1) % MAX_TRAIL_LENGTH;
-                if(star.trailCount < MAX_TRAIL_LENGTH) star.trailCount++;
-            }
+            // PERF (#2): trails are reconstructed on the main thread from the
+            // position stream; physics no longer stores or samples them.
 
             if (star.stage === 'SN') {
                 let remnantMass = star.initialMass > 20.0 ? 3.0 + (star.initialMass * 0.1) : 1.4; 
@@ -3467,7 +3530,7 @@
     function drawGasPhaseEmissionMap(ctx) {
         if (currentModeId === 'spectroscopy') return;
         if (!gasClouds.length) return;
-        const maxSamples = isTelescopeMode() ? 1000 : isOpticalLikeMode() ? 1800 : 2600;
+        const maxSamples = isTelescopeMode() ? 2000 : isOpticalLikeMode() ? 3600 : 5200; // raised for larger gas populations
         const stride = Math.max(1, Math.ceil(gasClouds.length / maxSamples));
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
@@ -3515,7 +3578,7 @@
     function drawDustEmissionObservationMap(ctx) {
         if (!showEvolvingDust || !document.getElementById('tglRealism').checked || dustVisualMult <= 0.0005) return;
         if (currentModeId !== 'infrared') return;
-        const maxSamples = 2400;
+        const maxSamples = dustRenderBudget; // dust emission map scales with the Max Dust Detail control
         const stride = Math.max(1, Math.ceil(gasClouds.length / maxSamples));
         ctx.save();
         ctx.globalCompositeOperation = 'screen';
@@ -3902,7 +3965,7 @@
 
     function drawEvolvingDustClouds(ctx) {
         if (!showEvolvingDust || currentModeId === 'xray' || dustVisualMult < 0.006) return;
-        const maxDraw = isTelescopeMode() ? 900 : isOpticalLikeMode() ? 1600 : 2200;
+        const maxDraw = Math.round(dustRenderBudget * (isTelescopeMode() ? 0.35 : isOpticalLikeMode() ? 0.6 : 0.85)); // scales with Max Dust Detail
         const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
         let drawn = 0;
         ctx.save();
@@ -4459,6 +4522,7 @@
               Object.assign(SIM_SETTINGS, readSimSettings());
               updatePhysics(physicsSteps);
               if (SIM_EVENTS.mergerOccurred) { mergerFlashGlow = 1.0; SIM_EVENTS.mergerOccurred = false; }
+              updateTrails();
               remapTargetsById();
           }
       } else if (!isPaused && !isCapturingSequence && outstandingSteps === 0) {
@@ -4532,9 +4596,10 @@
         if (sp.a > 0.005) { 
             addPoint(star.x, star.y, star.z, sp.size, sp.type, sp.r, sp.g, sp.b, sp.a);
             if (showStreaks && currentModeId !== 'spectroscopy') {
-                for(let j=0; j<star.trailCount; j++) {
-                    let idx = star.trailIdx - 1 - j; if (idx < 0) idx += MAX_TRAIL_LENGTH;
-                    addPoint(star.trail[idx*3], star.trail[idx*3+1], star.trail[idx*3+2], sp.size*0.4, 0, sp.r, sp.g, sp.b, sp.a * 0.4 * (1.0 - j/MAX_TRAIL_LENGTH));
+                const tr = trailStore.get(star.id);
+                if (tr) for(let j=0; j<tr.count; j++) {
+                    let idx = tr.idx - 1 - j; if (idx < 0) idx += MAX_TRAIL_LENGTH;
+                    addPoint(tr.buf[idx*3], tr.buf[idx*3+1], tr.buf[idx*3+2], sp.size*0.4, 0, sp.r, sp.g, sp.b, sp.a * 0.4 * (1.0 - j/MAX_TRAIL_LENGTH));
                 }
             }
         }
@@ -4911,8 +4976,6 @@
                 x: bhLocal.x + lx, y: bhLocal.y + ly, z: bhLocal.z + z, 
                 vx: bhLocal.vx + localVx, vy: bhLocal.vy + localVy, vz: bhLocal.vz + localVz, 
                 initialMass: massVar, 
-                trail: new Float32Array(MAX_TRAIL_LENGTH*3), 
-                trailIdx:0, trailCount:0, 
                 ageMyr: 0, 
                 metallicity: initialZ, 
                 ax: 0, ay: 0, az: 0,
@@ -5034,6 +5097,7 @@
             Object.assign(SIM_SETTINGS, readSimSettings());
             updatePhysics(100);
             if (SIM_EVENTS.mergerOccurred) { mergerFlashGlow = 1.0; SIM_EVENTS.mergerOccurred = false; }
+            updateTrails();
             remapTargetsById();
             sampleDiagnostics();
             updateSciencePanels(true);
@@ -5258,9 +5322,79 @@
         if (changed) { projectedOrbitPath = []; refreshAnalysisUI(); updateInteractionHint(); }
     }
 
+    // PERF (#1): persistent object pools reused across frames. The render and
+    // analysis code still sees `stars`/`gasClouds` as arrays of objects, so none
+    // of it had to change; we just overwrite pooled fields in place from the
+    // transferred typed arrays instead of allocating a fresh object graph each
+    // frame. Pools grow but never shrink; the *View arrays are re-pointed each
+    // frame to expose exactly the live count.
+    let starPool = [], starView = [];
+    let gasPool = [], gasView = [];
+
+    function unpackStars(p) {
+        const n = p.counts.stars, F = p.sF, Id = p.sId, St = p.sStage, G = p.sGalaxy;
+        starView.length = n;
+        for (let i = 0; i < n; i++) {
+            let s = starPool[i];
+            if (!s) { s = {}; starPool[i] = s; }
+            const o = i * STAR_STRIDE;
+            s.x = F[o]; s.y = F[o+1]; s.z = F[o+2];
+            s.vx = F[o+3]; s.vy = F[o+4]; s.vz = F[o+5];
+            s.mass = F[o+6]; s.initialMass = F[o+7]; s.temperature = F[o+8];
+            s.luminosity = F[o+9]; s.metallicity = F[o+10]; s.ageMyr = F[o+11];
+            s.id = Id[i]; s.stage = STAGE_NAMES[St[i]] || 'MS'; s.galaxyIndex = G[i];
+            starView[i] = s;
+        }
+        stars = starView;
+    }
+
+    function unpackGas(p) {
+        const m = p.counts.gas, F = p.gF, Id = p.gId, G = p.gGalaxy;
+        gasView.length = m;
+        for (let i = 0; i < m; i++) {
+            let c = gasPool[i];
+            if (!c) { c = {}; gasPool[i] = c; }
+            const o = i * GAS_STRIDE;
+            c.x = F[o]; c.y = F[o+1]; c.z = F[o+2];
+            c.vx = F[o+3]; c.vy = F[o+4]; c.vz = F[o+5];
+            c.mass = F[o+6]; c.size = F[o+7]; c.heat = F[o+8];
+            c.metallicity = F[o+9]; c.coldFraction = F[o+10];
+            c.dustMass = F[o+11]; c.dustTemp = F[o+12];
+            c.id = Id[i]; c.galaxyIndex = G[i];
+            gasView[i] = c;
+        }
+        gasClouds = gasView;
+    }
+
+    // PERF (#2): trails live entirely on the main thread now, keyed by persistent
+    // star id, appended once per applied physics state. Bounded by TRAIL_TRACK_CAP
+    // so the streak feature stays cheap at large star counts (streaks for hundreds
+    // of thousands of stars are neither useful nor drawable). One sample per state
+    // rather than per physics sub-step, so trails are slightly coarser than before.
+    const trailStore = new Map();
+    const TRAIL_TRACK_CAP = 6000;
+    function updateTrails() {
+        if (!(showStreaks && currentModeId !== 'spectroscopy')) return;
+        const limit = Math.min(stars.length, TRAIL_TRACK_CAP);
+        const seen = new Set();
+        for (let i = 0; i < limit; i++) {
+            const s = stars[i];
+            seen.add(s.id);
+            let t = trailStore.get(s.id);
+            if (!t) { t = { buf: new Float32Array(MAX_TRAIL_LENGTH * 3), idx: 0, count: 0 }; trailStore.set(s.id, t); }
+            t.buf[t.idx*3] = s.x; t.buf[t.idx*3+1] = s.y; t.buf[t.idx*3+2] = s.z;
+            t.idx = (t.idx + 1) % MAX_TRAIL_LENGTH;
+            if (t.count < MAX_TRAIL_LENGTH) t.count++;
+        }
+        if (trailStore.size > limit) {
+            for (const id of trailStore.keys()) if (!seen.has(id)) trailStore.delete(id);
+        }
+    }
+
     function applyWorkerState(msg) {
         const p = msg.payload;
-        blackHoles = p.blackHoles; stars = p.stars; gasClouds = p.gasClouds;
+        unpackStars(p); unpackGas(p); // PERF (#1): rebuild pooled star/gas objects from transferred typed arrays
+        blackHoles = p.blackHoles;
         jetParticles = p.jetParticles; remnants = p.remnants;
         hiiRegions = p.hiiRegions; jetLobes = p.jetLobes;
         consolidatedStellarPopulations = p.consolidatedStellarPopulations;
@@ -5276,6 +5410,7 @@
         cosmologicalInflowReservoir = s.cosmologicalInflowReservoir; totalDiskMass = s.totalDiskMass;
         centralBHMass = s.centralBHMass; instantaneousSFR = s.instantaneousSFR; bhAccretionRateLast = s.bhAccretionRateLast;
         if (p.events.mergerOccurred) mergerFlashGlow = 1.0;
+        updateTrails(); // PERF (#2): main-thread trail reconstruction
         remapTargetsById();
         outstandingSteps = Math.max(0, outstandingSteps - 1);
         if (msg.justInit || !hasFirstState) {
@@ -5313,12 +5448,12 @@
             '  if (msg.type === "init") {',
             '    Object.assign(SIM_SETTINGS, msg.settings);',
             '    physicsInitSimulation();',
-            '    self.postMessage({ type: "state", justInit: true, payload: serializeState() });',
+            '    var initState = serializeState(); self.postMessage({ type: "state", justInit: true, payload: initState }, getTransferables(initState));',
             '    SIM_EVENTS.mergerOccurred = false;',
             '  } else if (msg.type === "step") {',
             '    if (msg.settings) Object.assign(SIM_SETTINGS, msg.settings);',
             '    updatePhysics(msg.steps);',
-            '    self.postMessage({ type: "state", justInit: false, payload: serializeState() });',
+            '    var stepState = serializeState(); self.postMessage({ type: "state", justInit: false, payload: stepState }, getTransferables(stepState));',
             '    SIM_EVENTS.mergerOccurred = false;',
             '  }',
             '};'
