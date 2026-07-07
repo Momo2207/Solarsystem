@@ -1848,7 +1848,7 @@
             if ((p.galaxyIndex === g && !isPostMerger) || r_cyl < galaxyRadius) {
                 if (morphologyType === "spiral" && p.mass > 0 && r_cyl > 50) {
                     const theta = Math.atan2(dy, dx); const phase = armCount * (theta - patternAngle) - (armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
-                    const F_radial_total = Math.sqrt(dax*dax + day*day); const F_pert = F_radial_total * 0.02; 
+                    const F_radial_total = Math.sqrt(dax*dax + day*day); const F_pert = F_radial_total * (p.heat !== undefined ? 0.055 : 0.02); // gas (has .heat) responds ~2.75x more strongly to the wave than stars 
                     const F_r_spiral = F_pert * Math.cos(phase); const F_t_spiral = -F_pert * Math.sin(phase); 
                     dax += F_r_spiral * (dx/r_cyl) - F_t_spiral * (dy/r_cyl); day += F_r_spiral * (dy/r_cyl) + F_t_spiral * (dx/r_cyl);
                 }
@@ -2904,6 +2904,13 @@
                   if (armDensity > 0.02) { 
                       cloud.heat += 30.0 * armDensity * dt;        // shock heating scales with the wave amplitude
                       compression = 1.0 + 3.0 * armDensity;        // gas compression at arm passage: 1 (interarm) -> ~4 (crest)
+                      // GALACTIC SHOCK (dissipation): thermalize the arm-crossing streaming
+                      // velocity so gas lingers and accumulates on the crest instead of
+                      // free-streaming through like the collisionless stars.
+                      const _vrs = (cloud.vx - bh.vx) * (lx / r_cyl) + (cloud.vy - bh.vy) * (ly / r_cyl);
+                      const _shockDamp = Math.min(0.35, 4.0 * armDensity * dt);
+                      cloud.vx -= _vrs * (lx / r_cyl) * _shockDamp;
+                      cloud.vy -= _vrs * (ly / r_cyl) * _shockDamp;
                   }
               }
           } else if (!isPostMerger) {
