@@ -491,6 +491,7 @@
       <div class="hud-card" id="hud-card-b"><div class="hud-label">BH Mass (Beta)</div><div class="hud-value val-alert" id="hud-bh-b">0 M☉</div></div>
       <div class="hud-card"><div class="hud-label">Cold Gas Res.</div><div class="hud-value val-cool" id="hud-gas">0%</div></div>
       <div class="hud-card"><div class="hud-label">Zoom Scale</div><div class="hud-value" id="hud-scale">1000 pc</div></div>
+      <div class="hud-card"><div class="hud-label">Render</div><div class="hud-value" id="hud-perf">— fps</div></div>
     </div>
 
     <!-- CONTEXTUAL HINT -->
@@ -815,6 +816,12 @@
         { radii: [], enclosedBaryonicMass: [], totalLiveMass: 0, maxRadius: 2000, bins: 40 },
         { radii: [], enclosedBaryonicMass: [], totalLiveMass: 0, maxRadius: 2000, bins: 40 }
     ];
+    // SPIRAL FIX: the disk gravity must not depend on how many particles sample
+    // it. Star particle mass is fixed, so raising the capacity slider used to
+    // inflate the enclosed baryonic mass (and thus the rotation curve) linearly,
+    // which detuned the fixed spiral pattern speed and destabilised the disk.
+    // We anchor the star mass contribution to a reference sampling density.
+    const MASS_MODEL_REF_CAPACITY = 20000;
 
     function updateLiveMassModel() {
         for (let g = 0; g < blackHoles.length; g++) {
@@ -825,14 +832,16 @@
             const binSize = model.maxRadius / model.bins;
             let binMasses = new Float32Array(model.bins);
             let currentTotalMass = 0;
+            // Anchor star gravity to a reference particle count (see MASS_MODEL_REF_CAPACITY).
+            const starNorm = MASS_MODEL_REF_CAPACITY / Math.max(1, SIM_SETTINGS.starCount || MASS_MODEL_REF_CAPACITY);
 
             for (let i=0; i<stars.length; i++) {
                 if (stars[i].galaxyIndex !== g) continue;
                 let dx = stars[i].x - bh.x; let dy = stars[i].y - bh.y;
                 let r = Math.sqrt(dx*dx + dy*dy);
                 let bin = Math.floor(r / binSize);
-                if (bin < model.bins) binMasses[bin] += stars[i].mass;
-                currentTotalMass += stars[i].mass;
+                if (bin < model.bins) binMasses[bin] += stars[i].mass * starNorm;
+                currentTotalMass += stars[i].mass * starNorm;
             }
             // FEATURE MERGE: consolidated (unresolved) old stars still contribute
             // to the live disk mass model via an exponential-disk annulus split.
@@ -845,10 +854,10 @@
                     const rOuter = (i + 1) * binSize;
                     const fracOuter = (1.0 - Math.exp(-rOuter / rd) * (1.0 + rOuter / rd)) / Math.max(0.001, diskNorm);
                     const annulusFrac = clamp(fracOuter - prevFrac, 0, 1);
-                    binMasses[i] += consolidated.mass * annulusFrac;
+                    binMasses[i] += consolidated.mass * annulusFrac * starNorm;
                     prevFrac = fracOuter;
                 }
-                currentTotalMass += consolidated.mass;
+                currentTotalMass += consolidated.mass * starNorm;
             }
             for (let i=0; i<gasClouds.length; i++) {
                 if (gasClouds[i].galaxyIndex !== g) continue;
@@ -1577,6 +1586,14 @@
     let isDragging = false, lastX = 0, lastY = 0; let rotationX = 45, rotationY = 0; let isRotating = false, lastMouseX = 0, lastMouseY = 0;
     
     const MAX_RENDER_PARTICLES = 600000; // PERF (#1): raised with the transfer refactor so more stars can actually be drawn
+    // FPS FIX: the draw loop is O(N) per frame. Beyond these budgets we stride
+    // the star/gas arrays so the per-frame render cost stays bounded no matter
+    // how many particles the worker is simulating. The simulation still tracks
+    // the full population; we just draw a representative sample of it.
+    const RENDER_STAR_BUDGET = 90000;
+    const RENDER_GAS_BUDGET = 30000;
+    // Perf-meter state (shown in the HUD).
+    let _fpsSmooth = 0, _lastFrameTs = 0, _renderMsSmooth = 0, _physicsMsSmooth = 0, perfMeterEl = null;
     const posData = new Float32Array(MAX_RENDER_PARTICLES * 3), sizData = new Float32Array(MAX_RENDER_PARTICLES);
     const typData = new Float32Array(MAX_RENDER_PARTICLES), colData = new Float32Array(MAX_RENDER_PARTICLES * 4);
     
@@ -2474,7 +2491,7 @@
         cosmologicalInflowReservoir += inflowRateVal * dt;
         
         let spawnMass = 150;
-        let maxClouds = SIM_SETTINGS.starCount * 2.0; // WORKER REFACTOR: DOM read -> SIM_SETTINGS (raised gas growth ceiling)
+        let maxClouds = Math.min(SIM_SETTINGS.starCount * 1.5, 40000); // GAS FIX: absolute cap so gas can't explode at high star capacity
         
         // FIX: clamp reservoir (~20 spawns worth) so it can't accumulate unboundedly
         // while the cloud cap is hit and then burst-spawn when the cap is raised.
@@ -4049,6 +4066,7 @@
         ctx.restore();
     }
 
+    const _starRP = { r: 0, g: 0, b: 0, a: 0, size: 0, type: 0 }; // reused to avoid per-star allocation
     function getStarRenderParams(star, modeId) {
         let r, g, b, a;
         let baseA = Math.min(1.0, 0.4 + (Math.min(1, Math.pow(star.mass/starMass, 0.05) * (star.temperature/6000))) * 0.6);
@@ -4147,9 +4165,10 @@
             if (star.stage === 'GIANT' || star.stage === 'WD') a *= 0.55;
         }
 
-        return {r, g, b, a, size: sSize, type: pType};
+        _starRP.r = r; _starRP.g = g; _starRP.b = b; _starRP.a = a; _starRP.size = sSize; _starRP.type = pType; return _starRP;
     }
 
+    const _gasRP = { r: 0, g: 0, b: 0, a: 0, size: 0, mult: 0 }; // reused to avoid per-cloud allocation
     function getGasRenderParams(cloud, modeId) {
         let shimmer = 0.95 + Math.sin(frameCount * 0.015 + cloud.id) * 0.05;
 
@@ -4305,7 +4324,7 @@
             else { a *= 0.24; cSize *= 0.60; }
         }
 
-        return {r, g, b, a, size: cSize, mult: visualMult};
+        _gasRP.r = r; _gasRP.g = g; _gasRP.b = b; _gasRP.a = a; _gasRP.size = cSize; _gasRP.mult = visualMult; return _gasRP;
     }
 
     function drawSpectroscopyPanel() {
@@ -4493,6 +4512,9 @@
     function draw() {
       // WORKER REFACTOR: nothing to render until the first physics state arrives
       if (!hasFirstState && !workerFailed) { frameCount++; requestAnimationFrame(draw); return; }
+      const _drawStart = performance.now();
+      if (_lastFrameTs) { const _fd = _drawStart - _lastFrameTs; if (_fd > 0) _fpsSmooth = _fpsSmooth ? _fpsSmooth * 0.9 + (1000 / _fd) * 0.1 : 1000 / _fd; }
+      _lastFrameTs = _drawStart;
       if (captureScreenshotRequest.pending) {
           highResMult = captureScreenshotRequest.mult;
           captureScreenshotRequest.pending = false;
@@ -4583,7 +4605,9 @@
           if (currentModeId === 'xray') { jR=0.0; jG=0.9; jB=1.0; jA = Math.min(1.0, jA * 2.5); } addPoint(jet.x, jet.y, jet.z, 2, 3, jR, jG, jB, jA);
       }
       
-      for(const cloud of gasClouds) {
+      const gasStride = Math.max(1, Math.floor(gasClouds.length / RENDER_GAS_BUDGET));
+      for(let gi = 0; gi < gasClouds.length; gi += gasStride) {
+          const cloud = gasClouds[gi];
           let rp = getGasRenderParams(cloud, currentModeId);
           if (rp.a > 0) {
               addPoint(cloud.x, cloud.y, cloud.z, rp.size * 1.2, 1, rp.r, rp.g, rp.b, rp.a * 0.5);
@@ -4591,11 +4615,14 @@
           }
       }
 
-      for(const star of stars){
+      const starStride = Math.max(1, Math.floor(stars.length / RENDER_STAR_BUDGET));
+      const starSizeBoost = Math.min(2.2, Math.sqrt(starStride)); // keep perceived brightness ~constant when striding
+      for(let si = 0; si < stars.length; si += starStride){
+        const star = stars[si];
         let sp = getStarRenderParams(star, currentModeId);
         if (sp.a > 0.005) { 
-            addPoint(star.x, star.y, star.z, sp.size, sp.type, sp.r, sp.g, sp.b, sp.a);
-            if (showStreaks && currentModeId !== 'spectroscopy') {
+            addPoint(star.x, star.y, star.z, sp.size * starSizeBoost, sp.type, sp.r, sp.g, sp.b, sp.a);
+            if (showStreaks && currentModeId !== 'spectroscopy' && starStride === 1) {
                 const tr = trailStore.get(star.id);
                 if (tr) for(let j=0; j<tr.count; j++) {
                     let idx = tr.idx - 1 - j; if (idx < 0) idx += MAX_TRAIL_LENGTH;
@@ -4842,6 +4869,15 @@
           statusIndicator.style.display = 'none';
       }
 
+      _renderMsSmooth = _renderMsSmooth * 0.9 + (performance.now() - _drawStart) * 0.1;
+      if (frameCount % 15 === 0) {
+          if (!perfMeterEl) perfMeterEl = document.getElementById('hud-perf');
+          if (perfMeterEl) {
+              const _stride = Math.max(1, Math.floor(stars.length / RENDER_STAR_BUDGET));
+              const _drawn = _stride > 1 ? Math.ceil(stars.length / _stride) : stars.length;
+              perfMeterEl.textContent = Math.round(_fpsSmooth) + ' fps · ' + _renderMsSmooth.toFixed(1) + 'ms · ' + _physicsMsSmooth.toFixed(0) + 'ms phys · ' + _drawn.toLocaleString() + '/' + stars.length.toLocaleString();
+          }
+      }
       frameCount++; requestAnimationFrame(draw);
     }
 
@@ -5303,6 +5339,8 @@
     // freshly mirrored star objects by persistent id; stars that died (SN)
     // drop out automatically.
     function remapTargetsById() {
+        // FPS FIX: don't build an O(N) id->star map when there is nothing to relink.
+        if (astrometryTargets.length === 0 && !spectroscopyTarget && !hoveredStar && !trackingTarget) return;
         const byId = new Map();
         for (const s of stars) byId.set(s.id, s);
         let changed = false;
@@ -5393,6 +5431,7 @@
 
     function applyWorkerState(msg) {
         const p = msg.payload;
+        if (typeof p.physicsMs === 'number') _physicsMsSmooth = _physicsMsSmooth * 0.8 + p.physicsMs * 0.2;
         unpackStars(p); unpackGas(p); // PERF (#1): rebuild pooled star/gas objects from transferred typed arrays
         blackHoles = p.blackHoles;
         jetParticles = p.jetParticles; remnants = p.remnants;
@@ -5452,8 +5491,11 @@
             '    SIM_EVENTS.mergerOccurred = false;',
             '  } else if (msg.type === "step") {',
             '    if (msg.settings) Object.assign(SIM_SETTINGS, msg.settings);',
+            '    var _ptStart = (self.performance && self.performance.now) ? self.performance.now() : Date.now();',
             '    updatePhysics(msg.steps);',
-            '    var stepState = serializeState(); self.postMessage({ type: "state", justInit: false, payload: stepState }, getTransferables(stepState));',
+            '    var stepState = serializeState();',
+            '    stepState.physicsMs = ((self.performance && self.performance.now) ? self.performance.now() : Date.now()) - _ptStart;',
+            '    self.postMessage({ type: "state", justInit: false, payload: stepState }, getTransferables(stepState));',
             '    SIM_EVENTS.mergerOccurred = false;',
             '  }',
             '};'
