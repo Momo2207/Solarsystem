@@ -5078,6 +5078,8 @@
 
           let bhLocal = blackHoles[gIndex];
 
+          const diskScaleLength = galaxyRadius * 0.26; const diskMaxRadius = galaxyRadius * 1.30;
+          const gasScaleLength  = galaxyRadius * 0.35; const gasMaxRadius  = galaxyRadius * 1.40;
           for(let i=0;i<actualStarCount;i++){
             let r,theta,z;
             
@@ -5087,10 +5089,10 @@
                 const phi=Math.acos(2*Math.random()-1); z=r*Math.cos(phi); r=r*Math.sin(phi); 
             }
             else{ 
-                if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else r = bulgeRadius + Math.sqrt(Math.random()) * (galaxyRadius - bulgeRadius); 
+                if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else { r = -diskScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); let _rg = 0; while (r > diskMaxRadius && _rg++ < 6) r = -diskScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); if (r > diskMaxRadius) r = diskMaxRadius; } 
                 theta=Math.random()*2*Math.PI; 
                 if(preset.type === "spiral" && Math.random() < 0.2) { 
-                    const armOffset = Math.log(r/bulgeRadius) / Math.tan(0.2); const arm = Math.floor(Math.random() * preset.armCount); 
+                    const armOffset = Math.log(Math.max(r, bulgeRadius * 0.5) / bulgeRadius) / Math.tan(0.2); const arm = Math.floor(Math.random() * preset.armCount); 
                     theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.4 / preset.armCount); 
                 } 
                 z=gaussianRandomBounded(0,preset.thickness,3); 
@@ -5151,10 +5153,10 @@
           
           for(let i=0;i<gasCloudCount;i++){
             let r, theta, z = gaussianRandomBounded(0,preset.thickness,3);
-            if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else r = Math.random() * galaxyRadius;
+            if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else { r = -gasScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); let _rg = 0; while (r > gasMaxRadius && _rg++ < 6) r = -gasScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); if (r > gasMaxRadius) r = gasMaxRadius; }
             theta=Math.random()*2*Math.PI;
             if(preset.type === "spiral" && Math.random() < 0.5) { 
-                const armOffset = Math.log(r/bulgeRadius) / Math.tan(0.2); const arm = Math.floor(Math.random() * preset.armCount); 
+                const armOffset = Math.log(Math.max(r, bulgeRadius * 0.5) / bulgeRadius) / Math.tan(0.2); const arm = Math.floor(Math.random() * preset.armCount); 
                 theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.3 / preset.armCount); 
             }
             
