@@ -2178,6 +2178,9 @@
 
     //<<PHYSICS>>
     function gaussianRandom(m=0,s=1){const u1=1-Math.random(),u2=Math.random();return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2)*s+m;} // FIX: 1-Math.random() keeps u1 in (0,1], preventing log(0) = -Infinity / NaN velocities
+    // Truncated gaussian: resample beyond k*sigma so a distribution's spatial EXTENT is
+    // independent of the number of samples (keeps the disc a fixed thickness at any particle count).
+    function gaussianRandomBounded(m=0,s=1,k=3){ let v,n=0; do{ v=gaussianRandom(0,s); n++; }while(Math.abs(v)>k*s && n<8); if(Math.abs(v)>k*s) v=(v>0?k*s:-k*s); return v+m; }
     
     function generateStarMass(heatFactor = 0) {
         let minM = 0.1, maxM = 50.0;
@@ -5069,7 +5072,7 @@
               for(let i=0; i<4; i++) {
                   let r = Math.random() * (bulgeRadius * 1.5);
                   let th = Math.random() * Math.PI * 2;
-                  clusters.push({x: r*Math.cos(th), y: r*Math.sin(th), z: gaussianRandom(0, 15)});
+                  clusters.push({x: r*Math.cos(th), y: r*Math.sin(th), z: gaussianRandomBounded(0, 15, 3)});
               }
           }
 
@@ -5079,7 +5082,7 @@
             let r,theta,z;
             
             if(Math.random()<0.45){ 
-                r = Math.abs(gaussianRandom(0, bulgeRadius * 0.4)); 
+                r = Math.abs(gaussianRandomBounded(0, bulgeRadius * 0.4, 3.5)); 
                 theta=Math.random()*2*Math.PI;
                 const phi=Math.acos(2*Math.random()-1); z=r*Math.cos(phi); r=r*Math.sin(phi); 
             }
@@ -5090,7 +5093,7 @@
                     const armOffset = Math.log(r/bulgeRadius) / Math.tan(0.2); const arm = Math.floor(Math.random() * preset.armCount); 
                     theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.4 / preset.armCount); 
                 } 
-                z=gaussianRandom(0,preset.thickness); 
+                z=gaussianRandomBounded(0,preset.thickness,3); 
             }
             
             let lx=r*Math.cos(theta), ly=r*Math.sin(theta);
@@ -5098,7 +5101,7 @@
                 let c = clusters[Math.floor(Math.random()*clusters.length)];
                 lx = c.x + gaussianRandom(0, 25);
                 ly = c.y + gaussianRandom(0, 25);
-                z = c.z + gaussianRandom(0, 25);
+                z = c.z + gaussianRandomBounded(0, 25, 3);
             }
             
             const dist=Math.max(0.1, Math.sqrt(lx*lx+ly*ly+z*z));
@@ -5112,7 +5115,7 @@
             const localVx = -v*ly/r_cyl + gaussianRandom(0, v * 0.05);
             const localVy =  v*lx/r_cyl + gaussianRandom(0, v * 0.05);
             // REDUCED INITIAL VERTICAL VELOCITY SCATTER
-            const localVz = gaussianRandom(0, v * 0.02);
+            const localVz = gaussianRandomBounded(0, v * 0.02, 3);
             
             let massVar = generateStarMass();
             
@@ -5147,7 +5150,7 @@
           }
           
           for(let i=0;i<gasCloudCount;i++){
-            let r, theta, z = gaussianRandom(0,preset.thickness);
+            let r, theta, z = gaussianRandomBounded(0,preset.thickness,3);
             if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else r = Math.random() * galaxyRadius;
             theta=Math.random()*2*Math.PI;
             if(preset.type === "spiral" && Math.random() < 0.5) { 
@@ -5160,7 +5163,7 @@
                 let c = clusters[Math.floor(Math.random()*clusters.length)];
                 lx = c.x + gaussianRandom(0, 35);
                 ly = c.y + gaussianRandom(0, 35);
-                z = c.z + gaussianRandom(0, 35);
+                z = c.z + gaussianRandomBounded(0, 35, 3);
             }
             
             const dist=Math.max(0.1, Math.sqrt(lx*lx+ly*ly+z*z));
@@ -5174,7 +5177,7 @@
             const localVx = -v*ly/r_cyl + gaussianRandom(0, v * 0.05);
             const localVy = v*lx/r_cyl + gaussianRandom(0, v * 0.05);
             // REDUCED INITIAL VERTICAL VELOCITY SCATTER
-            const localVz = gaussianRandom(0, v * 0.02);
+            const localVz = gaussianRandomBounded(0, v * 0.02, 3);
             
             const mass=stageParams.avgGasMass*(0.5+Math.random()); const initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
             
