@@ -1669,6 +1669,15 @@
       float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
 
       void main(){
+        if (vType == 9.0) {
+            // DUST EXTINCTION: soft dark sprite, multiplicative. vColor.rgb = per-channel
+            // extinction weight (blue highest), vColor.a = strength. Output = transmission.
+            vec2 dc = gl_PointCoord - vec2(0.5); float dd = length(dc); if (dd > 0.5) discard;
+            float sm = exp(-dd * dd * 5.0) * vColor.a;
+            vec3 trans = clamp(vec3(1.0) - vColor.rgb * sm, 0.0, 1.0);
+            gl_FragColor = vec4(trans, 1.0);
+            return;
+        }
         vec2 c = gl_PointCoord - vec2(0.5); float d = length(c); if(d > 0.5) discard;
         vec3 finalRGB = vColor.rgb; float finalAlpha = vColor.a;
 
@@ -3862,6 +3871,7 @@
     }
 
     function drawVisibleSpiralDustLanes(ctx) {
+        if (CINE.on && CINE.dust) return; // replaced by the real 3D dust-extinction pass
         if ((!showEvolvingDust || !document.getElementById('tglRealism').checked) && !(CINE.on && CINE.dust)) return;
         if (dustVisualMult < 0.025 && !(CINE.on && CINE.dust)) return;
         if (currentModeId !== 'visible' && currentModeId !== 'ultraviolet' && currentModeId !== 'infrared' && !(CINE.on && CINE.dust)) return;
@@ -4034,6 +4044,7 @@
     }
 
     function drawEvolvingDustClouds(ctx) {
+        if (CINE.on && CINE.dust) return; // superseded by the real 3D dust-extinction pass
         if (!showEvolvingDust || currentModeId === 'xray' || dustVisualMult < 0.006) return;
         const maxDraw = Math.round(dustRenderBudget * (isTelescopeMode() ? 0.35 : isOpticalLikeMode() ? 0.6 : 0.85)); // scales with Max Dust Detail
         const edgeOn = Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0);
@@ -4717,7 +4728,32 @@
           gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,colData.subarray(0,pIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aColorLoc);
           gl.drawArrays(gl.POINTS,0,pIdx); 
       }
-      
+
+      // ---- Cinematic 3D dust extinction: real particles sharing the stars'/gas' space ----
+      if (CINE.on && CINE.dust && pIdx > 0 && currentModeId !== 'xray' && currentModeId !== 'radio' && currentModeId !== 'spectroscopy') {
+          pIdx = 0;
+          const dStride = Math.max(1, Math.floor(gasClouds.length / RENDER_GAS_BUDGET));
+          const dMul = CINE.dustStr;
+          for (let di = 0; di < gasClouds.length; di += dStride) {
+              const c = gasClouds[di];
+              const tau = estimateCloudOpticalDepth(c);
+              if (tau <= 0.002) continue;
+              const strength = Math.min(0.96, tau * 2.4 * dMul);
+              const dWorld = c.size * 3.0 + 2.0; // world units; vertex shader applies zoom
+              // colour packs per-channel extinction weight (blue absorbed most -> reddening)
+              addPoint(c.x, c.y, c.z, dWorld, 9, 0.60, 0.80, 1.0, strength);
+          }
+          if (pIdx > 0) {
+              gl.blendFunc(gl.ZERO, gl.SRC_COLOR); // multiplicative extinction
+              gl.bindBuffer(gl.ARRAY_BUFFER,particlePositionBuffer);gl.bufferData(gl.ARRAY_BUFFER,posData.subarray(0,pIdx*3),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aPositionLoc,3,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aPositionLoc);
+              gl.bindBuffer(gl.ARRAY_BUFFER,particleSizeBuffer);gl.bufferData(gl.ARRAY_BUFFER,sizData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aSizeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aSizeLoc);
+              gl.bindBuffer(gl.ARRAY_BUFFER,particleTypeBuffer);gl.bufferData(gl.ARRAY_BUFFER,typData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aTypeLoc);
+              gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,colData.subarray(0,pIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aColorLoc);
+              gl.drawArrays(gl.POINTS,0,pIdx);
+              if (tglHDR.checked) { gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR); } else { gl.blendFunc(gl.ONE, gl.ONE); }
+          }
+      }
+
       overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
       drawDiffuseOldStellarDisks(overlayCtx);
       if(showEnhancedCore || (CINE.on && CINE.core)) drawEnhancedGalaxyCores(overlayCtx);
