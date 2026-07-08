@@ -240,6 +240,8 @@
             <option value="adult" selected>Adult (Balanced)</option>
             <option value="dying">Dying (Depleted)</option>
         </select>
+        <label for="galaxyATilt">Disc Tilt: <span id="galaxyATiltValue">0°</span></label>
+        <input type="range" id="galaxyATilt" min="-90" max="90" step="1" value="0">
 
         <div id="galaxyBControls" style="display:none;">
             <label style="color:var(--accent-red); margin-top:15px;">GALAXY BETA</label>
@@ -254,18 +256,20 @@
                 <option value="adult">Adult (Balanced)</option>
                 <option value="dying" selected>Dying (Depleted)</option>
             </select>
+            <label for="galaxyBTilt">Disc Tilt: <span id="galaxyBTiltValue">0°</span></label>
+            <input type="range" id="galaxyBTilt" min="-90" max="90" step="1" value="0">
 
             <hr style="border-top:1px solid var(--border-color); border-bottom:none; margin:10px 0;">
             
-            <label for="initialSeparation">Initial Separation (X): <span id="initialSeparationValue">92.0 kpc</span></label>
-            <input type="range" id="initialSeparation" min="1000" max="8000" step="200" value="3000">
+            <label for="initialSeparation">Initial Separation (X): <span id="initialSeparationValue">61.4 kpc</span></label>
+            <input type="range" id="initialSeparation" min="10" max="250" step="0.1" value="61.4">
 
-            <label for="impactParam">Impact Parameter (Y): <span id="impactParamValue">30.7 kpc</span></label>
-            <input type="range" id="impactParam" min="0" max="5000" step="100" value="1000">
+            <label for="impactParam">Impact Parameter (Y): <span id="impactParamValue">9.2 kpc</span></label>
+            <input type="range" id="impactParam" min="0" max="50" step="0.1" value="9.2">
             <div class="help-text">Impact Parameter controls head-on (0) vs glancing blow (>0).</div>
 
             <label for="appVel">Approach Velocity: <span id="appVelValue">60 km/s</span></label>
-            <input type="range" id="appVel" min="0" max="300" step="10" value="60">
+            <input type="range" id="appVel" min="0" max="400" step="0.1" value="60">
         </div>
         <div class="help-text text-warning" style="text-align:center; margin-top:8px;">Applies on restart</div>
       </div>
@@ -673,7 +677,7 @@
         starCount: 40000, gasAmount: 1.0, mass: 50, inflowRate: 1.0,
         simMode: 'single', galaxyAType: 'spiral-2', galaxyBType: 'spiral-2',
         galaxyAStage: 'adult', galaxyBStage: 'adult',
-        initialSeparation: 2000, impactParam: 200, appVel: 100,
+        initialSeparation: 2000, impactParam: 200, appVel: 100, galaxyATilt: 0, galaxyBTilt: 0,
         enableClusters: true, useLeapfrog: true, showJets: true, recordTrails: true,
         showHIIRegions: true, showJetLobes: true,
         enableOldStarConsolidation: true, useObservationSynthesis: true, reduceResolvedOldStars: true,
@@ -705,7 +709,7 @@
     let totalPhysicsSteps = 0; // FIX: dedicated step counter for periodic physics-side updates
     let rho0=25, rs=85;
     let patternAngle = 0; let barAngle = 0; let ringShockRadius = 0;
-    const SPIRAL_PITCH = 0.2; const DYNAMICAL_FRICTION_COEFF = 0.002; const BH_FRICTION_COEFF = 150.0;
+    const SPIRAL_PITCH = 0.2; const DYNAMICAL_FRICTION_COEFF = 0.002; const BH_FRICTION_COEFF = 90000.0;
     const JET_ACCRETION_SPIKE_THRESHOLD = 0.005; const JET_DURATION = 50; const JET_PARTICLES_PER_STEP = 4;
     const JET_VELOCITY = 200; const JET_LIFETIME = 150; const JET_INTERACTION_RADIUS = 5; const JET_KICK_FORCE = 2.0; const JET_HEATING = 15;
     const starMass = 1;
@@ -1438,6 +1442,8 @@
     const appVelSlider=document.getElementById('appVel');
     const impactParamSlider=document.getElementById('impactParam');
     const initialSeparationSlider=document.getElementById('initialSeparation');
+    const galaxyATiltSlider=document.getElementById('galaxyATilt');
+    const galaxyBTiltSlider=document.getElementById('galaxyBTilt');
     
     // Toggle UI state based on single vs collision
     simModeSelect.addEventListener('change', () => {
@@ -1445,10 +1451,14 @@
         document.getElementById('galaxyBControls').style.display = isCollision ? 'block' : 'none';
         initSimulation();
     });
+    // Sync collision-controls visibility to the current mode on load (not just on change).
+    document.getElementById('galaxyBControls').style.display = simModeSelect.value === 'collision' ? 'block' : 'none';
 
     appVelSlider.addEventListener('input', () => document.getElementById('appVelValue').textContent = appVelSlider.value + ' km/s');
-    impactParamSlider.addEventListener('input', () => document.getElementById('impactParamValue').textContent = fmtLen(parseFloat(impactParamSlider.value)));
-    initialSeparationSlider.addEventListener('input', () => document.getElementById('initialSeparationValue').textContent = fmtLen(parseFloat(initialSeparationSlider.value)));
+    impactParamSlider.addEventListener('input', () => document.getElementById('impactParamValue').textContent = impactParamSlider.value + ' kpc');
+    initialSeparationSlider.addEventListener('input', () => document.getElementById('initialSeparationValue').textContent = initialSeparationSlider.value + ' kpc');
+    galaxyATiltSlider.addEventListener('input', () => document.getElementById('galaxyATiltValue').textContent = galaxyATiltSlider.value + '°');
+    galaxyBTiltSlider.addEventListener('input', () => document.getElementById('galaxyBTiltValue').textContent = galaxyBTiltSlider.value + '°');
 
     const clearTargetsBtn = document.getElementById('clearTargetsBtn');
     const directorModeBtn = document.getElementById('directorModeBtn');
@@ -2726,7 +2736,7 @@
             // bound (relative KE below escape). The old dvSq<0.2 test required the cores to
             // be almost at rest, which never happens for an orbiting pair -> they never merged.
             const sep = Math.sqrt(distSq);
-            const mergeRadius = FORCE_SOFTENING * 3.0;
+            const mergeRadius = FORCE_SOFTENING * 1.5;
             const Mchar = getDarkMatterMass(galaxyRadius, 0) + bulgeMass + bh1.mass; // characteristic mass of ONE galaxy (not the tiny DM within the separation)
             const vEscSq = 2 * G * (2 * Mchar) / Math.max(1, sep);           // two-body escape speed at this separation
             if (distSq < mergeRadius * mergeRadius && dvSq < vEscSq) {
@@ -5156,6 +5166,8 @@
 
           let bhLocal = blackHoles[gIndex];
 
+          const _tiltDeg = gIndex === 0 ? (SIM_SETTINGS.galaxyATilt || 0) : (SIM_SETTINGS.galaxyBTilt || 0);
+          const _tiltRad = _tiltDeg * Math.PI / 180, _cosT = Math.cos(_tiltRad), _sinT = Math.sin(_tiltRad);
           const diskScaleLength = galaxyRadius * 0.26; const diskMaxRadius = galaxyRadius * 1.30;
           const gasScaleLength  = galaxyRadius * 0.35; const gasMaxRadius  = galaxyRadius * 1.40;
           for(let i=0;i<actualStarCount;i++){
@@ -5207,8 +5219,8 @@
             
             let newStar = { 
                 id: starIdCounter++, // WORKER REFACTOR: persistent id so UI target references survive state mirroring
-                x: bhLocal.x + lx, y: bhLocal.y + ly, z: bhLocal.z + z, 
-                vx: bhLocal.vx + localVx, vy: bhLocal.vy + localVy, vz: bhLocal.vz + localVz, 
+                x: bhLocal.x + lx, y: bhLocal.y + (ly*_cosT - z*_sinT), z: bhLocal.z + (ly*_sinT + z*_cosT), 
+                vx: bhLocal.vx + localVx, vy: bhLocal.vy + (localVy*_cosT - localVz*_sinT), vz: bhLocal.vz + (localVy*_sinT + localVz*_cosT), 
                 initialMass: massVar, 
                 ageMyr: 0, 
                 metallicity: initialZ, 
@@ -5273,8 +5285,8 @@
 
             gasClouds.push({
                 id: cloudIdCounter++, 
-                x: bhLocal.x + lx, y: bhLocal.y + ly, z: bhLocal.z + z, 
-                vx: bhLocal.vx + localVx, vy: bhLocal.vy + localVy, vz: bhLocal.vz + localVz, 
+                x: bhLocal.x + lx, y: bhLocal.y + (ly*_cosT - z*_sinT), z: bhLocal.z + (ly*_sinT + z*_cosT), 
+                vx: bhLocal.vx + localVx, vy: bhLocal.vy + (localVy*_cosT - localVz*_sinT), vz: bhLocal.vz + (localVy*_sinT + localVz*_cosT), 
                 ax:0, ay:0, az:0, mass, heat: initialHeat, turbulence: initialTurbulence, size:k*Math.pow(mass,1/3), 
                 galaxyIndex: gIndex, starsCreated:0, stellarMassReservoir:0, metallicity: initialZ,
                 dustMass: mass * dustToGasRatioFromMetallicity(initialZ), dustTemp: initialHeat * 0.25 + 20, dustOpacity: clamp(dustToGasRatioFromMetallicity(initialZ) * 80, 0.05, 3.0), dustDestroyed: 0
@@ -5517,9 +5529,11 @@
             galaxyBType: galaxyBTypeSelect.value,
             galaxyAStage: galaxyAStageSelect.value,
             galaxyBStage: galaxyBStageSelect.value,
-            initialSeparation: parseFloat(initialSeparationSlider.value),
-            impactParam: parseFloat(impactParamSlider.value),
+            initialSeparation: parseFloat(initialSeparationSlider.value) * (1000 / PC_PER_UNIT),
+            impactParam: parseFloat(impactParamSlider.value) * (1000 / PC_PER_UNIT),
             appVel: parseFloat(appVelSlider.value),
+            galaxyATilt: parseFloat(galaxyATiltSlider.value),
+            galaxyBTilt: parseFloat(galaxyBTiltSlider.value),
             enableClusters: document.getElementById('enableClusters').checked,
             useLeapfrog: useLeapfrog,
             showHIIRegions: showHIIRegions,
