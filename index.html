@@ -705,7 +705,7 @@
     let totalPhysicsSteps = 0; // FIX: dedicated step counter for periodic physics-side updates
     let rho0=25, rs=85;
     let patternAngle = 0; let barAngle = 0; let ringShockRadius = 0;
-    const SPIRAL_PITCH = 0.2; const DYNAMICAL_FRICTION_COEFF = 0.002;
+    const SPIRAL_PITCH = 0.2; const DYNAMICAL_FRICTION_COEFF = 0.002; const BH_FRICTION_COEFF = 150.0;
     const JET_ACCRETION_SPIKE_THRESHOLD = 0.005; const JET_DURATION = 50; const JET_PARTICLES_PER_STEP = 4;
     const JET_VELOCITY = 200; const JET_LIFETIME = 150; const JET_INTERACTION_RADIUS = 5; const JET_KICK_FORCE = 2.0; const JET_HEATING = 15;
     const starMass = 1;
@@ -1876,19 +1876,24 @@
                 dax += a_df * (p.vx / vMag); day += a_df * (p.vy / vMag); daz += a_df * (p.vz / vMag);
             }
             
-            // MACROSCOPIC DYNAMICAL FRICTION FOR BLACK HOLES
+            // DYNAMICAL FRICTION ON BLACK HOLES (Chandrasekhar).
+            // The sinking core loses momentum to the COMPANION galaxy's halo it plows
+            // through, so the drag is weighted by that halo's local density (strong only
+            // on real overlap, negligible when far apart) and scales as ~1/v^2 -- so fast
+            // pericentre passages aren't over-damped and the orbit decays over successive
+            // passages instead of oozing in at a terminal velocity. Low-v core avoids a
+            // divergence. (The old model was ~v^2 air-drag active at all separations.)
             if (p.isBH && p !== bh) {
                 const relVx = p.vx - bh.vx; const relVy = p.vy - bh.vy; const relVz = p.vz - bh.vz;
                 const vSq = relVx*relVx + relVy*relVy + relVz*relVz;
                 const vMag = Math.max(0.001, Math.sqrt(vSq));
-
-                const densityFactor = Math.exp(-r_sph / (galaxyRadius * 3.0));
-                const MACRO_FRICTION = 0.015; 
-                const a_drag = -(MACRO_FRICTION * densityFactor * vSq);
-
-                dax += a_drag * (relVx / vMag);
-                day += a_drag * (relVy / vMag);
-                daz += a_drag * (relVz / vMag);
+                const r_scaled = Math.max(0.05, r_sph / rs);
+                const rhoBg = (rho0 * haloScale) / (r_scaled * (1 + r_scaled) * (1 + r_scaled)); // NFW density of companion halo
+                const vc = 12.0, lnLambda = 4.5, M_sink = bulgeMass + bh.mass;
+                const a_df = -(BH_FRICTION_COEFF * G * G * M_sink * rhoBg * lnLambda) / (vSq + vc*vc);
+                dax += a_df * (relVx / vMag);
+                day += a_df * (relVy / vMag);
+                daz += a_df * (relVz / vMag);
             }
         }
         p.ax = dax; p.ay = day; p.az = daz;
@@ -2717,7 +2722,14 @@
             let distSq = dx*dx + dy*dy + dz*dz;
             let dvSq = Math.pow(bh1.vx - bh2.vx, 2) + Math.pow(bh1.vy - bh2.vy, 2) + Math.pow(bh1.vz - bh2.vz, 2);
 
-            if (distSq < 22500 && dvSq < 0.2) {
+            // Coalesce once the pair is within a few softening lengths AND gravitationally
+            // bound (relative KE below escape). The old dvSq<0.2 test required the cores to
+            // be almost at rest, which never happens for an orbiting pair -> they never merged.
+            const sep = Math.sqrt(distSq);
+            const mergeRadius = FORCE_SOFTENING * 3.0;
+            const Mchar = getDarkMatterMass(galaxyRadius, 0) + bulgeMass + bh1.mass; // characteristic mass of ONE galaxy (not the tiny DM within the separation)
+            const vEscSq = 2 * G * (2 * Mchar) / Math.max(1, sep);           // two-body escape speed at this separation
+            if (distSq < mergeRadius * mergeRadius && dvSq < vEscSq) {
                 bh1.vx = (bh1.mass * bh1.vx + bh2.mass * bh2.vx) / (bh1.mass + bh2.mass);
                 bh1.vy = (bh1.mass * bh1.vy + bh2.mass * bh2.vy) / (bh1.mass + bh2.mass);
                 bh1.vz = (bh1.mass * bh1.vz + bh2.mass * bh2.vz) / (bh1.mass + bh2.mass);
