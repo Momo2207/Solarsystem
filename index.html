@@ -3086,41 +3086,75 @@
         }
     }
     
-    function drawGridOverlay(ctx) { 
+    // 3D reference graticule. Lives in the galaxy's own space: every vertex goes
+    // through the SAME rotation/perspective transform as the star vertex shader, so
+    // the plane tilts with the camera correctly. Vertices past the perspective near
+    // plane are clipped (getRawProjection's sf = 1000/(1000+z) goes singular near
+    // z=-1000, which is what made the old far rings twist/stretch). Ring spacing
+    // adapts to zoom and is labelled in kpc, with radial spokes and a polar axis.
+    function drawGridOverlay(ctx) {
         if(!showGrid) return;
-        const m = highResMult; ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)'; ctx.lineWidth = 1 * m;
-        const maxRadius = galaxyRadius * 2.5; const step = 500; 
+        const m = highResMult;
+        const NEAR = -800; // clip vertices nearer than this (perspective near plane)
+        const proj = (x,y,z) => { const p = getRawProjection(x,y,z); return { x: p.rawX*(scale*m) + translateX*m + centerX, y: p.rawY*(scale*m) + translateY*m + centerY, d: p.depth }; };
+        const strokePts = (pts) => { ctx.beginPath(); let on=false; for (const P of pts){ if (P.d < NEAR){ on=false; continue; } if(!on){ ctx.moveTo(P.x,P.y); on=true; } else ctx.lineTo(P.x,P.y); } ctx.stroke(); };
+        const ring = (r,N) => { const pts=[]; for(let i=0;i<=N;i++){ const t=(i/N)*Math.PI*2; pts.push(proj(r*Math.cos(t), r*Math.sin(t), 0)); } return pts; };
 
-        for (let r = step; r <= maxRadius * 2; r += step) {
-            ctx.beginPath();
-            for (let theta = 0; theta <= Math.PI * 2; theta += 0.05) {
-                const x = r * Math.cos(theta), y = r * Math.sin(theta);
-                let p = getRawProjection(x, y, 0);
-                const sx = p.rawX * (scale * highResMult) + (translateX * highResMult) + centerX;
-                const sy = p.rawY * (scale * highResMult) + (translateY * highResMult) + centerY;
-                if (theta === 0) ctx.moveTo(sx, sy); else ctx.lineTo(sx, sy);
+        const worldPerKpc = 1000 / PC_PER_UNIT;
+        const fovKpc = (glCanvas.width / (scale * m)) * PC_PER_UNIT / 1000; // visible width in kpc
+        // pick a 'nice' minor-ring spacing so ~10-16 rings span the view
+        const nice = [0.1,0.25,0.5,1,2,5,10,20,50,100,200];
+        let step = nice[nice.length-1];
+        for (const s of nice){ if (fovKpc/s <= 16){ step = s; break; } }
+        const majorEvery = 2;
+        const maxKpc = Math.max(step*2, Math.min(fovKpc*0.72, step*40));
+        const maxR = maxKpc * worldPerKpc;
+
+        // Concentric rings in the galactic plane
+        let idx = 0;
+        for (let kpc = step; kpc <= maxKpc + 1e-6; kpc += step) {
+            idx++;
+            const r = kpc * worldPerKpc;
+            const major = (idx % majorEvery === 0);
+            ctx.strokeStyle = major ? 'rgba(90,160,255,0.32)' : 'rgba(150,180,220,0.085)';
+            ctx.lineWidth = (major ? 1.4 : 1.0) * m;
+            strokePts(ring(r, 128));
+            if (major) {
+                const a = proj(r*Math.cos(-Math.PI/4), r*Math.sin(-Math.PI/4), 0);
+                if (a.d >= NEAR) {
+                    const lbl = kpc >= 1 ? (Number.isInteger(kpc)?kpc:kpc.toFixed(1))+' kpc' : Math.round(kpc*1000)+' pc';
+                    ctx.fillStyle = 'rgba(150,195,255,0.75)';
+                    ctx.font = Math.round(11*m)+'px -apple-system, BlinkMacSystemFont, sans-serif';
+                    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                    ctx.fillText(lbl, a.x, a.y);
+                }
             }
-            ctx.closePath(); ctx.stroke();
         }
 
+        // Radial spokes every 30 degrees
+        ctx.strokeStyle = 'rgba(150,180,220,0.085)'; ctx.lineWidth = 1*m;
+        for (let s=0;s<12;s++){ const t=s*Math.PI/6; const pts=[]; for(let i=0;i<=48;i++){ const rr=(i/48)*maxR; pts.push(proj(rr*Math.cos(t), rr*Math.sin(t), 0)); } strokePts(pts); }
+
+        // Principal in-plane axes (X red, Y green) and a subtle centre tick
+        ctx.lineWidth = 1.3*m;
+        ctx.strokeStyle = 'rgba(255,120,120,0.35)'; strokePts([proj(-maxR,0,0), proj(0,0,0), proj(maxR,0,0)]);
+        ctx.strokeStyle = 'rgba(120,255,150,0.35)'; strokePts([proj(0,-maxR,0), proj(0,0,0), proj(0,maxR,0)]);
+
+        // Vertical polar axis (Z) = galactic normal / spin axis, so the tilt reads in 3D
+        const poleH = Math.min(maxR*0.6, galaxyRadius*1.0);
+        ctx.strokeStyle = 'rgba(120,180,255,0.5)'; ctx.lineWidth = 1.4*m;
+        { const zp=[]; for(let i=0;i<=32;i++){ zp.push(proj(0,0,(-1+2*i/32)*poleH)); } strokePts(zp); }
+        const pn = proj(0,0,poleH);
+        if (pn.d >= NEAR){ ctx.fillStyle='rgba(150,200,255,0.85)'; ctx.font=Math.round(10*m)+'px -apple-system, sans-serif'; ctx.textAlign='center'; ctx.textBaseline='bottom'; ctx.fillText('N', pn.x, pn.y - 4*m); }
+
+        // Collision trajectory vectors (fixed visual length; velocity units are now physical)
         if (simModeSelect.value === 'collision' && blackHoles.length === 2) {
-            ctx.beginPath();
-            ctx.strokeStyle = 'rgba(255, 50, 50, 0.8)';
-            ctx.setLineDash([5 * m, 5 * m]);
+            ctx.strokeStyle = 'rgba(255,60,60,0.85)'; ctx.setLineDash([6*m,5*m]); ctx.lineWidth = 1.3*m;
+            const arrow = galaxyRadius * 0.7;
             for(let g=0; g<blackHoles.length; g++) {
-                let bh = blackHoles[g];
-                let p1 = getRawProjection(bh.x, bh.y, bh.z);
-                let p2 = getRawProjection(bh.x + bh.vx * 2000, bh.y + bh.vy * 2000, bh.z + bh.vz * 2000);
-                
-                let sx1 = p1.rawX * (scale * m) + (translateX * m) + centerX;
-                let sy1 = p1.rawY * (scale * m) + (translateY * m) + centerY;
-                let sx2 = p2.rawX * (scale * m) + (translateX * m) + centerX;
-                let sy2 = p2.rawY * (scale * m) + (translateY * m) + centerY;
-                
-                ctx.moveTo(sx1, sy1);
-                ctx.lineTo(sx2, sy2);
+                const bh = blackHoles[g]; const vmag = Math.max(1e-6, Math.hypot(bh.vx,bh.vy,bh.vz));
+                strokePts([ proj(bh.x,bh.y,bh.z), proj(bh.x + bh.vx/vmag*arrow, bh.y + bh.vy/vmag*arrow, bh.z + bh.vz/vmag*arrow) ]);
             }
-            ctx.stroke();
             ctx.setLineDash([]);
         }
     }
