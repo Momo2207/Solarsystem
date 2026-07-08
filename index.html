@@ -257,10 +257,10 @@
 
             <hr style="border-top:1px solid var(--border-color); border-bottom:none; margin:10px 0;">
             
-            <label for="initialSeparation">Initial Separation (X): <span id="initialSeparationValue">3000 pc</span></label>
+            <label for="initialSeparation">Initial Separation (X): <span id="initialSeparationValue">92.0 kpc</span></label>
             <input type="range" id="initialSeparation" min="1000" max="8000" step="200" value="3000">
 
-            <label for="impactParam">Impact Parameter (Y): <span id="impactParamValue">1000 pc</span></label>
+            <label for="impactParam">Impact Parameter (Y): <span id="impactParamValue">30.7 kpc</span></label>
             <input type="range" id="impactParam" min="0" max="5000" step="100" value="1000">
             <div class="help-text">Impact Parameter controls head-on (0) vs glancing blow (>0).</div>
 
@@ -686,6 +686,15 @@
     let postMergerTimer = 0.0;
     let cosmologicalInflowReservoir = 0;
     const G=0.008; let bulgeRadius=250, bulgeMass=500, galaxyRadius=550; let centralBHMass=50;
+    // ===== Physical unit system (harmonized to galactic scale) =====
+    // Maps internal sim units -> physical units, mutually consistent via Newton
+    // (v^2 = G*M/r) and kinematics (dx = v*dt, dt = 0.15 Myr/step). Calibrated so
+    // the DM-dominated rotation curve, disk size and total mass land at realistic
+    // galactic values. Previously three different velocity conversions were in use
+    // (approach x0.002, rotation x1, relative x50); these now all use KMS_PER_VUNIT.
+    const KMS_PER_VUNIT = 2.0;    // 1 internal velocity unit = 2.0 km/s   (flat rotation ~150 km/s)
+    const PC_PER_UNIT   = 30.68;  // 1 internal length unit   = 30.68 pc  (disk radius ~16.9 kpc)
+    const MSUN_PER_UNIT = 228.3;  // 1 internal mass unit     = 228.3 Msun (total ~1e11 Msun, DM-dominated)
     let totalDiskMass = 0;
     let instantaneousSFR = 0, bhAccretionRateLast = 0;
     const baseEventHorizon = 0.001; let FORCE_SOFTENING=20;
@@ -1438,8 +1447,8 @@
     });
 
     appVelSlider.addEventListener('input', () => document.getElementById('appVelValue').textContent = appVelSlider.value + ' km/s');
-    impactParamSlider.addEventListener('input', () => document.getElementById('impactParamValue').textContent = impactParamSlider.value + ' pc');
-    initialSeparationSlider.addEventListener('input', () => document.getElementById('initialSeparationValue').textContent = initialSeparationSlider.value + ' pc');
+    impactParamSlider.addEventListener('input', () => document.getElementById('impactParamValue').textContent = fmtLen(parseFloat(impactParamSlider.value)));
+    initialSeparationSlider.addEventListener('input', () => document.getElementById('initialSeparationValue').textContent = fmtLen(parseFloat(initialSeparationSlider.value)));
 
     const clearTargetsBtn = document.getElementById('clearTargetsBtn');
     const directorModeBtn = document.getElementById('directorModeBtn');
@@ -1951,11 +1960,11 @@
         let outerDM = 0, outerBar = 0;
 
         for (let i = 0; i < numBins; i++) {
-            const r = (i + 0.5) * binSize; data.radii.push(r);
-            data.starMedian.push(starBins[i].length >= 10 ? getMedian(starBins[i]) : null);
-            data.gasMedian.push(gasBins[i].length >= 5 ? getMedian(gasBins[i]) : null);
+            const r = (i + 0.5) * binSize; data.radii.push(r * PC_PER_UNIT);
+            data.starMedian.push(starBins[i].length >= 10 ? getMedian(starBins[i]) * KMS_PER_VUNIT : null);
+            data.gasMedian.push(gasBins[i].length >= 5 ? getMedian(gasBins[i]) * KMS_PER_VUNIT : null);
             const theo = getTheoreticalVelocities(r, 0); 
-            data.modelTotal.push(theo.vTotal); data.modelBaryon.push(theo.vBaryon); data.modelDarkMatter.push(theo.vDM);
+            data.modelTotal.push(theo.vTotal * KMS_PER_VUNIT); data.modelBaryon.push(theo.vBaryon * KMS_PER_VUNIT); data.modelDarkMatter.push(theo.vDM * KMS_PER_VUNIT);
             if(i > numBins * 0.7) { outerDM += theo.vDM; outerBar += theo.vBaryon; }
         }
         
@@ -1987,7 +1996,7 @@
         let sumX_g=0, sumY_g=0, sumXY_g=0, sumX2_g=0, n_g=0;
 
         for (let i = 0; i < numBins; i++) {
-            const r = (i + 0.5) * binSize; data.radii.push(r);
+            const r = (i + 0.5) * binSize; data.radii.push(r * PC_PER_UNIT);
             let sZ = starBins[i].mass > 0 ? starBins[i].zMass / starBins[i].mass : null;
             let gZ = gasBins[i].mass > 0 ? gasBins[i].zMass / gasBins[i].mass : null;
             data.starZ.push(sZ); data.gasZ.push(gZ);
@@ -2287,6 +2296,8 @@
     }
 
     function formatTime(y){if(y>=1e9)return`${(y/1e9).toFixed(1)} Gyr`;if(y>=1e6)return`${(y/1e6).toFixed(1)} Myr`;return`${Math.round(y/1e3)*1e3} yr`;}
+    function formatMass(m){ if(m>=1e9)return (m/1e9).toFixed(2)+' ×10⁹ M☉'; if(m>=1e6)return (m/1e6).toFixed(2)+' ×10⁶ M☉'; if(m>=1e4)return Math.round(m/1e3)+'k M☉'; if(m>=1e3)return (m/1e3).toFixed(1)+'k M☉'; return Math.round(m)+' M☉'; }
+    function fmtLen(worldUnits){ const pc=worldUnits*PC_PER_UNIT; return pc>=1000 ? (pc/1000).toFixed(1)+' kpc' : Math.round(pc)+' pc'; }
 
     function project3DTo2D(x, y, z) {
         const rX = rotationX * Math.PI / 180, rY = rotationY * Math.PI / 180;
@@ -4894,7 +4905,7 @@
                   
                   const distPc = Math.hypot(dx, dy, dz); 
                   const distLy = distPc * 3.262;
-                  const relVel = Math.hypot(dvx, dvy, dvz) * 50; 
+                  const relVel = Math.hypot(dvx, dvy, dvz) * KMS_PER_VUNIT; 
                   const radialDot = dx * dvx + dy * dvy + dz * dvz;
                   const stateLabel = radialDot < 0 ? "<span style='color:var(--accent-blue)'>Approaching</span>" : "<span style='color:var(--accent-red)'>Receding</span>";
 
@@ -4925,16 +4936,16 @@
       }
       
       document.getElementById('hud-sfr').textContent = instantaneousSFR.toFixed(2) + ' sim';
-      document.getElementById('hud-bh-a').textContent = blackHoles[0] ? blackHoles[0].mass.toFixed(1) + ' M☉' : '0 M☉';
+      document.getElementById('hud-bh-a').textContent = blackHoles[0] ? formatMass(blackHoles[0].mass * MSUN_PER_UNIT) : '0 M☉';
       
       // Hide Beta BH UI in Single Mode
       document.getElementById('hud-card-b').style.display = blackHoles.length > 1 ? 'flex' : 'none';
-      if (blackHoles.length > 1) document.getElementById('hud-bh-b').textContent = blackHoles[1] ? blackHoles[1].mass.toFixed(1) + ' M☉' : '0 M☉';
+      if (blackHoles.length > 1) document.getElementById('hud-bh-b').textContent = blackHoles[1] ? formatMass(blackHoles[1].mass * MSUN_PER_UNIT) : '0 M☉';
       
       let totalGas = coldGasMass + hotGasMass;
       let coldPct = totalGas > 0 ? (coldGasMass / totalGas) * 100 : 0;
       document.getElementById('hud-gas').textContent = coldPct.toFixed(1) + '%';
-      document.getElementById('hud-scale').textContent = (pcPerPixel * glCanvas.width / scale).toFixed(0) + ' pc';
+      document.getElementById('hud-scale').textContent = fmtLen(glCanvas.width / (scale * (highResMult || 1)));
       
       if (frameCount % scienceState.updateEveryFrames === 0 && !isCapturingSequence) {
           sampleDiagnostics();
@@ -5035,7 +5046,7 @@
       const bParam = SIM_SETTINGS.impactParam;
       const vAppDisplay = SIM_SETTINGS.appVel;
       
-      const vAppEngine = vAppDisplay * 0.002; 
+      const vAppEngine = vAppDisplay / KMS_PER_VUNIT; // consistent km/s -> internal velocity unit
 
       if (isCollisionMode) {
           blackHoles = [
