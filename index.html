@@ -4664,7 +4664,8 @@
         specCtx.fill();
     }
 
-    function draw() {
+    function draw() { try { drawInner(); } catch (_e) { console.error("render loop error (recovered):", _e); requestAnimationFrame(draw); } }
+    function drawInner() {
       // WORKER REFACTOR: nothing to render until the first physics state arrives
       if (!hasFirstState && !workerFailed) { frameCount++; requestAnimationFrame(draw); return; }
       const _drawStart = performance.now();
@@ -4923,7 +4924,7 @@
                           <div class="stat-row"><span class="stat-label">Age:</span> <span class="stat-value">${formatTime(s0.ageMyr * 1e6)}</span></div>
                           <div class="section-title">Physical Properties</div>
                           <div class="stat-row"><span class="stat-label">Mass:</span> <span class="stat-value">${s0.mass.toFixed(2)} M☉</span></div>
-                          <div class="stat-row"><span class="stat-label">Radius:</span> <span class="stat-value">${s0.radius.toFixed(2)} R☉</span></div>
+                          <div class="stat-row"><span class="stat-label">Radius:</span> <span class="stat-value">${Math.sqrt(Math.max(0, s0.luminosity||0) / Math.pow(Math.max(1e-6, (s0.temperature||5772))/5772, 4)).toFixed(2)} R☉</span></div>
                           <div class="stat-row"><span class="stat-label">Luminosity:</span> <span class="stat-value">${s0.luminosity.toExponential(2)} L☉</span></div>
                           <div class="stat-row"><span class="stat-label">Temp:</span> <span class="stat-value">${Math.round(s0.temperature)} K</span></div>
                       `;
