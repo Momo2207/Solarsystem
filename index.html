@@ -392,6 +392,7 @@
         <label for="dustDetail">Max Dust Detail (rendered clouds): <span id="dustDetailValue">8000</span></label>
         <input type="range" id="dustDetail" min="1000" max="60000" step="1000" value="8000">
         <label class="checkbox-label"><input type="checkbox" id="tglGPUStars" checked> GPU Star Renderer (draws every star, much faster)</label>
+        <label class="checkbox-label"><input type="checkbox" id="tglHDRPipe" checked> HDR Pipeline (real bloom + filmic tonemap)</label>
       </div>
     </div>
     
@@ -2028,6 +2029,152 @@
         }
         gl.bindTexture(gl.TEXTURE_2D, dustTex);
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, N, N, gl.RGBA, gl.UNSIGNED_BYTE, dustTexData);
+    }
+
+    // ===== HDR POST-PROCESSING PIPELINE (CINEMATIC #2) =====
+    // Scene renders into a floating-point offscreen framebuffer, so additive star
+    // light accumulates beyond 1.0 instead of clipping. Bright regions are then
+    // extracted with a soft knee, blurred through a two-level downsampled gaussian
+    // chain (1/4 and 1/8 resolution -- cheap), and composited back with an ACES
+    // filmic tonemap: cores bleed light like photographs, faint arms lift without
+    // washing out. Falls back half-float -> float -> LDR -> off; a compile or FBO
+    // failure just disables the pipe (never a black screen).
+    const vsQuadSrc=`
+      attribute vec2 aQuadPos; varying vec2 vUv;
+      void main(){ vUv = aQuadPos*0.5 + 0.5; gl_Position = vec4(aQuadPos, 0.0, 1.0); }`;
+    const fsBrightSrc=`
+      precision mediump float; varying vec2 vUv; uniform sampler2D uTex; uniform float uThr0; uniform float uThr1;
+      void main(){
+        vec4 c = texture2D(uTex, vUv);
+        float luma = dot(c.rgb, vec3(0.2126, 0.7152, 0.0722));
+        float w = smoothstep(uThr0, uThr1, luma);
+        gl_FragColor = vec4(c.rgb * w, 1.0);
+      }`;
+    const fsBlurSrc=`
+      precision mediump float; varying vec2 vUv; uniform sampler2D uTex; uniform vec2 uDir; uniform vec2 uTexel;
+      void main(){
+        vec2 o = uDir * uTexel;
+        vec3 c = texture2D(uTex, vUv).rgb * 0.227027;
+        c += (texture2D(uTex, vUv + o*1.0).rgb + texture2D(uTex, vUv - o*1.0).rgb) * 0.1945946;
+        c += (texture2D(uTex, vUv + o*2.0).rgb + texture2D(uTex, vUv - o*2.0).rgb) * 0.1216216;
+        c += (texture2D(uTex, vUv + o*3.0).rgb + texture2D(uTex, vUv - o*3.0).rgb) * 0.054054;
+        c += (texture2D(uTex, vUv + o*4.0).rgb + texture2D(uTex, vUv - o*4.0).rgb) * 0.016216;
+        gl_FragColor = vec4(c, 1.0);
+      }`;
+    const fsCompSrc=`
+      precision mediump float; varying vec2 vUv;
+      uniform sampler2D uScene; uniform sampler2D uBloom4; uniform sampler2D uBloom8;
+      uniform float uExposureP; uniform float uBloomStrP;
+      vec3 aces(vec3 x){ return clamp((x*(2.51*x + 0.03)) / (x*(2.43*x + 0.59) + 0.14), 0.0, 1.0); }
+      void main(){
+        vec4 scene = texture2D(uScene, vUv);
+        vec3 bloom = texture2D(uBloom4, vUv).rgb * 0.62 + texture2D(uBloom8, vUv).rgb * 1.0;
+        vec3 hdr = (scene.rgb + bloom * uBloomStrP) * uExposureP;
+        vec3 col = aces(hdr);
+        float dith = (fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) / 255.0;
+        col = max(vec3(0.0), col + dith);
+        float a = clamp(scene.a + dot(bloom, vec3(0.3333)) * 0.8 * uBloomStrP, 0.0, 1.0);
+        gl_FragColor = vec4(col, a);
+      }`;
+    let hdrPipeOK = false, hdrTexType = null, hdrFilter = null;
+    let hdrScene = null, hdrBright = null, hdrA4 = null, hdrB4 = null, hdrA8 = null, hdrB8 = null;
+    let hdrW = 0, hdrH = 0;
+    let progBright = null, progBlur = null, progComp = null, PB = null, PL = null, PC = null;
+    let quadVBO = null;
+    function _mkTarget(w, h) {
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, hdrTexType, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, hdrFilter); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, hdrFilter);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        const fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return ok ? { tex, fbo, w, h } : null;
+    }
+    try {
+        const extHF = gl.getExtension('OES_texture_half_float');
+        const extHFL = gl.getExtension('OES_texture_half_float_linear');
+        const extF = gl.getExtension('OES_texture_float');
+        const extFL = gl.getExtension('OES_texture_float_linear');
+        const ladder = [];
+        if (extHF) ladder.push({ type: extHF.HALF_FLOAT_OES, lin: !!extHFL });
+        if (extF) ladder.push({ type: gl.FLOAT, lin: !!extFL });
+        ladder.push({ type: gl.UNSIGNED_BYTE, lin: true }); // LDR fallback: bloom still works, tonemap tames it
+        for (const cand of ladder) {
+            hdrTexType = cand.type; hdrFilter = cand.lin ? gl.LINEAR : gl.NEAREST;
+            const probe = _mkTarget(4, 4);
+            if (probe) { gl.deleteTexture(probe.tex); gl.deleteFramebuffer(probe.fbo); hdrPipeOK = true; break; }
+        }
+        if (hdrPipeOK) {
+            progBright = createShaderProgram(gl, vsQuadSrc, fsBrightSrc);
+            progBlur = createShaderProgram(gl, vsQuadSrc, fsBlurSrc);
+            progComp = createShaderProgram(gl, vsQuadSrc, fsCompSrc);
+            if (!gl.getProgramParameter(progBright, gl.LINK_STATUS) || !gl.getProgramParameter(progBlur, gl.LINK_STATUS) || !gl.getProgramParameter(progComp, gl.LINK_STATUS)) {
+                hdrPipeOK = false;
+            } else {
+                PB = { aQuadPos: gl.getAttribLocation(progBright, 'aQuadPos'), uTex: gl.getUniformLocation(progBright, 'uTex'), uThr0: gl.getUniformLocation(progBright, 'uThr0'), uThr1: gl.getUniformLocation(progBright, 'uThr1') };
+                PL = { aQuadPos: gl.getAttribLocation(progBlur, 'aQuadPos'), uTex: gl.getUniformLocation(progBlur, 'uTex'), uDir: gl.getUniformLocation(progBlur, 'uDir'), uTexel: gl.getUniformLocation(progBlur, 'uTexel') };
+                PC = { aQuadPos: gl.getAttribLocation(progComp, 'aQuadPos'), uScene: gl.getUniformLocation(progComp, 'uScene'), uBloom4: gl.getUniformLocation(progComp, 'uBloom4'), uBloom8: gl.getUniformLocation(progComp, 'uBloom8'), uExposureP: gl.getUniformLocation(progComp, 'uExposureP'), uBloomStrP: gl.getUniformLocation(progComp, 'uBloomStrP') };
+                quadVBO = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+            }
+        }
+    } catch (_hdrErr) { console.warn('HDR pipeline unavailable; direct rendering in use.', _hdrErr); hdrPipeOK = false; }
+    function ensureHDRTargets(w, h) {
+        if (w === hdrW && h === hdrH && hdrScene) return true;
+        for (const t of [hdrScene, hdrBright, hdrA4, hdrB4, hdrA8, hdrB8]) {
+            if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fbo); }
+        }
+        const w2 = Math.max(1, w >> 1), h2 = Math.max(1, h >> 1);
+        const w4 = Math.max(1, w >> 2), h4 = Math.max(1, h >> 2);
+        const w8 = Math.max(1, w >> 3), h8 = Math.max(1, h >> 3);
+        hdrScene = _mkTarget(w, h); hdrBright = _mkTarget(w2, h2);
+        hdrA4 = _mkTarget(w4, h4); hdrB4 = _mkTarget(w4, h4);
+        hdrA8 = _mkTarget(w8, h8); hdrB8 = _mkTarget(w8, h8);
+        if (!hdrScene || !hdrBright || !hdrA4 || !hdrB4 || !hdrA8 || !hdrB8) { hdrPipeOK = false; return false; }
+        hdrW = w; hdrH = h;
+        return true;
+    }
+    function _postPass(prog, locs, target, srcTex, setup) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target ? target.fbo : null);
+        gl.viewport(0, 0, target ? target.w : glCanvas.width, target ? target.h : glCanvas.height);
+        gl.useProgram(prog);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, srcTex);
+        if (setup) setup();
+        gl.bindBuffer(gl.ARRAY_BUFFER, quadVBO);
+        gl.vertexAttribPointer(locs.aQuadPos, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(locs.aQuadPos);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.disableVertexAttribArray(locs.aQuadPos);
+    }
+    function runHDRPost() {
+        gl.disable(gl.BLEND);
+        // bright extraction at half res (soft knee)
+        _postPass(progBright, PB, hdrBright, hdrScene.tex, () => {
+            gl.uniform1i(PB.uTex, 0); gl.uniform1f(PB.uThr0, 0.55); gl.uniform1f(PB.uThr1, 1.15);
+        });
+        // level 1 blur at quarter res (H then V; sampling half-res input downsamples implicitly)
+        _postPass(progBlur, PL, hdrA4, hdrBright.tex, () => { gl.uniform1i(PL.uTex, 0); gl.uniform2f(PL.uDir, 1, 0); gl.uniform2f(PL.uTexel, 1.0/hdrBright.w, 1.0/hdrBright.h); });
+        _postPass(progBlur, PL, hdrB4, hdrA4.tex, () => { gl.uniform1i(PL.uTex, 0); gl.uniform2f(PL.uDir, 0, 1); gl.uniform2f(PL.uTexel, 1.0/hdrA4.w, 1.0/hdrA4.h); });
+        // level 2 blur at eighth res (wider halo)
+        _postPass(progBlur, PL, hdrA8, hdrB4.tex, () => { gl.uniform1i(PL.uTex, 0); gl.uniform2f(PL.uDir, 1, 0); gl.uniform2f(PL.uTexel, 1.0/hdrB4.w, 1.0/hdrB4.h); });
+        _postPass(progBlur, PL, hdrB8, hdrA8.tex, () => { gl.uniform1i(PL.uTex, 0); gl.uniform2f(PL.uDir, 0, 1); gl.uniform2f(PL.uTexel, 1.0/hdrA8.w, 1.0/hdrA8.h); });
+        // composite to canvas with ACES + additive bloom
+        _postPass(progComp, PC, null, hdrScene.tex, () => {
+            gl.uniform1i(PC.uScene, 0);
+            gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, hdrB4.tex); gl.uniform1i(PC.uBloom4, 1);
+            gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, hdrB8.tex); gl.uniform1i(PC.uBloom8, 2);
+            gl.uniform1f(PC.uExposureP, 1.0);
+            gl.uniform1f(PC.uBloomStrP, CINE.on ? (0.5 + 0.55 * CINE.bloomStr) : 0.42);
+        });
+        gl.activeTexture(gl.TEXTURE0);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.useProgram(program);
     }
     
     const particlePositionBuffer=gl.createBuffer(), particleSizeBuffer=gl.createBuffer(), particleTypeBuffer=gl.createBuffer(), particleColorBuffer=gl.createBuffer();
@@ -4972,6 +5119,9 @@
       drawBackgroundUniverse(bgCtx);
       drawObservationSynthesisMaps(bgCtx);
       
+      const useHDRPipe = hdrPipeOK && document.getElementById('tglHDRPipe').checked && ensureHDRTargets(glCanvas.width, glCanvas.height);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, useHDRPipe ? hdrScene.fbo : null);
+      gl.viewport(0, 0, glCanvas.width, glCanvas.height);
       gl.clearColor(0.0, 0.0, 0.0, 0.0); 
       gl.clear(gl.COLOR_BUFFER_BIT); gl.enable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
       
@@ -5158,6 +5308,9 @@
               if (tglHDR.checked) { gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR); } else { gl.blendFunc(gl.ONE, gl.ONE); }
           }
       }
+
+      // ---- HDR post chain (CINEMATIC #2): bright pass -> blur pyramid -> ACES composite ----
+      if (useHDRPipe) runHDRPost();
 
       overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
       drawDiffuseOldStellarDisks(overlayCtx);
@@ -5394,9 +5547,10 @@
           if (!perfMeterEl) perfMeterEl = document.getElementById('hud-perf');
           if (perfMeterEl) {
               const _gpu = gpuStarsOK && document.getElementById('tglGPUStars').checked && currentModeId === 'visible';
+              const _hdrp = hdrPipeOK && document.getElementById('tglHDRPipe').checked;
               const _stride = _gpu ? 1 : Math.max(1, Math.floor(stars.length / RENDER_STAR_BUDGET));
               const _drawn = _stride > 1 ? Math.ceil(stars.length / _stride) : stars.length;
-              perfMeterEl.textContent = Math.round(_fpsSmooth) + ' fps · ' + _renderMsSmooth.toFixed(1) + 'ms · ' + _physicsMsSmooth.toFixed(0) + 'ms phys · ' + (_gpu ? 'GPU · ' : '') + _drawn.toLocaleString() + '/' + stars.length.toLocaleString();
+              perfMeterEl.textContent = Math.round(_fpsSmooth) + ' fps · ' + _renderMsSmooth.toFixed(1) + 'ms · ' + _physicsMsSmooth.toFixed(0) + 'ms phys · ' + (_gpu ? 'GPU · ' : '') + (_hdrp ? 'HDR · ' : '') + _drawn.toLocaleString() + '/' + stars.length.toLocaleString();
           }
       }
       frameCount++; requestAnimationFrame(draw);
