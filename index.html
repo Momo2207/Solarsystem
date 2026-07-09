@@ -391,6 +391,7 @@
         
         <label for="dustDetail">Max Dust Detail (rendered clouds): <span id="dustDetailValue">8000</span></label>
         <input type="range" id="dustDetail" min="1000" max="60000" step="1000" value="8000">
+        <label class="checkbox-label"><input type="checkbox" id="tglGPUStars" checked> GPU Star Renderer (draws every star, much faster)</label>
       </div>
     </div>
     
@@ -1775,6 +1776,196 @@
         gl_FragColor = vec4(finalRGB, finalAlpha);
       }`;
 
+    // ===== GPU STAR RENDERER (PERF #2) =====
+    // Renders stars directly from the worker's transferred typed arrays. The entire
+    // visible-mode appearance pipeline (getStarRenderParams) is ported into this
+    // vertex shader: Planck colour, dust attenuation (screen-space dust field
+    // sampled from a texture with the same manual bilinear as the CPU), spiral
+    // population modifier, old-star reduction, cinematic depth, CINE saturation.
+    // Eliminates the per-frame per-star JS loop + 4-buffer re-upload: buffers are
+    // uploaded once per physics state and ALL stars are drawn every frame.
+    const vsStarSrc=`
+      precision highp float;
+      attribute vec3 aStarPos;
+      attribute vec4 aPhysA;   // mass, initialMass, temperature, luminosity
+      attribute vec2 aPhysB;   // metallicity, ageMyr
+      attribute float aStage;  // 0 MS, 1 GIANT, 2 WD, 3 SN
+      attribute float aGalaxy; // galaxy index
+      uniform vec2 uTranslate; uniform float uScale; uniform vec2 uCanvasSize;
+      uniform float uRotX; uniform float uRotY; uniform float uIsOrtho;
+      uniform float uStarVisualMult; uniform float uRealColors; uniform float uDustEnabled; uniform float uShowEvolvingDust;
+      uniform float uEdgeOn; uniform float uPatternAngle; uniform float uBulge; uniform float uGalaxyR; uniform float uPostMerger;
+      uniform vec3 uBH0; uniform vec3 uBH1; uniform float uBHCount;
+      uniform vec2 uPresetA; uniform vec2 uPresetB; // (armCount, type: 0 other / 1 spiral / 2 ring)
+      uniform float uObsSynth; uniform float uCinDepth; uniform vec4 uFocus; uniform float uCineSat;
+      uniform float uDustHintNorm; uniform sampler2D uDustTex; uniform float uDustN;
+      uniform float uGlowPass; uniform float uGlowSize; uniform float uGlowAlpha;
+      varying vec4 vColor; varying float vType; varying float vPitch; varying float vSize;
+      vec3 planck(float temp){
+        float t = temp/100.0; float r; float g; float b;
+        if (t <= 66.0) {
+          r = 255.0;
+          g = 99.4708025861 * log(max(t, 1.0)) - 161.1195681661;
+          if (t <= 19.0) { b = 0.0; } else { b = 138.5177312231 * log(t - 10.0) - 305.0447927307; }
+        } else {
+          r = 329.698727446 * pow(t - 60.0, -0.1332047592);
+          g = 288.1221695283 * pow(t - 60.0, -0.0755148492);
+          b = 255.0;
+        }
+        vec3 c = clamp(vec3(r,g,b), 0.0, 255.0)/255.0;
+        float mx = max(c.r, max(c.g, c.b));
+        if (mx > 0.0) { c = c + (c - vec3(mx)) * 0.3; }
+        return max(c, vec3(0.0));
+      }
+      float porousTau(float tau){ return -log(clamp(0.64 + 0.36*exp(-tau), 0.0001, 1.0)); }
+      float mixedTrans(float tau){ if (tau <= 0.0001) return 1.0; return (1.0 - exp(-tau))/tau; }
+      float chanTrans(float tauColumn, float cScale, float maxTau, float fg){
+        float rawTau = min(maxTau, tauColumn * 0.72 * cScale);
+        float eff = porousTau(rawTau);
+        return mixedTrans(eff) * (1.0 - fg) + exp(-eff) * fg;
+      }
+      vec4 dustTexel(vec2 ij){ return texture2D(uDustTex, (ij + 0.5)/uDustN); }
+      float v16(vec4 t){ return t.g*65280.0 + t.b*255.0; }
+      void main(){
+        float mass=aPhysA.x; float iMass=aPhysA.y; float T=aPhysA.z; float Lum=aPhysA.w;
+        float age=aPhysB.y;
+        float cosY=cos(uRotY); float sinY=sin(uRotY);
+        float x1=aStarPos.x*cosY + aStarPos.z*sinY; float z1=-aStarPos.x*sinY + aStarPos.z*cosY;
+        float cosX=cos(uRotX); float sinX=sin(uRotX);
+        float y2=aStarPos.y*cosX - z1*sinX; float z2=aStarPos.y*sinX + z1*cosX;
+        float sf=(uIsOrtho>0.5)?1.0:(1000.0/(1000.0+z2));
+        vec2 p=vec2(x1,y2)*sf*uScale + uTranslate + uCanvasSize*0.5;
+        vPitch = max(abs(cosX), 0.15);
+        // ---- appearance: visible-mode port of getStarRenderParams ----
+        float baseA = min(1.0, 0.4 + min(1.0, pow(max(mass,0.0001), 0.05) * (T/6000.0)) * 0.6);
+        float sSize = max(0.2, pow(max(Lum,0.0), 0.25)) * uStarVisualMult;
+        if (aStage > 1.5 && aStage < 2.5) { sSize *= 0.3; }
+        if (aStage > 0.5 && aStage < 1.5) { sSize *= 2.0; }
+        float pType = 0.0;
+        vec3 col;
+        if (uRealColors < 0.5) {
+          if (T > 10000.0) { col=vec3(0.6,0.7,1.0); } else if (T > 6000.0) { col=vec3(0.9,0.95,1.0); } else if (T > 4000.0) { col=vec3(1.0,0.9,0.6); } else { col=vec3(1.0,0.5,0.2); }
+        } else { col = planck(T); }
+        float a = baseA;
+        if (uDustEnabled > 0.5) {
+          // analytic hint (nearest galaxy by 2D distance, matching getAnalyticDustHint)
+          vec3 hbh = uBH0; vec2 hp = uPresetA;
+          if (uBHCount > 1.5) {
+            vec2 dA = aStarPos.xy - uBH0.xy; vec2 dB = aStarPos.xy - uBH1.xy;
+            if (dot(dB,dB) < dot(dA,dA)) { hbh = uBH1; hp = uPresetB; }
+          }
+          vec2 hl = aStarPos.xy - hbh.xy; float hlz = aStarPos.z - hbh.z;
+          float hR = max(0.1, length(hl));
+          float zDen = exp(-abs(hlz)/22.0);
+          float rDen = 0.0;
+          if (hp.y > 1.5) {
+            float ringR = uGalaxyR * 0.75; float dr = hR - ringR;
+            rDen = exp(-(dr*dr)/2400.0) * 0.65;
+          } else if (hp.y > 0.5 && uPostMerger < 0.5) {
+            float cc = min(1.0, pow(hR/(uBulge*0.95), 2.0));
+            rDen = exp(-hR/(uGalaxyR*0.72)) * cc * 0.35;
+            if (hR > 60.0 && hR < uGalaxyR*1.10) {
+              float th = atan(hl.y, hl.x);
+              float ph = hp.x*(th - uPatternAngle) - (hp.x*4.9331548756)*log(hR/50.0);
+              float dl = pow(max(0.0, cos(ph + 0.9)), 3.0);
+              rDen += dl * exp(-hR/uGalaxyR) * 0.45;
+            }
+          } else {
+            rDen = exp(-hR/(uGalaxyR*0.72)) * 0.28;
+          }
+          float hint = max(0.0, zDen * rDen * uDustHintNorm);
+          float tauF = 0.0; float depthAvg = z2;
+          if (uShowEvolvingDust > 0.5 && p.x >= 0.0 && p.y >= 0.0 && p.x < uCanvasSize.x && p.y < uCanvasSize.y) {
+            vec2 f = (p / uCanvasSize) * (uDustN - 1.0);
+            vec2 f0 = floor(f); vec2 tt = f - f0;
+            vec2 i10 = vec2(min(f0.x+1.0, uDustN-1.0), f0.y);
+            vec2 i01 = vec2(f0.x, min(f0.y+1.0, uDustN-1.0));
+            vec2 i11 = vec2(i10.x, i01.y);
+            vec4 t00=dustTexel(f0); vec4 t10=dustTexel(i10); vec4 t01=dustTexel(i01); vec4 t11=dustTexel(i11);
+            float w00=(1.0-tt.x)*(1.0-tt.y); float w10=tt.x*(1.0-tt.y); float w01=(1.0-tt.x)*tt.y; float w11=tt.x*tt.y;
+            tauF = (t00.r*w00 + t10.r*w10 + t01.r*w01 + t11.r*w11) * 6.0;
+            if (tauF > 0.00001) {
+              float dw = (v16(t00)*w00 + v16(t10)*w10 + v16(t01)*w01 + v16(t11)*w11) / 65535.0 * 40000.0 - 20000.0;
+              depthAvg = dw / tauF;
+            } else { tauF = 0.0; }
+          }
+          float tauColumn = tauF + hint * 0.12;
+          if (uShowEvolvingDust < 0.5) { tauColumn = hint * 0.12; }
+          if (tauColumn > 0.0001) {
+            float maxTau = 0.55 + uEdgeOn * 1.35;
+            float fg = 0.0;
+            if (tauF > 0.0001) {
+              fg = smoothstep(-45.0, 170.0, z2 - depthAvg) * (0.18 + uEdgeOn * 0.72);
+              fg = clamp(fg, 0.0, 0.92);
+            }
+            float rT = chanTrans(tauColumn, 0.55, maxTau, fg);
+            float gT = chanTrans(tauColumn, 0.85, maxTau, fg);
+            float bT = chanTrans(tauColumn, 1.22, maxTau, fg);
+            float aT = chanTrans(tauColumn, 1.0, maxTau, fg);
+            a = baseA * aT; col *= vec3(rT, gT, bT);
+          }
+        }
+        if (iMass > 8.0 && aStage < 0.5) { pType = 6.0; sSize *= 2.0; }
+        // ---- spiral population modifier (per-star galaxy context) ----
+        vec3 gbh = (aGalaxy < 0.5) ? uBH0 : uBH1;
+        vec2 preset = (aGalaxy < 0.5) ? uPresetA : uPresetB;
+        vec2 d2 = aStarPos.xy - gbh.xy; float rC = length(d2);
+        a *= clamp(0.42 + 0.74*exp(-rC/(uGalaxyR*0.82)), 0.46, 1.08);
+        float warmMix = 0.0;
+        if (rC < uBulge*1.15) {
+          float tb = clamp(rC/(uBulge*1.15), 0.0, 1.0);
+          a *= 0.38 + 0.52*tb; sSize *= 0.62 + 0.26*tb;
+          warmMix = 0.52 * (1.0 - tb);
+        }
+        if (preset.y > 0.5 && preset.y < 1.5 && uPostMerger < 0.5 && rC > uBulge*0.55 && rC < uGalaxyR*1.18) {
+          float th2 = atan(d2.y, d2.x);
+          float ph2 = preset.x*(th2 - uPatternAngle) - (preset.x*4.9331548756)*log(max(rC, 51.0)/50.0);
+          float c2 = cos(ph2);
+          float ridge = clamp((c2 - 0.42)/0.58, 0.0, 1.0);
+          float inter = clamp((0.35 - c2)/1.35, 0.0, 1.0);
+          a *= (1.0 + ridge*0.16) * (1.0 - inter*0.12);
+          sSize *= 1.0 + ridge*0.05;
+        }
+        if (warmMix > 0.0) { col = mix(col, vec3(1.0, 0.78, 0.48), warmMix); }
+        // ---- old-star reduction (young tracers keep full glitter) ----
+        if (uObsSynth > 0.5) {
+          bool young = (age < 180.0) || (iMass > 5.0) || (T > 9000.0 && aStage < 0.5);
+          if (!young) {
+            float cb = clamp(1.0 - rC/max(1.0, uBulge*1.15), 0.0, 1.0);
+            a *= 0.52 - cb*0.16; sSize *= 0.70 - cb*0.10;
+            col = col*0.68 + vec3(1.0, 0.78, 0.48)*0.32;
+          }
+        }
+        // ---- cinematic depth ----
+        if (uCinDepth > 0.5) {
+          float far = clamp((z2 + uGalaxyR*2.5)/(uGalaxyR*5.0), 0.0, 1.0);
+          float am = 1.0 + uEdgeOn*((1.0-far)*0.18 - far*0.30);
+          float sm = 1.0 + uEdgeOn*((1.0-far)*0.10 - far*0.07);
+          if (uFocus.w > 0.5) {
+            float dd = distance(aStarPos, uFocus.xyz);
+            float fo = exp(-dd/420.0);
+            am *= 0.58 + 0.42*fo; sm *= 0.92 + 0.18*fo;
+          }
+          a *= clamp(am, 0.35, 1.35); sSize *= clamp(sm, 0.75, 1.25);
+          if (uEdgeOn > 0.05 && far > 0.55) {
+            float cool = (far - 0.55) * uEdgeOn;
+            col.r *= 1.0 - cool*0.10; col.g *= 1.0 - cool*0.06; col.b *= 1.0 + cool*0.04;
+          }
+        }
+        if (uCineSat > 0.001) {
+          float lum = dot(col, vec3(0.30, 0.59, 0.11));
+          col = max(vec3(0.0), vec3(lum) + (col - vec3(lum))*uCineSat);
+        }
+        if (uGlowPass > 0.5) {
+          float h = fract(sin(dot(aStarPos.xy, vec2(12.9898, 78.233)))*43758.5453);
+          if (h > 0.25) { a = 0.0; }
+          pType = 8.0; a *= uGlowAlpha; sSize = uGlowSize;
+        }
+        if (a <= 0.005) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vColor = vec4(0.0); vType = 0.0; vSize = 0.0; return; }
+        gl_Position = vec4((2.0*p.x/uCanvasSize.x) - 1.0, 1.0 - (2.0*p.y/uCanvasSize.y), 0.0, 1.0);
+        gl_PointSize = sSize * uScale * sf;
+        vColor = vec4(col, a); vType = pType; vSize = sSize;
+      }`;
     function createShaderProgram(gl,vs,fs){const p=gl.createProgram(),v=gl.createShader(gl.VERTEX_SHADER),f=gl.createShader(gl.FRAGMENT_SHADER);gl.shaderSource(v,vs);gl.compileShader(v);gl.shaderSource(f,fs);gl.compileShader(f);gl.attachShader(p,v);gl.attachShader(p,f);gl.linkProgram(p);return p;}
     const program = createShaderProgram(gl,vsSource,fsSource); gl.useProgram(program);
     
@@ -1786,6 +1977,58 @@
     const uPSFCoreLoc=gl.getUniformLocation(program,'uPSFCore'), uPSFHaloLoc=gl.getUniformLocation(program,'uPSFHalo');
     const uBloomLoc=gl.getUniformLocation(program,'uBloom'), uDiffractionLoc=gl.getUniformLocation(program,'uDiffraction');
     const uSparseLoc=gl.getUniformLocation(program,'uSparse'), uGainLoc=gl.getUniformLocation(program,'uGain'), uShoulderLoc=gl.getUniformLocation(program,'uShoulder');
+
+    // ===== GPU star renderer state (PERF #2) =====
+    let gpuStarsOK = false, gpuStarCount = 0, starProg = null, starVBO = null, stageVBO = null, galaxyVBO = null, dustTex = null, SL = null;
+    const dustTexData = new Uint8Array(DUST_FIELD_SIZE * DUST_FIELD_SIZE * 4);
+    try {
+        if (gl.getParameter(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS) > 0) {
+            starProg = createShaderProgram(gl, vsStarSrc, fsSource);
+            if (gl.getProgramParameter(starProg, gl.LINK_STATUS)) {
+                const A = (n)=>gl.getAttribLocation(starProg,n), U = (n)=>gl.getUniformLocation(starProg,n);
+                SL = { aStarPos:A('aStarPos'), aPhysA:A('aPhysA'), aPhysB:A('aPhysB'), aStage:A('aStage'), aGalaxy:A('aGalaxy'),
+                    uTranslate:U('uTranslate'), uScale:U('uScale'), uCanvasSize:U('uCanvasSize'), uRotX:U('uRotX'), uRotY:U('uRotY'), uIsOrtho:U('uIsOrtho'),
+                    uStarVisualMult:U('uStarVisualMult'), uRealColors:U('uRealColors'), uDustEnabled:U('uDustEnabled'), uShowEvolvingDust:U('uShowEvolvingDust'),
+                    uEdgeOn:U('uEdgeOn'), uPatternAngle:U('uPatternAngle'), uBulge:U('uBulge'), uGalaxyR:U('uGalaxyR'), uPostMerger:U('uPostMerger'),
+                    uBH0:U('uBH0'), uBH1:U('uBH1'), uBHCount:U('uBHCount'), uPresetA:U('uPresetA'), uPresetB:U('uPresetB'),
+                    uObsSynth:U('uObsSynth'), uCinDepth:U('uCinDepth'), uFocus:U('uFocus'), uCineSat:U('uCineSat'),
+                    uDustHintNorm:U('uDustHintNorm'), uDustTex:U('uDustTex'), uDustN:U('uDustN'),
+                    uGlowPass:U('uGlowPass'), uGlowSize:U('uGlowSize'), uGlowAlpha:U('uGlowAlpha'),
+                    uExposure:U('uExposure'), uTime:U('uTime'), uHDR:U('uHDR'), uPSFCore:U('uPSFCore'), uPSFHalo:U('uPSFHalo'),
+                    uBloom:U('uBloom'), uDiffraction:U('uDiffraction'), uSparse:U('uSparse'), uGain:U('uGain'), uShoulder:U('uShoulder') };
+                starVBO = gl.createBuffer(); stageVBO = gl.createBuffer(); galaxyVBO = gl.createBuffer();
+                dustTex = gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D, dustTex);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, DUST_FIELD_SIZE, DUST_FIELD_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, dustTexData);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                gpuStarsOK = true;
+            }
+        }
+    } catch (_gpuErr) { console.warn('GPU star renderer unavailable; CPU path in use.', _gpuErr); gpuStarsOK = false; }
+    function uploadGPUStarState(p) {
+        gpuStarCount = p.counts.stars;
+        if (!gpuStarCount) return;
+        gl.bindBuffer(gl.ARRAY_BUFFER, starVBO); gl.bufferData(gl.ARRAY_BUFFER, p.sF, gl.DYNAMIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, stageVBO); gl.bufferData(gl.ARRAY_BUFFER, p.sStage, gl.DYNAMIC_DRAW);
+        gl.bindBuffer(gl.ARRAY_BUFFER, galaxyVBO); gl.bufferData(gl.ARRAY_BUFFER, p.sGalaxy, gl.DYNAMIC_DRAW);
+    }
+    function uploadDustTexture() {
+        // Pack the CPU dust field for the star shader: R = tau/6, G/B = 16-bit depthWeighted (+-20000).
+        const N = DUST_FIELD_SIZE, n2 = N * N;
+        if (!dustFieldBuilt) { dustTexData.fill(0); }
+        else {
+            for (let i = 0; i < n2; i++) {
+                const tau = dustTauField[i];
+                dustTexData[i*4] = tau <= 0 ? 0 : Math.min(255, (tau / 6) * 255) | 0;
+                const dw = Math.max(-20000, Math.min(20000, dustDepthField[i]));
+                const v16 = Math.round((dw + 20000) / 40000 * 65535);
+                dustTexData[i*4+1] = (v16 >> 8) & 255; dustTexData[i*4+2] = v16 & 255; dustTexData[i*4+3] = 255;
+            }
+        }
+        gl.bindTexture(gl.TEXTURE_2D, dustTex);
+        gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, N, N, gl.RGBA, gl.UNSIGNED_BYTE, dustTexData);
+    }
     
     const particlePositionBuffer=gl.createBuffer(), particleSizeBuffer=gl.createBuffer(), particleTypeBuffer=gl.createBuffer(), particleColorBuffer=gl.createBuffer();
     
@@ -4725,6 +4968,7 @@
 
       totalGasMassCached = gasClouds.reduce((acc, c) => acc + c.mass, 0);
       buildProjectedDustField();
+      if (gpuStarsOK) uploadDustTexture();
       drawBackgroundUniverse(bgCtx);
       drawObservationSynthesisMaps(bgCtx);
       
@@ -4787,8 +5031,10 @@
           }
       }
 
-      const starStride = Math.max(1, Math.floor(stars.length / RENDER_STAR_BUDGET));
+      const useGPUStars = gpuStarsOK && document.getElementById('tglGPUStars').checked && currentModeId === 'visible' && gpuStarCount > 0 && stars.length > 0;
+      const starStride = useGPUStars ? 1 : Math.max(1, Math.floor(stars.length / RENDER_STAR_BUDGET));
       const starSizeBoost = Math.min(2.2, Math.sqrt(starStride)); // keep perceived brightness ~constant when striding
+      if (!useGPUStars) {
       for(let si = 0; si < stars.length; si += starStride){
         const star = stars[si];
         let sp = getStarRenderParams(star, currentModeId);
@@ -4806,6 +5052,21 @@
             }
         }
       }
+      } else if (showStreaks && currentModeId !== 'spectroscopy') {
+          // GPU path draws every star on the GPU; only trails stay on the CPU (bounded by TRAIL_TRACK_CAP).
+          const _tl = Math.min(stars.length, TRAIL_TRACK_CAP);
+          for (let si = 0; si < _tl; si++) {
+              const star = stars[si];
+              const tr = trailStore.get(star.id);
+              if (!tr || tr.count === 0) continue;
+              let sp = getStarRenderParams(star, currentModeId);
+              if (sp.a <= 0.005) continue;
+              for(let j=0; j<tr.count; j++) {
+                  let idx = tr.idx - 1 - j; if (idx < 0) idx += MAX_TRAIL_LENGTH;
+                  addPoint(tr.buf[idx*3], tr.buf[idx*3+1], tr.buf[idx*3+2], sp.size*0.4, 0, sp.r, sp.g, sp.b, sp.a * 0.4 * (1.0 - j/MAX_TRAIL_LENGTH));
+              }
+          }
+      }
 
       if (pIdx > 0) {
           gl.uniform2f(uTranslateLoc, translateX * highResMult, translateY * highResMult); 
@@ -4818,6 +5079,59 @@
           gl.bindBuffer(gl.ARRAY_BUFFER,particleTypeBuffer);gl.bufferData(gl.ARRAY_BUFFER,typData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aTypeLoc);
           gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,colData.subarray(0,pIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aColorLoc);
           gl.drawArrays(gl.POINTS,0,pIdx); 
+      }
+
+      // ---- GPU star pass (PERF #2): draw every simulated star straight from the worker buffers ----
+      if (useGPUStars) {
+          gl.useProgram(starProg);
+          gl.uniform2f(SL.uTranslate, translateX * highResMult, translateY * highResMult);
+          gl.uniform1f(SL.uScale, scale * highResMult); gl.uniform2f(SL.uCanvasSize, glCanvas.width, glCanvas.height);
+          gl.uniform1f(SL.uRotX, rotationX * Math.PI / 180); gl.uniform1f(SL.uRotY, rotationY * Math.PI / 180);
+          gl.uniform1f(SL.uIsOrtho, isOrthographicRender ? 1.0 : 0.0);
+          gl.uniform1f(SL.uExposure, currentExposure * (CINE.on ? Math.min(2.0, 0.75 + 0.45 * CINE.bloomStr) : 1.0));
+          gl.uniform1f(SL.uTime, frameCount * 0.01); gl.uniform1f(SL.uHDR, tglHDR.checked ? 1.0 : 0.0);
+          gl.uniform1f(SL.uPSFCore, currentMode.psfCore); gl.uniform1f(SL.uPSFHalo, currentMode.psfHalo);
+          gl.uniform1f(SL.uBloom, finalBloom);
+          gl.uniform1f(SL.uDiffraction, (useRealism && tglDiffraction.checked) ? currentMode.diffraction : 0.0);
+          gl.uniform1f(SL.uSparse, currentMode.sparseMode); gl.uniform1f(SL.uGain, currentMode.exposureGain); gl.uniform1f(SL.uShoulder, currentMode.exposureShoulder);
+          gl.uniform1f(SL.uStarVisualMult, starVisualMult);
+          gl.uniform1f(SL.uRealColors, useRealisticColors ? 1.0 : 0.0);
+          gl.uniform1f(SL.uDustEnabled, (useRealism && tglDust.checked && dustVisualMult > 0.0005) ? 1.0 : 0.0);
+          gl.uniform1f(SL.uShowEvolvingDust, showEvolvingDust ? 1.0 : 0.0);
+          gl.uniform1f(SL.uEdgeOn, Math.pow(Math.cos(rotationX * Math.PI / 180), 2.0));
+          gl.uniform1f(SL.uPatternAngle, patternAngle); gl.uniform1f(SL.uBulge, bulgeRadius); gl.uniform1f(SL.uGalaxyR, galaxyRadius);
+          gl.uniform1f(SL.uPostMerger, isPostMerger ? 1.0 : 0.0);
+          const _b0 = blackHoles[0] || {x:0,y:0,z:0}, _b1 = blackHoles[1] || _b0;
+          gl.uniform3f(SL.uBH0, _b0.x, _b0.y, _b0.z); gl.uniform3f(SL.uBH1, _b1.x, _b1.y, _b1.z);
+          gl.uniform1f(SL.uBHCount, blackHoles.length);
+          const _pt = (id)=>{ const pr = GALAXY_PRESETS[id]; if (!pr) return [0,0]; return [pr.armCount || 0, pr.type === 'spiral' ? 1 : (id === 'ring' ? 2 : 0)]; };
+          const _pA = _pt(galaxyATypeSelect.value), _pB = _pt(galaxyBTypeSelect.value);
+          gl.uniform2f(SL.uPresetA, _pA[0], _pA[1]); gl.uniform2f(SL.uPresetB, _pB[0], _pB[1]);
+          gl.uniform1f(SL.uObsSynth, (useObservationSynthesis && reduceResolvedOldStars) ? 1.0 : 0.0);
+          gl.uniform1f(SL.uCinDepth, (useRealism && useCinematicDepth) ? 1.0 : 0.0);
+          const _ft = (isPaused && astrometryTargets.length > 0) ? astrometryTargets[0] : null;
+          gl.uniform4f(SL.uFocus, _ft ? _ft.x : 0, _ft ? _ft.y : 0, _ft ? _ft.z : 0, _ft ? 1.0 : 0.0);
+          gl.uniform1f(SL.uCineSat, (CINE.on && CINE.vivid) ? CINE.sat : 0.0);
+          gl.uniform1f(SL.uDustHintNorm, (totalGasMassCached / 60000.0) * dustVisualMult);
+          gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dustTex); gl.uniform1i(SL.uDustTex, 0);
+          gl.uniform1f(SL.uDustN, DUST_FIELD_SIZE);
+          gl.uniform1f(SL.uGlowPass, 0.0); gl.uniform1f(SL.uGlowSize, 0.0); gl.uniform1f(SL.uGlowAlpha, 0.0);
+          gl.bindBuffer(gl.ARRAY_BUFFER, starVBO);
+          gl.vertexAttribPointer(SL.aStarPos, 3, gl.FLOAT, false, 48, 0); gl.enableVertexAttribArray(SL.aStarPos);
+          gl.vertexAttribPointer(SL.aPhysA, 4, gl.FLOAT, false, 48, 24); gl.enableVertexAttribArray(SL.aPhysA);
+          gl.vertexAttribPointer(SL.aPhysB, 2, gl.FLOAT, false, 48, 40); gl.enableVertexAttribArray(SL.aPhysB);
+          gl.bindBuffer(gl.ARRAY_BUFFER, stageVBO);
+          gl.vertexAttribPointer(SL.aStage, 1, gl.BYTE, false, 1, 0); gl.enableVertexAttribArray(SL.aStage);
+          gl.bindBuffer(gl.ARRAY_BUFFER, galaxyVBO);
+          gl.vertexAttribPointer(SL.aGalaxy, 1, gl.BYTE, false, 1, 0); gl.enableVertexAttribArray(SL.aGalaxy);
+          gl.drawArrays(gl.POINTS, 0, gpuStarCount);
+          if (CINE.on && CINE.glow) {
+              gl.uniform1f(SL.uGlowPass, 1.0); gl.uniform1f(SL.uGlowSize, cineGlowSize); gl.uniform1f(SL.uGlowAlpha, 0.16 * CINE.glowStr);
+              gl.drawArrays(gl.POINTS, 0, gpuStarCount);
+          }
+          gl.disableVertexAttribArray(SL.aStarPos); gl.disableVertexAttribArray(SL.aPhysA); gl.disableVertexAttribArray(SL.aPhysB);
+          gl.disableVertexAttribArray(SL.aStage); gl.disableVertexAttribArray(SL.aGalaxy);
+          gl.useProgram(program);
       }
 
       // ---- Cinematic 3D dust extinction: real particles sharing the stars'/gas' space ----
@@ -5079,9 +5393,10 @@
       if (frameCount % 15 === 0) {
           if (!perfMeterEl) perfMeterEl = document.getElementById('hud-perf');
           if (perfMeterEl) {
-              const _stride = Math.max(1, Math.floor(stars.length / RENDER_STAR_BUDGET));
+              const _gpu = gpuStarsOK && document.getElementById('tglGPUStars').checked && currentModeId === 'visible';
+              const _stride = _gpu ? 1 : Math.max(1, Math.floor(stars.length / RENDER_STAR_BUDGET));
               const _drawn = _stride > 1 ? Math.ceil(stars.length / _stride) : stars.length;
-              perfMeterEl.textContent = Math.round(_fpsSmooth) + ' fps · ' + _renderMsSmooth.toFixed(1) + 'ms · ' + _physicsMsSmooth.toFixed(0) + 'ms phys · ' + _drawn.toLocaleString() + '/' + stars.length.toLocaleString();
+              perfMeterEl.textContent = Math.round(_fpsSmooth) + ' fps · ' + _renderMsSmooth.toFixed(1) + 'ms · ' + _physicsMsSmooth.toFixed(0) + 'ms phys · ' + (_gpu ? 'GPU · ' : '') + _drawn.toLocaleString() + '/' + stars.length.toLocaleString();
           }
       }
       frameCount++; requestAnimationFrame(draw);
@@ -5645,6 +5960,7 @@
         const p = msg.payload;
         if (typeof p.physicsMs === 'number') _physicsMsSmooth = _physicsMsSmooth * 0.8 + p.physicsMs * 0.2;
         unpackStars(p); unpackGas(p); // PERF (#1): rebuild pooled star/gas objects from transferred typed arrays
+        if (gpuStarsOK) uploadGPUStarState(p); // PERF (#2): hand the same transferred buffers straight to the GPU
         blackHoles = p.blackHoles;
         jetParticles = p.jetParticles; remnants = p.remnants;
         hiiRegions = p.hiiRegions; jetLobes = p.jetLobes;
