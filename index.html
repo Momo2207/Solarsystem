@@ -1503,12 +1503,31 @@
         dustFieldBuilt = false;
     }
 
+    // Real galactic dust lanes are thin: scale height ~100-200 pc vs a gas layer
+    // several times taller. Weighting each cloud's DUST (not its gas emission) by
+    // exp(-|z|/H) collapses edge-on extinction into the iconic dark midplane lane
+    // instead of a galaxy-wide dimming slab, while the 4.5x renormalization keeps
+    // the face-on mean extinction exactly where it was (measured: 1.025).
+    const DUST_SCALE_HEIGHT = 7.0;   // world units ~ 215 pc
+    const DUST_LAYER_NORM = 4.5, DUST_LAYER_CAP = 2.5;
+    function dustLayerWeight(x, y, z) {
+        let bh = blackHoles[0];
+        if (!bh) return 1.0;
+        if (blackHoles.length > 1) {
+            const b2 = blackHoles[1];
+            const dA = (x-bh.x)*(x-bh.x) + (y-bh.y)*(y-bh.y);
+            const dB = (x-b2.x)*(x-b2.x) + (y-b2.y)*(y-b2.y);
+            if (dB < dA) bh = b2;
+        }
+        return Math.min(DUST_LAYER_CAP, DUST_LAYER_NORM * Math.exp(-Math.abs(z - bh.z) / DUST_SCALE_HEIGHT));
+    }
     function estimateCloudOpticalDepth(cloud) {
         if (!cloud || !cloud.mass || !cloud.dustMass) return 0;
         const ratio = cloud.dustMass / Math.max(cloud.mass, 0.001);
         if (ratio < 0.00035) return 0;
         const massFactor = clamp(Math.pow(cloud.mass / 140.0, 0.22), 0.55, 1.85);
-        return clamp(ratio * 24.0 * massFactor * dustVisualMult, 0.0, 0.85);
+        const layer = dustLayerWeight(cloud.x, cloud.y, cloud.z);
+        return clamp(ratio * 24.0 * massFactor * dustVisualMult * layer, 0.0, 0.85);
     }
 
     function buildProjectedDustField() {
@@ -1660,12 +1679,13 @@
     let _fpsSmooth = 0, _lastFrameTs = 0, _renderMsSmooth = 0, _physicsMsSmooth = 0, perfMeterEl = null;
     const posData = new Float32Array(MAX_RENDER_PARTICLES * 3), sizData = new Float32Array(MAX_RENDER_PARTICLES);
     const typData = new Float32Array(MAX_RENDER_PARTICLES), colData = new Float32Array(MAX_RENDER_PARTICLES * 4);
+    const seedData = new Float32Array(MAX_RENDER_PARTICLES); // per-particle noise seed (CINEMATIC #3)
     
     const vsSource=`
-      attribute vec3 aPosition; attribute float aSize; attribute float aType; attribute vec4 aColor; 
+      attribute vec3 aPosition; attribute float aSize; attribute float aType; attribute vec4 aColor; attribute float aSeed; 
       uniform vec2 uTranslate; uniform float uScale; uniform vec2 uCanvasSize; 
       uniform float uRotX; uniform float uRotY; uniform float uIs3D; uniform float uIsOrtho; 
-      varying vec4 vColor; varying float vType; varying float vPitch; varying float vSize;
+      varying vec4 vColor; varying float vType; varying float vPitch; varying float vSize; varying float vSeed;
       void main(){
         vec2 p; float finalSize = aSize * uScale;
         vPitch = max(abs(cos(uRotX)), 0.15); 
@@ -1677,24 +1697,34 @@
             p = vec2(x1, y2) * sf * uScale + uTranslate + (uCanvasSize / 2.0); finalSize *= sf;
         } else { p = aPosition.xy * uScale + uTranslate; }
         gl_Position = vec4(vec2((2.0 * p.x / uCanvasSize.x) - 1.0, 1.0 - (2.0 * p.y / uCanvasSize.y)), 0.0, 1.0); 
-        gl_PointSize = finalSize; vColor = aColor; vType = aType;
+        gl_PointSize = finalSize; vColor = aColor; vType = aType; vSeed = aSeed;
       }`;
     
     const fsSource=`
-      precision mediump float; varying vec4 vColor; varying float vType; varying float vPitch; varying float vSize;
+      precision mediump float; varying vec4 vColor; varying float vType; varying float vPitch; varying float vSize; varying float vSeed;
       uniform float uExposure; uniform float uTime; uniform float uHDR;
       uniform float uPSFCore; uniform float uPSFHalo; 
       uniform float uBloom; uniform float uDiffraction; uniform float uSparse;
       uniform float uGain; uniform float uShoulder;
+      uniform sampler2D uNoiseTex;
       
       float rand(vec2 co){ return fract(sin(dot(co.xy ,vec2(12.9898,78.233))) * 43758.5453); }
 
       void main(){
         if (vType == 9.0) {
-            // DUST EXTINCTION: soft dark sprite, multiplicative. vColor.rgb = per-channel
-            // extinction weight (blue highest), vColor.a = strength. Output = transmission.
-            vec2 dc = gl_PointCoord - vec2(0.5); float dd = length(dc); if (dd > 0.5) discard;
-            float sm = exp(-dd * dd * 5.0) * vColor.a;
+            // DUST EXTINCTION: flattened, noise-eroded dark sprite, multiplicative.
+            // vColor.rgb = per-channel extinction weight (blue highest), vColor.a = strength.
+            // The oblate squash (vPitch) makes clouds thin edge-on; the fBm erosion turns
+            // smooth dark discs into ragged, torn silhouettes. Output = transmission.
+            vec2 dc = gl_PointCoord - vec2(0.5);
+            dc.y /= mix(0.45, 1.0, vPitch);
+            float dd = length(dc); if (dd > 0.5) discard;
+            float ca9 = cos(vSeed * 6.2831853); float sa9 = sin(vSeed * 6.2831853);
+            vec2 nuv9 = mat2(ca9, -sa9, sa9, ca9) * dc * (1.15 + vSeed * 0.9) + vec2(vSeed * 5.1, vSeed * 9.3);
+            float n9 = texture2D(uNoiseTex, nuv9).r;
+            float body = exp(-dd * dd * 5.0);
+            float wisps = smoothstep(0.18, 0.78, n9 * (1.35 - dd * 1.5));
+            float sm = body * wisps * vColor.a;
             vec3 trans = clamp(vec3(1.0) - vColor.rgb * sm, 0.0, 1.0);
             gl_FragColor = vec4(trans, 1.0);
             return;
@@ -1739,10 +1769,17 @@
                     finalAlpha = (core + halo * 0.5) * vColor.a;
                 }
             } else if (vType == 1.0 || vType == 5.0) {
-                // FLUID GAS CLOUDS: Pure soft gradient, no solid core
+                // VOLUMETRIC GAS (CINEMATIC #3): fractal-noise structure over the soft
+                // gradient. Overlapping wispy sprites read as filamentary nebulosity
+                // instead of smooth blobs; hue stays purely physical.
+                float caG = cos(vSeed * 6.2831853); float saG = sin(vSeed * 6.2831853);
+                vec2 nuvG = mat2(caG, -saG, saG, caG) * c * (1.35 + vSeed * 1.1) + vec2(vSeed * 7.7, vSeed * 3.1);
+                float nG = texture2D(uNoiseTex, nuvG).r;
+                float nG2 = texture2D(uNoiseTex, nuvG * 2.7 + vec2(0.37, 0.61)).r;
                 float fluff = exp(-d * d * 25.0); 
-                finalRGB = vColor.rgb; // Keeps pure physical color
-                finalAlpha = fluff * vColor.a;
+                float wisp = smoothstep(0.16, 0.92, nG * 0.75 + nG2 * 0.45 - d * 0.55);
+                finalRGB = vColor.rgb * (0.80 + 0.45 * nG);
+                finalAlpha = fluff * (0.35 + 1.05 * wisp) * vColor.a;
             } else if (vType == 8.0) {
                 // CINEMATIC DIFFUSE GLOW: very soft wide gaussian to fill surface brightness between stars
                 float gg = exp(-d * d * 4.5);
@@ -1801,7 +1838,7 @@
       uniform float uObsSynth; uniform float uCinDepth; uniform vec4 uFocus; uniform float uCineSat;
       uniform float uDustHintNorm; uniform sampler2D uDustTex; uniform float uDustN;
       uniform float uGlowPass; uniform float uGlowSize; uniform float uGlowAlpha;
-      varying vec4 vColor; varying float vType; varying float vPitch; varying float vSize;
+      varying vec4 vColor; varying float vType; varying float vPitch; varying float vSize; varying float vSeed;
       vec3 planck(float temp){
         float t = temp/100.0; float r; float g; float b;
         if (t <= 66.0) {
@@ -1837,6 +1874,7 @@
         float sf=(uIsOrtho>0.5)?1.0:(1000.0/(1000.0+z2));
         vec2 p=vec2(x1,y2)*sf*uScale + uTranslate + uCanvasSize*0.5;
         vPitch = max(abs(cosX), 0.15);
+        vSeed = fract(sin(dot(aStarPos.xy, vec2(12.9898, 78.233))) * 43758.5453);
         // ---- appearance: visible-mode port of getStarRenderParams ----
         float baseA = min(1.0, 0.4 + min(1.0, pow(max(mass,0.0001), 0.05) * (T/6000.0)) * 0.6);
         float sSize = max(0.2, pow(max(Lum,0.0), 0.25)) * uStarVisualMult;
@@ -1857,7 +1895,7 @@
           }
           vec2 hl = aStarPos.xy - hbh.xy; float hlz = aStarPos.z - hbh.z;
           float hR = max(0.1, length(hl));
-          float zDen = exp(-abs(hlz)/22.0);
+          float zDen = exp(-abs(hlz)/7.0); // DUST_SCALE_HEIGHT: thin dust lane, kept in sync with the CPU hint
           float rDen = 0.0;
           if (hp.y > 1.5) {
             float ringR = uGalaxyR * 0.75; float dr = hR - ringR;
@@ -1971,6 +2009,7 @@
     const program = createShaderProgram(gl,vsSource,fsSource); gl.useProgram(program);
     
     const aPositionLoc=gl.getAttribLocation(program,'aPosition'), aSizeLoc=gl.getAttribLocation(program,'aSize'), aTypeLoc=gl.getAttribLocation(program,'aType'), aColorLoc=gl.getAttribLocation(program,'aColor');
+    const aSeedLoc=gl.getAttribLocation(program,'aSeed');
     const uTranslateLoc=gl.getUniformLocation(program,'uTranslate'), uScaleLoc=gl.getUniformLocation(program,'uScale'), uCanvasSizeLoc=gl.getUniformLocation(program,'uCanvasSize');
     const uRotXLoc=gl.getUniformLocation(program,'uRotX'), uRotYLoc=gl.getUniformLocation(program,'uRotY'), uIs3DLoc=gl.getUniformLocation(program,'uIs3D');
     const uExposureLoc=gl.getUniformLocation(program,'uExposure'), uIsOrthoLoc=gl.getUniformLocation(program,'uIsOrtho');
@@ -1978,6 +2017,7 @@
     const uPSFCoreLoc=gl.getUniformLocation(program,'uPSFCore'), uPSFHaloLoc=gl.getUniformLocation(program,'uPSFHalo');
     const uBloomLoc=gl.getUniformLocation(program,'uBloom'), uDiffractionLoc=gl.getUniformLocation(program,'uDiffraction');
     const uSparseLoc=gl.getUniformLocation(program,'uSparse'), uGainLoc=gl.getUniformLocation(program,'uGain'), uShoulderLoc=gl.getUniformLocation(program,'uShoulder');
+    const uNoiseTexLoc=gl.getUniformLocation(program,'uNoiseTex');
 
     // ===== GPU star renderer state (PERF #2) =====
     let gpuStarsOK = false, gpuStarCount = 0, starProg = null, starVBO = null, stageVBO = null, galaxyVBO = null, dustTex = null, SL = null;
@@ -1994,7 +2034,7 @@
                     uBH0:U('uBH0'), uBH1:U('uBH1'), uBHCount:U('uBHCount'), uPresetA:U('uPresetA'), uPresetB:U('uPresetB'),
                     uObsSynth:U('uObsSynth'), uCinDepth:U('uCinDepth'), uFocus:U('uFocus'), uCineSat:U('uCineSat'),
                     uDustHintNorm:U('uDustHintNorm'), uDustTex:U('uDustTex'), uDustN:U('uDustN'),
-                    uGlowPass:U('uGlowPass'), uGlowSize:U('uGlowSize'), uGlowAlpha:U('uGlowAlpha'),
+                    uGlowPass:U('uGlowPass'), uGlowSize:U('uGlowSize'), uGlowAlpha:U('uGlowAlpha'), uNoiseTexS:U('uNoiseTex'),
                     uExposure:U('uExposure'), uTime:U('uTime'), uHDR:U('uHDR'), uPSFCore:U('uPSFCore'), uPSFHalo:U('uPSFHalo'),
                     uBloom:U('uBloom'), uDiffraction:U('uDiffraction'), uSparse:U('uSparse'), uGain:U('uGain'), uShoulder:U('uShoulder') };
                 starVBO = gl.createBuffer(); stageVBO = gl.createBuffer(); galaxyVBO = gl.createBuffer();
@@ -2030,6 +2070,38 @@
         gl.bindTexture(gl.TEXTURE_2D, dustTex);
         gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, N, N, gl.RGBA, gl.UNSIGNED_BYTE, dustTexData);
     }
+
+    // ===== PROCEDURAL NOISE TEXTURE (CINEMATIC #3) =====
+    // Tileable 4-octave value-noise fBm, generated once at startup. Gas sprites and
+    // dust-extinction sprites sample it (rotated/scaled/offset per particle via the
+    // aSeed attribute) so clouds render as wispy filamentary structure instead of
+    // smooth gaussian blobs.
+    const noiseTex = (function(){
+        const N = 128, P = 32, data = new Uint8Array(N*N*4);
+        let s = 987654321; const rnd = () => { s = (s*1103515245 + 12345) & 0x7fffffff; return s/0x7fffffff; };
+        const lat = new Float32Array(P*P); for (let i = 0; i < P*P; i++) lat[i] = rnd();
+        const smo = t => t*t*(3-2*t);
+        function vn(u, v, f){
+            const xi = Math.floor(u), yi = Math.floor(v);
+            const x0 = ((xi % f) + f) % f, y0 = ((yi % f) + f) % f;
+            const x1 = (x0 + 1) % f, y1 = (y0 + 1) % f;
+            const fx = smo(u - xi), fy = smo(v - yi);
+            const a = lat[y0*P + x0], b = lat[y0*P + x1], c2 = lat[y1*P + x0], d = lat[y1*P + x1];
+            return (a*(1-fx) + b*fx)*(1-fy) + (c2*(1-fx) + d*fx)*fy;
+        }
+        for (let y = 0; y < N; y++) for (let x = 0; x < N; x++){
+            let sum = 0, norm = 0;
+            for (let o = 0; o < 4; o++){ const amp = Math.pow(0.55, o), f = 4 << o; sum += amp*vn(x/N*f, y/N*f, f); norm += amp; }
+            const v8 = Math.max(0, Math.min(255, Math.round((sum/norm)*255)));
+            const o4 = (y*N + x)*4; data[o4] = v8; data[o4+1] = v8; data[o4+2] = v8; data[o4+3] = 255;
+        }
+        const t = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, t);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, N, N, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+        return t;
+    })();
 
     // ===== HDR POST-PROCESSING PIPELINE (CINEMATIC #2) =====
     // Scene renders into a floating-point offscreen framebuffer, so additive star
@@ -2177,7 +2249,7 @@
         gl.useProgram(program);
     }
     
-    const particlePositionBuffer=gl.createBuffer(), particleSizeBuffer=gl.createBuffer(), particleTypeBuffer=gl.createBuffer(), particleColorBuffer=gl.createBuffer();
+    const particlePositionBuffer=gl.createBuffer(), particleSizeBuffer=gl.createBuffer(), particleTypeBuffer=gl.createBuffer(), particleColorBuffer=gl.createBuffer(), particleSeedBuffer=gl.createBuffer();
     
     function onResize() {
       const w=document.getElementById('sim-container').clientWidth, h=document.getElementById('sim-container').clientHeight;
@@ -3651,7 +3723,7 @@
         if (!bh) return 0;
         const lx = x - bh.x; const ly = y - bh.y; const lz = z - bh.z;
         const r_cyl = Math.max(0.1, Math.sqrt(lx*lx + ly*ly));
-        const zDensity = Math.exp(-Math.abs(lz) / 22.0);
+        const zDensity = Math.exp(-Math.abs(lz) / DUST_SCALE_HEIGHT); // thin dust lane (~215 pc), kept in sync with the GPU star shader
         const presetId = bestG === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
         const preset = GALAXY_PRESETS[presetId];
         let rDensity = 0;
@@ -5134,6 +5206,7 @@
       const useRealism = document.getElementById('tglRealism').checked;
 
       gl.uniform1f(uExposureLoc, currentExposure * (CINE.on ? Math.min(2.0, 0.75 + 0.45 * CINE.bloomStr) : 1.0)); gl.uniform1f(uTimeLoc, frameCount * 0.01);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, noiseTex); gl.uniform1i(uNoiseTexLoc, 1); gl.activeTexture(gl.TEXTURE0);
       gl.uniform1f(uHDRLoc, tglHDR.checked ? 1.0 : 0.0);
       gl.uniform1f(uPSFCoreLoc, currentMode.psfCore); gl.uniform1f(uPSFHaloLoc, currentMode.psfHalo);
       
@@ -5147,10 +5220,10 @@
       gl.uniform1f(uIsOrthoLoc, isOrthographicRender ? 1.0 : 0.0); 
       
       let pIdx = 0;
-      function addPoint(x,y,z,size,type,r,g,b,a) {
+      function addPoint(x,y,z,size,type,r,g,b,a,seed) {
           if(pIdx >= MAX_RENDER_PARTICLES) return;
           posData[pIdx*3]=x; posData[pIdx*3+1]=y; posData[pIdx*3+2]=z;
-          sizData[pIdx]=size; typData[pIdx]=type; colData[pIdx*4]=r; colData[pIdx*4+1]=g; colData[pIdx*4+2]=b; colData[pIdx*4+3]=a; pIdx++;
+          sizData[pIdx]=size; typData[pIdx]=type; colData[pIdx*4]=r; colData[pIdx*4+1]=g; colData[pIdx*4+2]=b; colData[pIdx*4+3]=a; seedData[pIdx]=seed||0.0; pIdx++;
       }
 
       for(const bh of blackHoles) {
@@ -5173,8 +5246,9 @@
           const cloud = gasClouds[gi];
           let rp = getGasRenderParams(cloud, currentModeId);
           if (rp.a > 0) {
-              addPoint(cloud.x, cloud.y, cloud.z, rp.size * 1.2, 1, rp.r, rp.g, rp.b, rp.a * 0.5);
-              addPoint(cloud.x, cloud.y, cloud.z, rp.size * 0.6, 1, rp.r, rp.g, rp.b, rp.a * 0.8);
+              const gSeed = ((((cloud.id != null ? cloud.id : gi) * 0.61803398875) % 1) + 1) % 1; // stable per cloud
+              addPoint(cloud.x, cloud.y, cloud.z, rp.size * 1.2, 1, rp.r, rp.g, rp.b, rp.a * 0.5, gSeed);
+              addPoint(cloud.x, cloud.y, cloud.z, rp.size * 0.6, 1, rp.r, rp.g, rp.b, rp.a * 0.8, ((gSeed + 0.37) % 1));
               if (CINE.on && CINE.glow && (gi % (gasStride * 3) === 0)) {
                   addPoint(cloud.x, cloud.y, cloud.z, cineGlowSize * 1.4, 8, rp.r, rp.g, rp.b, rp.a * 0.10 * CINE.glowStr);
               }
@@ -5227,7 +5301,7 @@
           gl.bindBuffer(gl.ARRAY_BUFFER,particlePositionBuffer);gl.bufferData(gl.ARRAY_BUFFER,posData.subarray(0,pIdx*3),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aPositionLoc,3,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aPositionLoc);
           gl.bindBuffer(gl.ARRAY_BUFFER,particleSizeBuffer);gl.bufferData(gl.ARRAY_BUFFER,sizData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aSizeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aSizeLoc);
           gl.bindBuffer(gl.ARRAY_BUFFER,particleTypeBuffer);gl.bufferData(gl.ARRAY_BUFFER,typData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aTypeLoc);
-          gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,colData.subarray(0,pIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aColorLoc);
+          gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,colData.subarray(0,pIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aColorLoc);gl.bindBuffer(gl.ARRAY_BUFFER,particleSeedBuffer);gl.bufferData(gl.ARRAY_BUFFER,seedData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aSeedLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aSeedLoc);
           gl.drawArrays(gl.POINTS,0,pIdx); 
       }
 
@@ -5264,6 +5338,7 @@
           gl.uniform1f(SL.uCineSat, (CINE.on && CINE.vivid) ? CINE.sat : 0.0);
           gl.uniform1f(SL.uDustHintNorm, (totalGasMassCached / 60000.0) * dustVisualMult);
           gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, dustTex); gl.uniform1i(SL.uDustTex, 0);
+          gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, noiseTex); gl.uniform1i(SL.uNoiseTexS, 1); gl.activeTexture(gl.TEXTURE0);
           gl.uniform1f(SL.uDustN, DUST_FIELD_SIZE);
           gl.uniform1f(SL.uGlowPass, 0.0); gl.uniform1f(SL.uGlowSize, 0.0); gl.uniform1f(SL.uGlowAlpha, 0.0);
           gl.bindBuffer(gl.ARRAY_BUFFER, starVBO);
@@ -5293,17 +5368,18 @@
               const c = gasClouds[di];
               const tau = estimateCloudOpticalDepth(c);
               if (tau <= 0.002) continue;
-              const strength = Math.min(0.96, tau * 2.4 * dMul);
+              const strength = Math.min(0.96, tau * 4.4 * dMul); // x1.84 compensates the measured mean noise-erosion of the sprite (0.543)
               const dWorld = c.size * 3.0 + 2.0; // world units; vertex shader applies zoom
               // colour packs per-channel extinction weight (blue absorbed most -> reddening)
-              addPoint(c.x, c.y, c.z, dWorld, 9, 0.60, 0.80, 1.0, strength);
+              const dSeed = ((((c.id != null ? c.id : di) * 0.61803398875) % 1) + 1) % 1;
+              addPoint(c.x, c.y, c.z, dWorld, 9, 0.60, 0.80, 1.0, strength, dSeed);
           }
           if (pIdx > 0) {
               gl.blendFunc(gl.ZERO, gl.SRC_COLOR); // multiplicative extinction
               gl.bindBuffer(gl.ARRAY_BUFFER,particlePositionBuffer);gl.bufferData(gl.ARRAY_BUFFER,posData.subarray(0,pIdx*3),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aPositionLoc,3,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aPositionLoc);
               gl.bindBuffer(gl.ARRAY_BUFFER,particleSizeBuffer);gl.bufferData(gl.ARRAY_BUFFER,sizData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aSizeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aSizeLoc);
               gl.bindBuffer(gl.ARRAY_BUFFER,particleTypeBuffer);gl.bufferData(gl.ARRAY_BUFFER,typData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aTypeLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aTypeLoc);
-              gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,colData.subarray(0,pIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aColorLoc);
+              gl.bindBuffer(gl.ARRAY_BUFFER,particleColorBuffer);gl.bufferData(gl.ARRAY_BUFFER,colData.subarray(0,pIdx*4),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aColorLoc,4,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aColorLoc);gl.bindBuffer(gl.ARRAY_BUFFER,particleSeedBuffer);gl.bufferData(gl.ARRAY_BUFFER,seedData.subarray(0,pIdx),gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aSeedLoc,1,gl.FLOAT,!1,0,0);gl.enableVertexAttribArray(aSeedLoc);
               gl.drawArrays(gl.POINTS,0,pIdx);
               if (tglHDR.checked) { gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR); } else { gl.blendFunc(gl.ONE, gl.ONE); }
           }
