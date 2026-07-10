@@ -237,6 +237,8 @@
 
         <label style="color:var(--accent-blue);">GALAXY ALPHA</label>
         <select id="galaxyAType">
+            <option value="milkyway">⭐ Milky Way</option>
+            <option value="andromeda">⭐ Andromeda (M31)</option>
             <option value="spiral-2" selected>Spiral (2-Arm)</option>
             <option value="spiral-6">Spiral (6-Arm)</option>
             <option value="ring">Ring Galaxy</option>
@@ -5710,6 +5712,11 @@
     // Reads SIM_SETTINGS instead of the DOM; UI resets live in the new
     // main-thread initSimulation() wrapper further down.
     function physicsInitSimulation() {
+      // Defense in depth: an unknown/empty galaxy type (e.g. a select whose value
+      // was set to a non-existent option and silently became "") must never crash
+      // physics -- fall back to a valid spiral instead.
+      if (!GALAXY_PRESETS[SIM_SETTINGS.galaxyAType]) SIM_SETTINGS.galaxyAType = 'spiral-2';
+      if (!GALAXY_PRESETS[SIM_SETTINGS.galaxyBType]) SIM_SETTINGS.galaxyBType = 'spiral-2';
       const peakStarCapacity = SIM_SETTINGS.starCount; 
       const gasAmountMultiplier = SIM_SETTINGS.gasAmount;
       const useClusters = SIM_SETTINGS.enableClusters;
