@@ -222,6 +222,13 @@
       <div class="group-header">Scenario Setup <span class="group-toggle">−</span></div>
       <div class="group-content">
         
+        <label for="scenarioPreset" style="color:var(--accent-purple, #c58bff); margin-bottom:6px;">🌌 Quick Scenario:</label>
+        <select id="scenarioPreset" style="border-color:var(--accent-purple, #c58bff); margin-bottom:12px;">
+            <option value="" selected>— Custom / manual setup —</option>
+            <option value="milkyway">Milky Way (barred spiral, single)</option>
+            <option value="andromeda">Andromeda M31 (bulge-dominant, single)</option>
+            <option value="mw-andromeda">Milkomeda: MW × Andromeda collision</option>
+        </select>
         <label for="simMode" style="color:var(--accent-green); margin-bottom:10px;">Simulation Mode:</label>
         <select id="simMode" style="border-color:var(--accent-green);">
             <option value="single" selected>Single Galaxy</option>
@@ -246,6 +253,8 @@
         <div id="galaxyBControls" style="display:none;">
             <label style="color:var(--accent-red); margin-top:15px;">GALAXY BETA</label>
             <select id="galaxyBType">
+                <option value="milkyway">⭐ Milky Way</option>
+                <option value="andromeda">⭐ Andromeda (M31)</option>
                 <option value="spiral-2">Spiral (2-Arm)</option>
                 <option value="spiral-6">Spiral (6-Arm)</option>
                 <option value="ring">Ring Galaxy</option>
@@ -742,8 +751,23 @@
         "ring": { name: "Ring Galaxy", type: "disc", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 2.5, armCount: 0, armFraction: 0, gasConcentration: 0.8, thickness: 20 },
         "spiral-2": { name: "Spiral (2-Arm)", type: "spiral", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 2.0, armCount: 2, armFraction: 0.5, gasConcentration: 0.8, thickness: 20 },
         "spiral-6": { name: "Spiral (6-Arm)", type: "spiral", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 1.8, armCount: 6, armFraction: 0.6, gasConcentration: 0.9, thickness: 20 },
-        "disc": { name: "Disc Galaxy", type: "disc", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 1.5, armCount: 0, armFraction: 0, gasConcentration: 0.2, thickness: 10 }
+        "disc": { name: "Disc Galaxy", type: "disc", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 1.5, armCount: 0, armFraction: 0, gasConcentration: 0.2, thickness: 10 },
+        // --- Named real-galaxy morphologies (CINEMATIC): distinct shape parameters ---
+        // pitchTan   : tan(pitch angle); SMALLER = more tightly wound arms (Andromeda tight, MW looser)
+        // bulgeFrac  : multiplies the global bulge radius for this galaxy (Andromeda big, MW moderate)
+        // diskScaleFrac : disk exponential scale length as a fraction of galaxyRadius (bigger = more spread out)
+        // bulgeSplit : fraction of stars drawn into the spheroidal bulge vs the disk (0.45 = current default)
+        // metalScale : multiplies initial metallicity -> reddens the population and thickens dust lanes
+        "milkyway": { name: "Milky Way", type: "spiral", INITIAL_VELOCITY_SCALE: 1.0, HALO_DENSITY_SCALE: 2.0, armCount: 4, armFraction: 0.55, gasConcentration: 0.85, thickness: 16, pitchTan: 0.2679, bulgeFrac: 0.85, diskScaleFrac: 0.28, bulgeSplit: 0.38, metalScale: 1.15, barStrength: 0.6 },
+        "andromeda": { name: "Andromeda (M31)", type: "spiral", INITIAL_VELOCITY_SCALE: 1.05, HALO_DENSITY_SCALE: 2.2, armCount: 5, armFraction: 0.5, gasConcentration: 0.7, thickness: 20, pitchTan: 0.1584, bulgeFrac: 1.45, diskScaleFrac: 0.32, bulgeSplit: 0.55, metalScale: 1.5, ringLike: 0.6 }
     };
+    // Per-preset shape accessors with fallbacks to the historical hardcoded values,
+    // so the original four presets generate byte-identically to before.
+    function presetPitchTan(p) { return (p && p.pitchTan) ? p.pitchTan : 0.2027100355; } // tan(0.2)
+    function presetBulgeR(p) { return bulgeRadius * ((p && p.bulgeFrac) ? p.bulgeFrac : 1.0); }
+    function presetDiskScaleFrac(p) { return (p && p.diskScaleFrac) ? p.diskScaleFrac : 0.26; }
+    function presetBulgeSplit(p) { return (p && typeof p.bulgeSplit === "number") ? p.bulgeSplit : 0.45; }
+    function presetMetalScale(p) { return (p && p.metalScale) ? p.metalScale : 1.0; }
 
     // WORKER REFACTOR: SFR accumulator lives physics-side; the main
     // thread's scienceState.sfr points at this object (or the worker's
@@ -1669,6 +1693,41 @@
     dustBrightnessSlider.addEventListener('input', () => { const val = parseFloat(dustBrightnessSlider.value); const shown = val.toFixed(2); dustBrightnessValue.textContent = (val > 0 ? '+' : '') + shown; dustVisualMult = mapDustBiasToMultiplier(val); });
     const dustDetailSlider = document.getElementById('dustDetail'), dustDetailValue = document.getElementById('dustDetailValue');
     dustDetailSlider.addEventListener('input', () => { dustRenderBudget = parseInt(dustDetailSlider.value); dustDetailValue.textContent = dustRenderBudget; });
+    // ===== GALAXY SCENARIO QUICK-LAUNCH =====
+    // A scenario is a curated bundle: which galaxies (type + evolutionary stage),
+    // single vs collision, plus a matching 'look' (exposure, dust bias, cinematic
+    // colour) so one pick gives the whole aesthetic. Applied by driving the real
+    // controls and dispatching their existing events, then one rebuild.
+    const GALAXY_SCENARIOS = {
+        milkyway: {
+            controls: { simMode:'single', galaxyAType:'milkyway', galaxyAStage:'adult', tglCine:true, tglCineVivid:true, exposureSlider:'1.1', dustBrightness:'0.15', cineSat:'135' },
+            note: 'Milky Way: barred 4-arm spiral, warm disc, moderate bulge.'
+        },
+        andromeda: {
+            controls: { simMode:'single', galaxyAType:'andromeda', galaxyAStage:'adult', tglCine:true, tglCineVivid:true, exposureSlider:'1.0', dustBrightness:'0.30', cineSat:'120' },
+            note: 'Andromeda M31: tightly-wound, big red bulge, dusty ring character.'
+        },
+        'mw-andromeda': {
+            controls: { simMode:'collision', galaxyAType:'milkyway', galaxyAStage:'adult', galaxyBType:'andromeda', galaxyBStage:'adult', initialSeparation:'120', impactParam:'18', appVel:'80', tglCine:true, tglCineVivid:true, exposureSlider:'1.05', dustBrightness:'0.20', cineSat:'130' },
+            note: 'Milkomeda: the future Milky Way × Andromeda merger.'
+        }
+    };
+    function applyScenario(key) {
+        const sc = GALAXY_SCENARIOS[key]; if (!sc) return;
+        for (const [id, val] of Object.entries(sc.controls)) {
+            const el = document.getElementById(id); if (!el) continue;
+            if (el.type === 'checkbox') { el.checked = !!val; el.dispatchEvent(new Event('change', { bubbles: true })); }
+            else { el.value = String(val); el.dispatchEvent(new Event(el.tagName === 'SELECT' ? 'change' : 'input', { bubbles: true })); }
+        }
+        // Structural selects are bound to initSimulation and will have triggered
+        // rebuilds; call once more so structural RANGES (separation/impact/vel) and
+        // the full bundle land together in a single clean re-seed.
+        try { initSimulation(); } catch (e) { console.error('scenario restart failed', e); }
+    }
+    (function wireScenario(){
+        const sel = document.getElementById('scenarioPreset');
+        if (sel) sel.addEventListener('change', () => { if (sel.value) applyScenario(sel.value); });
+    })();
     const bloomBalanceSlider = document.getElementById('bloomBalance'), bloomBalanceValue = document.getElementById('bloomBalanceValue');
     bloomBalanceSlider.addEventListener('input', () => { hdrBloomBalance = parseFloat(bloomBalanceSlider.value); bloomBalanceValue.textContent = hdrBloomBalance.toFixed(2) + '\u00d7'; });
 
@@ -5727,13 +5786,14 @@
 
           const _tiltDeg = gIndex === 0 ? (SIM_SETTINGS.galaxyATilt || 0) : (SIM_SETTINGS.galaxyBTilt || 0);
           const _tiltRad = _tiltDeg * Math.PI / 180, _cosT = Math.cos(_tiltRad), _sinT = Math.sin(_tiltRad);
-          const diskScaleLength = galaxyRadius * 0.26; const diskMaxRadius = galaxyRadius * 1.30;
+          const _bulgeSplit = presetBulgeSplit(preset); const _presetBulgeR = presetBulgeR(preset); const _pitchTan = presetPitchTan(preset); const _metalScale = presetMetalScale(preset);
+          const diskScaleLength = galaxyRadius * presetDiskScaleFrac(preset); const diskMaxRadius = galaxyRadius * 1.30;
           const gasScaleLength  = galaxyRadius * 0.35; const gasMaxRadius  = galaxyRadius * 1.40;
           for(let i=0;i<actualStarCount;i++){
             let r,theta,z;
             
-            if(Math.random()<0.45){ 
-                r = Math.abs(gaussianRandomBounded(0, bulgeRadius * 0.4, 3.5)); 
+            if(Math.random()<_bulgeSplit){ 
+                r = Math.abs(gaussianRandomBounded(0, _presetBulgeR * 0.4, 3.5)); 
                 theta=Math.random()*2*Math.PI;
                 const phi=Math.acos(2*Math.random()-1); z=r*Math.cos(phi); r=r*Math.sin(phi); 
             }
@@ -5741,7 +5801,7 @@
                 if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else { r = -diskScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); let _rg = 0; while (r > diskMaxRadius && _rg++ < 6) r = -diskScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); if (r > diskMaxRadius) r = diskMaxRadius; } 
                 theta=Math.random()*2*Math.PI; 
                 if(preset.type === "spiral" && Math.random() < 0.2) { 
-                    const armOffset = Math.log(Math.max(r, bulgeRadius * 0.5) / bulgeRadius) / Math.tan(0.2); const arm = Math.floor(Math.random() * preset.armCount); 
+                    const armOffset = Math.log(Math.max(r, _presetBulgeR * 0.5) / _presetBulgeR) / _pitchTan; const arm = Math.floor(Math.random() * preset.armCount); 
                     theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.4 / preset.armCount); 
                 } 
                 z=gaussianRandomBounded(0,preset.thickness,3); 
@@ -5774,7 +5834,7 @@
                 massVar = Math.min(massVar, 0.7 + Math.random()*0.5); 
             }
 
-            let initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
+            let initialZ = (Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05) * _metalScale;
             
             let newStar = { 
                 id: starIdCounter++, // WORKER REFACTOR: persistent id so UI target references survive state mirroring
@@ -5805,7 +5865,7 @@
             if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else { r = -gasScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); let _rg = 0; while (r > gasMaxRadius && _rg++ < 6) r = -gasScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); if (r > gasMaxRadius) r = gasMaxRadius; }
             theta=Math.random()*2*Math.PI;
             if(preset.type === "spiral" && Math.random() < 0.5) { 
-                const armOffset = Math.log(Math.max(r, bulgeRadius * 0.5) / bulgeRadius) / Math.tan(0.2); const arm = Math.floor(Math.random() * preset.armCount); 
+                const armOffset = Math.log(Math.max(r, presetBulgeR(preset) * 0.5) / presetBulgeR(preset)) / presetPitchTan(preset); const arm = Math.floor(Math.random() * preset.armCount); 
                 theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.3 / preset.armCount); 
             }
             
@@ -5830,7 +5890,7 @@
             // REDUCED INITIAL VERTICAL VELOCITY SCATTER
             const localVz = gaussianRandomBounded(0, v * 0.02, 3);
             
-            const mass=stageParams.avgGasMass*(0.5+Math.random()); const initialZ = Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05;
+            const mass=stageParams.avgGasMass*(0.5+Math.random()); const initialZ = (Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05) * presetMetalScale(preset);
             
             let initialHeat = 10 + Math.random()*10;
             if (preset.type === "spiral" && r_cyl > 50 && r_cyl < galaxyRadius) {
