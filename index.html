@@ -393,6 +393,8 @@
         <input type="range" id="dustDetail" min="1000" max="60000" step="1000" value="8000">
         <label class="checkbox-label"><input type="checkbox" id="tglGPUStars" checked> GPU Star Renderer (draws every star, much faster)</label>
         <label class="checkbox-label"><input type="checkbox" id="tglHDRPipe" checked> HDR Pipeline (real bloom + filmic tonemap)</label>
+        <label for="bloomBalance">Bloom Strength: <span id="bloomBalanceValue">1.00&times;</span></label>
+        <input type="range" id="bloomBalance" min="0" max="2" step="0.05" value="1">
       </div>
     </div>
     
@@ -1231,6 +1233,7 @@
     let currentExposure = 1.0;
     // ===== Cinematic / Epic rendering state (main-thread render only) =====
     let CINE = { on:false, glow:true, dust:true, vivid:true, core:true, hii:true, fg:true, glowStr:1.0, dustStr:1.4, sat:1.4, coreStr:1.2, bloomStr:1.3 };
+    let hdrBloomBalance = 1.0; // HDR pipeline bloom master (live slider); 1.0 == baseline look
     const _cineEls = {};
     function _cineEl(id){ if(!(id in _cineEls)) _cineEls[id]=document.getElementById(id); return _cineEls[id]; }
     function updateCineState(){
@@ -1657,6 +1660,8 @@
     dustBrightnessSlider.addEventListener('input', () => { const val = parseFloat(dustBrightnessSlider.value); const shown = val.toFixed(2); dustBrightnessValue.textContent = (val > 0 ? '+' : '') + shown; dustVisualMult = mapDustBiasToMultiplier(val); });
     const dustDetailSlider = document.getElementById('dustDetail'), dustDetailValue = document.getElementById('dustDetailValue');
     dustDetailSlider.addEventListener('input', () => { dustRenderBudget = parseInt(dustDetailSlider.value); dustDetailValue.textContent = dustRenderBudget; });
+    const bloomBalanceSlider = document.getElementById('bloomBalance'), bloomBalanceValue = document.getElementById('bloomBalanceValue');
+    bloomBalanceSlider.addEventListener('input', () => { hdrBloomBalance = parseFloat(bloomBalanceSlider.value); bloomBalanceValue.textContent = hdrBloomBalance.toFixed(2) + '\u00d7'; });
 
     const starScaleSlider = document.getElementById('starScale');
     const starScaleValue = document.getElementById('starScaleValue');
@@ -2241,7 +2246,7 @@
             gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, hdrB4.tex); gl.uniform1i(PC.uBloom4, 1);
             gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, hdrB8.tex); gl.uniform1i(PC.uBloom8, 2);
             gl.uniform1f(PC.uExposureP, 1.0);
-            gl.uniform1f(PC.uBloomStrP, CINE.on ? (0.5 + 0.55 * CINE.bloomStr) : 0.42);
+            gl.uniform1f(PC.uBloomStrP, (CINE.on ? (0.5 + 0.55 * CINE.bloomStr) : 0.42) * hdrBloomBalance);
         });
         gl.activeTexture(gl.TEXTURE0);
         gl.enable(gl.BLEND);
