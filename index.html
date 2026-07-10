@@ -436,6 +436,9 @@
           <label class="checkbox-label"><input type="checkbox" id="leapfrogPhysics" checked> Leapfrog Integrator</label>
           <div class="help-text">Uses a more stable orbital integration method for particles.</div>
           
+          <label class="checkbox-label"><input type="checkbox" id="tglLocalGravity" checked> Local Self-Gravity (living dynamics)</label>
+          <div class="help-text">Stars and gas feel their neighbours through a live density field: arms self-amplify, gas clumps into knots, tidal debris fragments. Applies on restart.</div>
+          
           <label class="checkbox-label"><input type="checkbox" id="enableClusters" checked> Enable Clusters</label>
           <div class="help-text">Generates dense stellar grouping in initial generation. Applies on restart.</div>
           
@@ -702,7 +705,7 @@
         simMode: 'single', galaxyAType: 'spiral-2', galaxyBType: 'spiral-2',
         galaxyAStage: 'adult', galaxyBStage: 'adult',
         initialSeparation: 2000, impactParam: 200, appVel: 100, galaxyATilt: 0, galaxyBTilt: 0,
-        enableClusters: true, useLeapfrog: true, showJets: true, recordTrails: true,
+        enableClusters: true, useLeapfrog: true, showJets: true, recordTrails: true, localGravity: true,
         showHIIRegions: true, showJetLobes: true,
         enableOldStarConsolidation: true, useObservationSynthesis: true, reduceResolvedOldStars: true,
         protectedStarIds: [] // star ids the main thread wants excluded from consolidation (analysis targets, chase camera, hover)
@@ -902,329 +905,6 @@
     // We anchor the star mass contribution to a reference sampling density.
     const MASS_MODEL_REF_CAPACITY = 20000;
 
-
-    // ====================================================================
-    // COLLECTIVE PARTICLE-MESH GRAVITY (2.5D, isolated FFT convolution)
-    // --------------------------------------------------------------------
-    // The existing analytic halo/bulge and radial live-disk field remain the
-    // authoritative axisymmetric rotation curve.  The mesh solves only the
-    // non-axisymmetric residual of the resolved stars + gas.  This prevents
-    // baryonic mass from being counted twice while adding the missing tidal,
-    // lopsided, bar, spiral and clump backreaction.
-    //
-    // The active 128^2 mesh is embedded in a zero-padded 256^2 FFT domain.
-    // Since source and sample points occupy only the central half-width, the
-    // circular FFT convolution is equivalent to an isolated convolution over
-    // the active domain (no periodic image can overlap it).
-    // ====================================================================
-    const PM_ACTIVE_SIZE = 128;
-    const PM_PAD_SIZE = 256; // must be a power of two and >= 2*PM_ACTIVE_SIZE
-    const PM_PAD_OFFSET = (PM_PAD_SIZE - PM_ACTIVE_SIZE) >> 1;
-    const PM_MAX_GALAXIES = 2;
-    const PM_RADIAL_BINS = 128;
-    const PM_MIN_HALF_EXTENT = 1600;
-    const PM_DOMAIN_DISK_MARGIN = 2.2;
-    const PM_FIELD_BLEND = 0.50;
-    const PM_STRENGTH = 1.0;
-    const PM_MAX_ACCEL = 1.0; // hard safety ceiling; normal mesh forces are far below this
-    const PM_VERTICAL_SCALE = 220;
-
-    let pmCellSize = 1, pmHalfExtent = PM_MIN_HALF_EXTENT;
-    let pmCenterX = 0, pmCenterY = 0, pmMinX = 0, pmMinY = 0;
-    let pmReady = false, pmLastUpdateStep = -1000000;
-    let pmKernelCellSize = -1;
-    let pmWorkRe = null, pmWorkIm = null, pmKernelRe = null, pmKernelIm = null;
-    let pmDensityByGalaxy = null;
-    let pmFieldAx = null, pmFieldAy = null, pmNextAx = null, pmNextAy = null;
-    let pmBitReverse = null, pmFFTStages = null;
-
-    function initParticleMeshStorage() {
-        const paddedCells = PM_PAD_SIZE * PM_PAD_SIZE;
-        const activeCells = PM_ACTIVE_SIZE * PM_ACTIVE_SIZE;
-        if (!pmWorkRe || pmWorkRe.length !== paddedCells) {
-            pmWorkRe = new Float64Array(paddedCells);
-            pmWorkIm = new Float64Array(paddedCells);
-            pmKernelRe = new Float64Array(paddedCells);
-            pmKernelIm = new Float64Array(paddedCells);
-            pmDensityByGalaxy = Array.from({length: PM_MAX_GALAXIES}, () => new Float64Array(paddedCells));
-            pmFieldAx = new Float32Array(activeCells);
-            pmFieldAy = new Float32Array(activeCells);
-            pmNextAx = new Float32Array(activeCells);
-            pmNextAy = new Float32Array(activeCells);
-        }
-        if (!pmBitReverse || pmBitReverse.length !== PM_PAD_SIZE) {
-            pmBitReverse = new Uint16Array(PM_PAD_SIZE);
-            const bits = Math.round(Math.log2(PM_PAD_SIZE));
-            for (let i = 0; i < PM_PAD_SIZE; i++) {
-                let x = i, r = 0;
-                for (let b = 0; b < bits; b++) { r = (r << 1) | (x & 1); x >>= 1; }
-                pmBitReverse[i] = r;
-            }
-            pmFFTStages = [];
-            for (let len = 2; len <= PM_PAD_SIZE; len <<= 1) {
-                const half = len >> 1;
-                const cos = new Float64Array(half), sin = new Float64Array(half);
-                for (let j = 0; j < half; j++) {
-                    const a = 2 * Math.PI * j / len;
-                    cos[j] = Math.cos(a); sin[j] = Math.sin(a);
-                }
-                pmFFTStages.push({len, half, cos, sin});
-            }
-        }
-    }
-
-    function pmFFT1D(re, im, offset, stride, inverse) {
-        const n = PM_PAD_SIZE;
-        for (let i = 0; i < n; i++) {
-            const j = pmBitReverse[i];
-            if (j <= i) continue;
-            const ia = offset + i * stride, ja = offset + j * stride;
-            let t = re[ia]; re[ia] = re[ja]; re[ja] = t;
-            t = im[ia]; im[ia] = im[ja]; im[ja] = t;
-        }
-        for (let s = 0; s < pmFFTStages.length; s++) {
-            const stage = pmFFTStages[s], len = stage.len, half = stage.half;
-            for (let base = 0; base < n; base += len) {
-                for (let j = 0; j < half; j++) {
-                    const evenIndex = offset + (base + j) * stride;
-                    const oddIndex = evenIndex + half * stride;
-                    const wr = stage.cos[j];
-                    const wi = inverse ? stage.sin[j] : -stage.sin[j];
-                    const or = re[oddIndex], oi = im[oddIndex];
-                    const tr = wr * or - wi * oi;
-                    const ti = wr * oi + wi * or;
-                    const er = re[evenIndex], ei = im[evenIndex];
-                    re[evenIndex] = er + tr; im[evenIndex] = ei + ti;
-                    re[oddIndex] = er - tr; im[oddIndex] = ei - ti;
-                }
-            }
-        }
-    }
-
-    function pmFFT2D(re, im, inverse) {
-        const n = PM_PAD_SIZE;
-        for (let y = 0; y < n; y++) pmFFT1D(re, im, y * n, 1, inverse);
-        for (let x = 0; x < n; x++) pmFFT1D(re, im, x, n, inverse);
-        if (inverse) {
-            const scale = 1 / (n * n);
-            for (let i = 0; i < re.length; i++) { re[i] *= scale; im[i] *= scale; }
-        }
-    }
-
-    function rebuildParticleMeshKernel() {
-        initParticleMeshStorage();
-        pmKernelRe.fill(0); pmKernelIm.fill(0);
-        const n = PM_PAD_SIZE;
-        // Mesh softening cannot be meaningfully smaller than a cell.  Retain
-        // the simulation's existing softening when it is larger.
-        const eps = Math.max(FORCE_SOFTENING, pmCellSize * 1.10);
-        const eps2 = eps * eps;
-        for (let y = 0; y < n; y++) {
-            const sy = (y < n / 2 ? y : y - n) * pmCellSize;
-            for (let x = 0; x < n; x++) {
-                const sx = (x < n / 2 ? x : x - n) * pmCellSize;
-                pmKernelRe[y * n + x] = -G / Math.sqrt(sx * sx + sy * sy + eps2);
-            }
-        }
-        pmFFT2D(pmKernelRe, pmKernelIm, false);
-        pmKernelCellSize = pmCellSize;
-    }
-
-    function resetParticleMesh() {
-        initParticleMeshStorage();
-        let cx = 0, cy = 0, w = 0;
-        for (let i = 0; i < blackHoles.length; i++) {
-            const bh = blackHoles[i];
-            const m = Math.max(1, bh.mass || 1);
-            cx += bh.x * m; cy += bh.y * m; w += m;
-        }
-        pmCenterX = w > 0 ? cx / w : 0;
-        pmCenterY = w > 0 ? cy / w : 0;
-        let coreReach = 0;
-        for (let i = 0; i < blackHoles.length; i++) {
-            const bh = blackHoles[i];
-            coreReach = Math.max(coreReach, Math.abs(bh.x - pmCenterX), Math.abs(bh.y - pmCenterY));
-        }
-        pmHalfExtent = Math.max(PM_MIN_HALF_EXTENT, coreReach + galaxyRadius * PM_DOMAIN_DISK_MARGIN);
-        pmCellSize = (2 * pmHalfExtent) / PM_ACTIVE_SIZE;
-        pmMinX = pmCenterX - pmHalfExtent;
-        pmMinY = pmCenterY - pmHalfExtent;
-        pmReady = false;
-        pmLastUpdateStep = -1000000;
-        pmFieldAx.fill(0); pmFieldAy.fill(0); pmNextAx.fill(0); pmNextAy.fill(0);
-        rebuildParticleMeshKernel();
-    }
-
-    function getParticleMeshUpdateInterval() {
-        const count = stars.length + gasClouds.length;
-        if (count > 250000) return 5;
-        if (count > 100000) return 4;
-        return 3;
-    }
-
-    function pmDepositParticle(p, mass, galaxyIndex) {
-        if (!(mass > 0) || !Number.isFinite(p.x) || !Number.isFinite(p.y)) return false;
-        const gx = (p.x - pmMinX) / pmCellSize - 0.5;
-        const gy = (p.y - pmMinY) / pmCellSize - 0.5;
-        // Require a complete four-cell CIC footprint.  Particles beyond the
-        // bounded correction domain still retain all analytic forces.
-        if (gx < 0 || gy < 0 || gx >= PM_ACTIVE_SIZE - 1 || gy >= PM_ACTIVE_SIZE - 1) return false;
-        const ix = Math.floor(gx), iy = Math.floor(gy);
-        const tx = gx - ix, ty = gy - iy;
-        const wx0 = 1 - tx, wy0 = 1 - ty;
-        const px = ix + PM_PAD_OFFSET, py = iy + PM_PAD_OFFSET;
-        const row0 = py * PM_PAD_SIZE, row1 = row0 + PM_PAD_SIZE;
-        const arr = pmDensityByGalaxy[galaxyIndex];
-        arr[row0 + px]     += mass * wx0 * wy0;
-        arr[row0 + px + 1] += mass * tx  * wy0;
-        arr[row1 + px]     += mass * wx0 * ty;
-        arr[row1 + px + 1] += mass * tx  * ty;
-        return true;
-    }
-
-    function updateParticleMesh() {
-        if (!blackHoles.length) return;
-        if (!pmWorkRe) resetParticleMesh();
-        if (Math.abs(pmKernelCellSize - pmCellSize) > 1e-9) rebuildParticleMeshKernel();
-
-        for (let g = 0; g < PM_MAX_GALAXIES; g++) pmDensityByGalaxy[g].fill(0);
-        pmWorkRe.fill(0); pmWorkIm.fill(0);
-
-        const starNorm = MASS_MODEL_REF_CAPACITY / Math.max(1, SIM_SETTINGS.starCount || MASS_MODEL_REF_CAPACITY);
-        for (let i = 0; i < stars.length; i++) {
-            const s = stars[i];
-            const gi = (s.galaxyIndex === 1 && blackHoles.length > 1) ? 1 : 0;
-            pmDepositParticle(s, Math.max(0, s.mass || 0) * starNorm, gi);
-        }
-        for (let i = 0; i < gasClouds.length; i++) {
-            const c = gasClouds[i];
-            if (!(c.mass > 0)) continue;
-            const gi = (c.galaxyIndex === 1 && blackHoles.length > 1) ? 1 : 0;
-            pmDepositParticle(c, c.mass, gi);
-        }
-
-        // Remove each progenitor's azimuthal mean on the same grid.  The
-        // original live radial model supplies that mean; retaining only this
-        // residual is the key double-counting safeguard.
-        const radialMass = new Float64Array(PM_MAX_GALAXIES * PM_RADIAL_BINS);
-        const radialCells = new Uint32Array(PM_MAX_GALAXIES * PM_RADIAL_BINS);
-        const radialMax = pmHalfExtent * Math.SQRT2;
-        for (let ay = 0; ay < PM_ACTIVE_SIZE; ay++) {
-            const wy = pmMinY + (ay + 0.5) * pmCellSize;
-            const py = ay + PM_PAD_OFFSET;
-            for (let ax = 0; ax < PM_ACTIVE_SIZE; ax++) {
-                const wx = pmMinX + (ax + 0.5) * pmCellSize;
-                const px = ax + PM_PAD_OFFSET;
-                const pi = py * PM_PAD_SIZE + px;
-                for (let g = 0; g < blackHoles.length && g < PM_MAX_GALAXIES; g++) {
-                    const bh = blackHoles[g];
-                    const r = Math.hypot(wx - bh.x, wy - bh.y);
-                    const bin = Math.min(PM_RADIAL_BINS - 1, Math.floor(r * PM_RADIAL_BINS / radialMax));
-                    const ri = g * PM_RADIAL_BINS + bin;
-                    radialMass[ri] += pmDensityByGalaxy[g][pi];
-                    radialCells[ri]++;
-                }
-            }
-        }
-
-        let residualSum = 0;
-        for (let ay = 0; ay < PM_ACTIVE_SIZE; ay++) {
-            const wy = pmMinY + (ay + 0.5) * pmCellSize;
-            const py = ay + PM_PAD_OFFSET;
-            for (let ax = 0; ax < PM_ACTIVE_SIZE; ax++) {
-                const wx = pmMinX + (ax + 0.5) * pmCellSize;
-                const px = ax + PM_PAD_OFFSET;
-                const pi = py * PM_PAD_SIZE + px;
-                let residual = 0;
-                for (let g = 0; g < blackHoles.length && g < PM_MAX_GALAXIES; g++) {
-                    const bh = blackHoles[g];
-                    const r = Math.hypot(wx - bh.x, wy - bh.y);
-                    const bin = Math.min(PM_RADIAL_BINS - 1, Math.floor(r * PM_RADIAL_BINS / radialMax));
-                    const ri = g * PM_RADIAL_BINS + bin;
-                    const meanCellMass = radialCells[ri] ? radialMass[ri] / radialCells[ri] : 0;
-                    residual += pmDensityByGalaxy[g][pi] - meanCellMass;
-                }
-                pmWorkRe[pi] = residual;
-                residualSum += residual;
-            }
-        }
-        // Remove only floating-point residue; a true residual mesh has zero net mass.
-        const residualMean = residualSum / (PM_ACTIVE_SIZE * PM_ACTIVE_SIZE);
-        if (Math.abs(residualMean) > 1e-12) {
-            for (let ay = 0; ay < PM_ACTIVE_SIZE; ay++) {
-                const row = (ay + PM_PAD_OFFSET) * PM_PAD_SIZE + PM_PAD_OFFSET;
-                for (let ax = 0; ax < PM_ACTIVE_SIZE; ax++) pmWorkRe[row + ax] -= residualMean;
-            }
-        }
-
-        pmFFT2D(pmWorkRe, pmWorkIm, false);
-        for (let i = 0; i < pmWorkRe.length; i++) {
-            const ar = pmWorkRe[i], ai = pmWorkIm[i];
-            const br = pmKernelRe[i], bi = pmKernelIm[i];
-            pmWorkRe[i] = ar * br - ai * bi;
-            pmWorkIm[i] = ar * bi + ai * br;
-        }
-        pmFFT2D(pmWorkRe, pmWorkIm, true);
-
-        const inv2h = 1 / (2 * pmCellSize);
-        for (let ay = 0; ay < PM_ACTIVE_SIZE; ay++) {
-            const py = ay + PM_PAD_OFFSET;
-            const ym = Math.max(PM_PAD_OFFSET, py - 1), yp = Math.min(PM_PAD_OFFSET + PM_ACTIVE_SIZE - 1, py + 1);
-            for (let ax = 0; ax < PM_ACTIVE_SIZE; ax++) {
-                const px = ax + PM_PAD_OFFSET;
-                const xm = Math.max(PM_PAD_OFFSET, px - 1), xp = Math.min(PM_PAD_OFFSET + PM_ACTIVE_SIZE - 1, px + 1);
-                const ai = ay * PM_ACTIVE_SIZE + ax;
-                const dphidx = (pmWorkRe[py * PM_PAD_SIZE + xp] - pmWorkRe[py * PM_PAD_SIZE + xm]) * (xp === xm ? 0 : (xp - xm === 2 ? inv2h : 1 / pmCellSize));
-                const dphidy = (pmWorkRe[yp * PM_PAD_SIZE + px] - pmWorkRe[ym * PM_PAD_SIZE + px]) * (yp === ym ? 0 : (yp - ym === 2 ? inv2h : 1 / pmCellSize));
-                pmNextAx[ai] = -dphidx;
-                pmNextAy[ai] = -dphidy;
-            }
-        }
-
-        if (!pmReady) {
-            pmFieldAx.set(pmNextAx); pmFieldAy.set(pmNextAy);
-        } else {
-            const a = PM_FIELD_BLEND, b = 1 - a;
-            for (let i = 0; i < pmFieldAx.length; i++) {
-                pmFieldAx[i] = pmFieldAx[i] * b + pmNextAx[i] * a;
-                pmFieldAy[i] = pmFieldAy[i] * b + pmNextAy[i] * a;
-            }
-        }
-        pmReady = true;
-        pmLastUpdateStep = totalPhysicsSteps;
-    }
-
-    function addParticleMeshAcceleration(p) {
-        if (!pmReady) return;
-        const gx = (p.x - pmMinX) / pmCellSize - 0.5;
-        const gy = (p.y - pmMinY) / pmCellSize - 0.5;
-        if (gx < 0 || gy < 0 || gx > PM_ACTIVE_SIZE - 1 || gy > PM_ACTIVE_SIZE - 1) return;
-        const ix = Math.min(PM_ACTIVE_SIZE - 2, Math.max(0, Math.floor(gx)));
-        const iy = Math.min(PM_ACTIVE_SIZE - 2, Math.max(0, Math.floor(gy)));
-        const tx = clamp(gx - ix, 0, 1), ty = clamp(gy - iy, 0, 1);
-        const i00 = iy * PM_ACTIVE_SIZE + ix, i10 = i00 + 1;
-        const i01 = i00 + PM_ACTIVE_SIZE, i11 = i01 + 1;
-        const w00 = (1 - tx) * (1 - ty), w10 = tx * (1 - ty), w01 = (1 - tx) * ty, w11 = tx * ty;
-        let ax = pmFieldAx[i00] * w00 + pmFieldAx[i10] * w10 + pmFieldAx[i01] * w01 + pmFieldAx[i11] * w11;
-        let ay = pmFieldAy[i00] * w00 + pmFieldAy[i10] * w10 + pmFieldAy[i01] * w01 + pmFieldAy[i11] * w11;
-
-        // A planar mesh represents a finite-thickness disk.  Fade its residual
-        // force away from the nearest core plane; the existing 3D analytic field
-        // continues to act everywhere, including tilted and ejected particles.
-        let nearestDz = Infinity;
-        for (let g = 0; g < blackHoles.length; g++) nearestDz = Math.min(nearestDz, Math.abs(p.z - blackHoles[g].z));
-        const zWeight = 1 / Math.sqrt(1 + (nearestDz * nearestDz) / (PM_VERTICAL_SCALE * PM_VERTICAL_SCALE));
-        const mergerWeight = 1 - 0.60 * Math.min(1, postMergerTimer);
-        const scale = PM_STRENGTH * zWeight * mergerWeight;
-        ax *= scale; ay *= scale;
-        const amag = Math.hypot(ax, ay);
-        if (amag > PM_MAX_ACCEL) {
-            const c = PM_MAX_ACCEL / amag;
-            ax *= c; ay *= c;
-        }
-        p.ax += ax; p.ay += ay;
-    }
-
     function updateLiveMassModel() {
         for (let g = 0; g < blackHoles.length; g++) {
             let model = liveMassModels[g];
@@ -1370,6 +1050,78 @@
             }
         }
         return neighbors;
+    }
+
+    // ===== LIVING DYNAMICS: LOCAL SELF-GRAVITY GRID =====
+    // The azimuthally-averaged live disk model gives every particle the MEAN
+    // field but averages away all local structure: a gas clump or star knot has
+    // no gravitational presence, so nothing clumps, arms cannot self-amplify,
+    // and neighbours never respond to each other -- the disk reads as a rigid
+    // rotating texture. This grid restores the FLUCTUATION part of gravity in
+    // O(N): each step, live star+gas mass is CIC-deposited onto a coarse 2D
+    // surface-density grid, smoothed once, and every particle feels a capped
+    // pull along the local density gradient. Gas falls into gas, stars fall
+    // into gas-rich arms, tidal debris fragments into knots.
+    const LG_N = 96;
+    let LG_STRENGTH = 140.0;   // fluctuation-force gain (headless-tuned: median |a_loc|/|a_mean| = 10.0%)
+    const LG_CAP = 0.35;       // |a_loc| never exceeds 35% of the mean field at that point
+    const GMC_HEAT_K = 0.0015; // stochastic star stirring by dense gas (secular disk heating)
+    let lgSigma = new Float32Array(LG_N * LG_N);
+    let lgSmooth = new Float32Array(LG_N * LG_N);
+    let lgGas = new Float32Array(LG_N * LG_N);
+    let lgMinX = 0, lgMinY = 0, lgCell = 1, lgInvCell = 1, lgReady = false;
+
+    function buildLocalGravityGrid() {
+        if (SIM_SETTINGS.localGravity === false || blackHoles.length === 0) { lgReady = false; return; }
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g]; if (!bh) continue;
+            if (bh.x < minX) minX = bh.x; if (bh.x > maxX) maxX = bh.x;
+            if (bh.y < minY) minY = bh.y; if (bh.y > maxY) maxY = bh.y;
+        }
+        if (!isFinite(minX)) { lgReady = false; return; }
+        const pad = galaxyRadius * 1.45;
+        const spanX = (maxX - minX) + 2 * pad, spanY = (maxY - minY) + 2 * pad;
+        const span = Math.max(spanX, spanY);
+        const cx = (minX + maxX) * 0.5, cy = (minY + maxY) * 0.5;
+        lgMinX = cx - span * 0.5; lgMinY = cy - span * 0.5;
+        lgCell = span / LG_N; lgInvCell = 1.0 / lgCell;
+        lgSigma.fill(0); lgGas.fill(0);
+        const starNorm = MASS_MODEL_REF_CAPACITY / Math.max(1, SIM_SETTINGS.starCount || MASS_MODEL_REF_CAPACITY);
+        for (let i = 0; i < stars.length; i++) {
+            const s = stars[i];
+            const gx = (s.x - lgMinX) * lgInvCell - 0.5, gy = (s.y - lgMinY) * lgInvCell - 0.5;
+            const i0 = Math.floor(gx), j0 = Math.floor(gy);
+            if (i0 < 0 || j0 < 0 || i0 >= LG_N - 1 || j0 >= LG_N - 1) continue;
+            const fx = gx - i0, fy = gy - j0, m = s.mass * starNorm;
+            const b = j0 * LG_N + i0;
+            lgSigma[b] += m * (1 - fx) * (1 - fy); lgSigma[b + 1] += m * fx * (1 - fy);
+            lgSigma[b + LG_N] += m * (1 - fx) * fy; lgSigma[b + LG_N + 1] += m * fx * fy;
+        }
+        for (let i = 0; i < gasClouds.length; i++) {
+            const c = gasClouds[i]; if (c.mass <= 0.5) continue;
+            const gx = (c.x - lgMinX) * lgInvCell - 0.5, gy = (c.y - lgMinY) * lgInvCell - 0.5;
+            const i0 = Math.floor(gx), j0 = Math.floor(gy);
+            if (i0 < 0 || j0 < 0 || i0 >= LG_N - 1 || j0 >= LG_N - 1) continue;
+            const fx = gx - i0, fy = gy - j0, m = c.mass;
+            const b = j0 * LG_N + i0;
+            lgSigma[b] += m * (1 - fx) * (1 - fy); lgSigma[b + 1] += m * fx * (1 - fy);
+            lgSigma[b + LG_N] += m * (1 - fx) * fy; lgSigma[b + LG_N + 1] += m * fx * fy;
+            lgGas[b] += m * (1 - fx) * (1 - fy); lgGas[b + 1] += m * fx * (1 - fy);
+            lgGas[b + LG_N] += m * (1 - fx) * fy; lgGas[b + LG_N + 1] += m * fx * fy;
+        }
+        // one 3x3 binomial smoothing pass
+        for (let j = 1; j < LG_N - 1; j++) {
+            for (let i = 1; i < LG_N - 1; i++) {
+                const b = j * LG_N + i;
+                lgSmooth[b] = (
+                    lgSigma[b - LG_N - 1] + 2 * lgSigma[b - LG_N] + lgSigma[b - LG_N + 1] +
+                    2 * lgSigma[b - 1] + 4 * lgSigma[b] + 2 * lgSigma[b + 1] +
+                    lgSigma[b + LG_N - 1] + 2 * lgSigma[b + LG_N] + lgSigma[b + LG_N + 1]
+                ) * 0.0625;
+            }
+        }
+        lgReady = true;
     }
     //<<END_PHYSICS>>
 
@@ -1621,6 +1373,7 @@
 
     document.getElementById('realisticColors').addEventListener('change',(e)=>{useRealisticColors=e.target.checked;});
     document.getElementById('leapfrogPhysics').addEventListener('change',(e)=>{useLeapfrog=e.target.checked;});
+    document.getElementById('tglLocalGravity').addEventListener('change',()=>{initSimulation();});
     document.getElementById('showDarkMatter').addEventListener('change',(e)=>{showDarkMatter=e.target.checked;});
     document.getElementById('enableClusters').addEventListener('change',(e)=>{initSimulation();});
     document.getElementById('showJets').addEventListener('change',(e)=>{showJets=e.target.checked;if(!showJets)jetParticles=[];});
@@ -2690,7 +2443,6 @@
     }
 
     function computeAccelerations(ps) {
-      if (!pmReady || totalPhysicsSteps - pmLastUpdateStep >= getParticleMeshUpdateInterval()) updateParticleMesh();
       for (let i = 0; i < ps.length; i++) {
         const p = ps[i]; 
         let dax=0, day=0, daz=0;
@@ -2738,6 +2490,16 @@
                     const f_r_bar = F_radial_total * A * Math.cos(2 * relTheta); const f_t_bar = F_radial_total * A * Math.sin(2 * relTheta);
                     dax += f_r_bar * (dx/r_cyl) - f_t_bar * (dy/r_cyl); day += f_r_bar * (dy/r_cyl) + f_t_bar * (dx/r_cyl);
                 }
+                // LIVING DYNAMICS: spiral galaxies with a declared bar (preset.barStrength,
+                // e.g. the Milky Way) get a rotating central quadrupole -- previously this
+                // field existed on the preset but was never consumed.
+                if (morphologyType === "spiral" && preset.barStrength && p.mass > 0 && r_cyl > 15 && r_cyl < bulgeRadius * 1.6) {
+                    const relThetaS = Math.atan2(dy, dx) - barAngle;
+                    const F_rt_s = Math.sqrt(dax*dax + day*day);
+                    const A_s = 0.08 * preset.barStrength * Math.exp(-Math.pow(r_cyl / (bulgeRadius * 0.85), 2));
+                    const f_r_s = F_rt_s * A_s * Math.cos(2 * relThetaS); const f_t_s = F_rt_s * A_s * Math.sin(2 * relThetaS);
+                    dax += f_r_s * (dx/r_cyl) - f_t_s * (dy/r_cyl); day += f_r_s * (dy/r_cyl) + f_t_s * (dx/r_cyl);
+                }
             }
 
             if (p.isCluster && p.galaxyIndex === g) {
@@ -2767,8 +2529,28 @@
                 daz += a_df * (relVz / vMag);
             }
         }
+        // LIVING DYNAMICS: local self-gravity + GMC stirring (see buildLocalGravityGrid).
+        // Pull along the live density gradient, capped against the mean field so it
+        // enriches structure without ever destabilizing orbits.
+        if (lgReady && !p.isBH) {
+            const ci = Math.floor((p.x - lgMinX) * lgInvCell);
+            const cj = Math.floor((p.y - lgMinY) * lgInvCell);
+            if (ci >= 2 && cj >= 2 && ci <= LG_N - 3 && cj <= LG_N - 3) {
+                const b = cj * LG_N + ci;
+                let alx = LG_STRENGTH * G * (lgSmooth[b + 1] - lgSmooth[b - 1]) * 0.5 * lgInvCell;
+                let aly = LG_STRENGTH * G * (lgSmooth[b + LG_N] - lgSmooth[b - LG_N]) * 0.5 * lgInvCell;
+                const aMean = Math.sqrt(dax * dax + day * day) + 1e-9;
+                const aLoc = Math.sqrt(alx * alx + aly * aly);
+                const capA = LG_CAP * aMean;
+                if (aLoc > capA) { const sc = capA / aLoc; alx *= sc; aly *= sc; }
+                dax += alx; day += aly;
+                if (p.heat === undefined && !p.isCluster) {
+                    const gd = lgGas[b];
+                    if (gd > 1.0) { const kk = GMC_HEAT_K * Math.sqrt(gd); dax += gaussianRandom(0, kk); day += gaussianRandom(0, kk); }
+                }
+            }
+        }
         p.ax = dax; p.ay = day; p.az = daz;
-        addParticleMeshAcceleration(p);
       }
     }
 
@@ -3437,6 +3219,7 @@
         // inconsistently during Time Warp. Now updates once every 30 physics steps.
         totalPhysicsSteps++;
         if (totalPhysicsSteps % 30 === 0) updateLiveMassModel();
+        buildLocalGravityGrid(); // LIVING DYNAMICS: refresh the local self-gravity field
         
         let inflowRateVal = SIM_SETTINGS.inflowRate * 100; // WORKER REFACTOR: DOM read -> SIM_SETTINGS
         cosmologicalInflowReservoir += inflowRateVal * dt;
@@ -6155,10 +5938,16 @@
             const a_total_R = a_MN_r + a_sph_r * (r_cyl / dist);
             const v = Math.sqrt(r_cyl * a_total_R) * preset.INITIAL_VELOCITY_SCALE;
 
-            const localVx = -v*ly/r_cyl + gaussianRandom(0, v * 0.05);
-            const localVy =  v*lx/r_cyl + gaussianRandom(0, v * 0.05);
-            // REDUCED INITIAL VERTICAL VELOCITY SCATTER
-            const localVz = gaussianRandomBounded(0, v * 0.02, 3);
+            // LIVING DYNAMICS: warm anisotropic disk. Real disks are kinematically
+            // warm: sigma_R ~ 10-15% of v_c declining outward, sigma_phi ~ 0.7 sigma_R
+            // (epicyclic ratio), sigma_z ~ 0.5 sigma_R. The old flat 5% isotropic
+            // scatter put every star on a near-perfect circle, so neighbours never
+            // moved relative to each other. (Gas stays dynamically cold at 5%.)
+            const _sigR = v * (0.05 + 0.10 * Math.exp(-r_cyl / (galaxyRadius * 0.7)));
+            const _dvR = gaussianRandom(0, _sigR), _dvT = gaussianRandom(0, 0.7 * _sigR);
+            const localVx = -v*ly/r_cyl + (_dvR * lx - _dvT * ly) / r_cyl;
+            const localVy =  v*lx/r_cyl + (_dvR * ly + _dvT * lx) / r_cyl;
+            const localVz = gaussianRandomBounded(0, 0.5 * _sigR, 3);
             
             let massVar = generateStarMass();
             
@@ -6248,7 +6037,6 @@
       patternAngle = 0; barAngle = 0; ringShockRadius = bulgeRadius * 0.5; 
       
       elapsedTime=0;
-      resetParticleMesh();
       updateLiveMassModel();
       computeAccelerations([...blackHoles, ...stars, ...gasClouds]);
       
@@ -6496,6 +6284,7 @@
         { id:'galaxyBTilt', kind:'range', evt:'input', group:'Collision', label:'Galaxy B Disc Tilt', structural:true },
         { id:'enableClusters', kind:'check', evt:'change', group:'Simulation', label:'Star Clusters', structural:true },
         { id:'leapfrogPhysics', kind:'check', evt:'change', group:'Simulation', label:'Leapfrog Integrator', structural:true },
+        { id:'tglLocalGravity', kind:'check', evt:'change', group:'Simulation', label:'Local Self-Gravity', structural:true },
         // --- Rendering / look (live) ---
         { id:'observationFilter', kind:'select', evt:'change', group:'Rendering', label:'Instrument / Filter' },
         { id:'exposureSlider', kind:'range', evt:'input', group:'Rendering', label:'Exposure' },
@@ -6675,6 +6464,7 @@
             reduceResolvedOldStars: reduceResolvedOldStars,
             protectedStarIds: collectProtectedStarIds(),
             showJets: showJets,
+            localGravity: document.getElementById('tglLocalGravity').checked,
             recordTrails: showStreaks && currentModeId !== 'spectroscopy'
         };
     }
