@@ -471,6 +471,15 @@
     <div class="control-group">
       <div class="group-header">Export & Automation <span class="group-toggle">+</span></div>
       <div class="group-content collapsed">
+        <div style="margin-bottom:14px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+            <label style="display:block; margin-bottom:6px;">Visual Presets (all settings):</label>
+            <div style="display:flex; gap:8px;">
+                <button id="exportPresetBtn" class="btn-success" style="flex:1;">⬇ Save Preset (.md)</button>
+                <button id="importPresetBtn" class="btn-primary" style="flex:1;">⬆ Load Preset</button>
+            </div>
+            <input type="file" id="importPresetFile" accept=".md,.markdown,text/markdown,text/plain" style="display:none;">
+            <div id="presetStatus" style="font-size:11px; color:var(--text-muted); text-align:center; margin-top:6px; min-height:14px;"></div>
+        </div>
         <label class="checkbox-label" style="margin-bottom:10px;"><input type="checkbox" id="multiAngleScreenshot"> Multi-Angle Pack</label>
         
         <label for="parallelInstrument">Parallel Capture Filter:</label>
@@ -6067,6 +6076,186 @@
         for (const t of astrometryTargets) if (t && t.id !== undefined) ids.push(t.id);
         return ids;
     }
+
+    // ===== VISUAL PRESET EXPORT / IMPORT =====
+    // A single driver table is the source of truth for both directions, so export
+    // and import can never drift. Each entry maps a control id to its kind and the
+    // event its existing listener reacts to. Import sets the control and dispatches
+    // that event, reusing every listener already wired above (including the ones
+    // that call initSimulation) -- no duplicated apply-logic. STRUCTURAL controls
+    // (marked) only take effect on rebuild, so if any change on import we offer a
+    // single restart rather than thrashing the simulation for each field.
+    const PRESET_CONTROLS = [
+        // --- Structural (rebuild required) ---
+        { id:'starCount', kind:'range', evt:'input', group:'Simulation', label:'Star Count', structural:true },
+        { id:'gasAmount', kind:'range', evt:'input', group:'Simulation', label:'Gas Amount', structural:true },
+        { id:'mass', kind:'range', evt:'input', group:'Simulation', label:'Seed Mass', structural:true },
+        { id:'inflowRate', kind:'range', evt:'input', group:'Simulation', label:'Gas Inflow Rate', structural:true },
+        { id:'simMode', kind:'select', evt:'change', group:'Simulation', label:'Simulation Mode', structural:true },
+        { id:'galaxyAType', kind:'select', evt:'change', group:'Simulation', label:'Galaxy A Type', structural:true },
+        { id:'galaxyBType', kind:'select', evt:'change', group:'Simulation', label:'Galaxy B Type', structural:true },
+        { id:'galaxyAStage', kind:'select', evt:'change', group:'Simulation', label:'Galaxy A Stage', structural:true },
+        { id:'galaxyBStage', kind:'select', evt:'change', group:'Simulation', label:'Galaxy B Stage', structural:true },
+        { id:'initialSeparation', kind:'range', evt:'input', group:'Collision', label:'Initial Separation (kpc)', structural:true },
+        { id:'impactParam', kind:'range', evt:'input', group:'Collision', label:'Impact Parameter (kpc)', structural:true },
+        { id:'appVel', kind:'range', evt:'input', group:'Collision', label:'Approach Velocity (km/s)', structural:true },
+        { id:'galaxyATilt', kind:'range', evt:'input', group:'Collision', label:'Galaxy A Disc Tilt', structural:true },
+        { id:'galaxyBTilt', kind:'range', evt:'input', group:'Collision', label:'Galaxy B Disc Tilt', structural:true },
+        { id:'enableClusters', kind:'check', evt:'change', group:'Simulation', label:'Star Clusters', structural:true },
+        { id:'leapfrogPhysics', kind:'check', evt:'change', group:'Simulation', label:'Leapfrog Integrator', structural:true },
+        // --- Rendering / look (live) ---
+        { id:'observationFilter', kind:'select', evt:'change', group:'Rendering', label:'Instrument / Filter' },
+        { id:'exposureSlider', kind:'range', evt:'input', group:'Rendering', label:'Exposure' },
+        { id:'starScale', kind:'range', evt:'input', group:'Rendering', label:'Star Scale' },
+        { id:'dustBrightness', kind:'range', evt:'input', group:'Rendering', label:'Dust Bias' },
+        { id:'dustDetail', kind:'range', evt:'input', group:'Rendering', label:'Max Dust Detail' },
+        { id:'hotGasBrightness', kind:'range', evt:'input', group:'Rendering', label:'Hot Gas Brightness' },
+        { id:'coldGasBrightness', kind:'range', evt:'input', group:'Rendering', label:'Cold Gas Brightness' },
+        { id:'tglGPUStars', kind:'check', evt:'change', group:'Rendering', label:'GPU Star Renderer' },
+        { id:'tglHDRPipe', kind:'check', evt:'change', group:'Rendering', label:'HDR Pipeline' },
+        { id:'bloomBalance', kind:'range', evt:'input', group:'Rendering', label:'Bloom Strength' },
+        { id:'tglRealism', kind:'check', evt:'change', group:'Rendering', label:'Realism Master' },
+        { id:'tglNoise', kind:'check', evt:'change', group:'Rendering', label:'Sensor Noise' },
+        { id:'tglDiffraction', kind:'check', evt:'change', group:'Rendering', label:'Diffraction Spikes' },
+        { id:'tglBloom', kind:'check', evt:'change', group:'Rendering', label:'Legacy Bloom' },
+        { id:'tglDust', kind:'check', evt:'change', group:'Rendering', label:'Dust Attenuation' },
+        { id:'tglHDR', kind:'check', evt:'change', group:'Rendering', label:'HDR Tonemap (per-mode)' },
+        { id:'realisticColors', kind:'check', evt:'change', group:'Rendering', label:'Realistic Star Colours' },
+        { id:'cinematicDepth', kind:'check', evt:'change', group:'Rendering', label:'Cinematic Depth' },
+        { id:'useObservationSynthesis', kind:'check', evt:'change', group:'Rendering', label:'Observation Synthesis' },
+        { id:'reduceResolvedOldStars', kind:'check', evt:'change', group:'Rendering', label:'Reduce Resolved Old Stars' },
+        { id:'enableOldStarConsolidation', kind:'check', evt:'change', group:'Rendering', label:'Old Star Consolidation' },
+        // --- Cinematic / Epic (live; polled each frame by updateCineState) ---
+        { id:'tglCine', kind:'check', evt:'change', group:'Cinematic', label:'Cinematic / Epic Mode' },
+        { id:'tglCineGlow', kind:'check', evt:'change', group:'Cinematic', label:'Diffuse Glow' },
+        { id:'tglCineDust', kind:'check', evt:'change', group:'Cinematic', label:'Dust Lanes' },
+        { id:'tglCineVivid', kind:'check', evt:'change', group:'Cinematic', label:'Vivid Population Colour' },
+        { id:'tglCineCore', kind:'check', evt:'change', group:'Cinematic', label:'Luminous Core' },
+        { id:'tglCineHII', kind:'check', evt:'change', group:'Cinematic', label:'H II Knots' },
+        { id:'tglCineFG', kind:'check', evt:'change', group:'Cinematic', label:'Bright Foreground Stars' },
+        { id:'cineGlowStr', kind:'range', evt:'input', group:'Cinematic', label:'Glow Strength' },
+        { id:'cineDustStr', kind:'range', evt:'input', group:'Cinematic', label:'Dust Strength' },
+        { id:'cineSat', kind:'range', evt:'input', group:'Cinematic', label:'Colour Saturation' },
+        { id:'cineCoreStr', kind:'range', evt:'input', group:'Cinematic', label:'Core Strength' },
+        { id:'cineBloomStr', kind:'range', evt:'input', group:'Cinematic', label:'Cinematic Bloom' },
+        // --- Overlays / scene toggles (live) ---
+        { id:'showGrid', kind:'check', evt:'change', group:'Overlays', label:'Reference Grid' },
+        { id:'showStreaks', kind:'check', evt:'change', group:'Overlays', label:'Motion Trails' },
+        { id:'showDarkMatter', kind:'check', evt:'change', group:'Overlays', label:'Dark Matter Halo' },
+        { id:'showEvolvingDust', kind:'check', evt:'change', group:'Overlays', label:'Evolving Dust' },
+        { id:'showHIIRegions', kind:'check', evt:'change', group:'Overlays', label:'H II Regions' },
+        { id:'showEnhancedCore', kind:'check', evt:'change', group:'Overlays', label:'Enhanced Core' },
+        { id:'showAccretionDisks', kind:'check', evt:'change', group:'Overlays', label:'Accretion Disks' },
+        { id:'showJets', kind:'check', evt:'change', group:'Overlays', label:'Relativistic Jets' },
+        { id:'showJetLobes', kind:'check', evt:'change', group:'Overlays', label:'Jet Lobes' },
+        { id:'showColdGasOverlay', kind:'check', evt:'change', group:'Overlays', label:'Cold Gas Overlay' },
+        { id:'showForegroundStars', kind:'check', evt:'change', group:'Overlays', label:'Foreground Stars' },
+        { id:'showBackgroundUniverse', kind:'check', evt:'change', group:'Overlays', label:'Background Universe' },
+        { id:'showBackgroundLensing', kind:'check', evt:'change', group:'Overlays', label:'Background Lensing' }
+    ];
+    function _presetReadValue(c) {
+        const el = document.getElementById(c.id); if (!el) return null;
+        if (c.kind === 'check') return el.checked ? 'on' : 'off';
+        return el.value;
+    }
+    function _presetSetStatus(msg, isErr) {
+        const s = document.getElementById('presetStatus'); if (!s) return;
+        s.textContent = msg; s.style.color = isErr ? 'var(--danger-color, #e06c75)' : 'var(--text-muted)';
+    }
+    function exportPreset() {
+        const now = new Date();
+        const groups = {};
+        for (const c of PRESET_CONTROLS) {
+            const v = _presetReadValue(c); if (v === null) continue;
+            (groups[c.group] = groups[c.group] || []).push({ c, v });
+        }
+        const lines = [];
+        lines.push('# Galaxy Simulation Preset');
+        lines.push('');
+        lines.push('> Saved ' + now.toISOString() + '  ');
+        lines.push('> Edit the **Value** column to tweak by hand; unknown or reordered rows are ignored on load.');
+        lines.push('');
+        const order = ['Simulation', 'Collision', 'Rendering', 'Cinematic', 'Overlays'];
+        const names = Object.keys(groups).sort((a, b) => order.indexOf(a) - order.indexOf(b));
+        for (const g of names) {
+            lines.push('## ' + g);
+            lines.push('');
+            lines.push('| Setting | ID | Value |');
+            lines.push('| --- | --- | --- |');
+            for (const { c, v } of groups[g]) {
+                const tag = c.structural ? ' _(restart)_' : '';
+                lines.push('| ' + c.label + tag + ' | `' + c.id + '` | `' + v + '` |');
+            }
+            lines.push('');
+        }
+        const blob = new Blob([lines.join('\n')], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const stamp = now.toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        a.href = url; a.download = 'galaxy-preset-' + stamp + '.md';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+        _presetSetStatus('Saved ' + a.download);
+    }
+    function _parsePresetText(text) {
+        // Pull `id` / `value` pairs from markdown table rows. Tolerant of hand-edits:
+        // any line with two backtick-wrapped tokens where the first is a known id.
+        const known = {}; for (const c of PRESET_CONTROLS) known[c.id] = c;
+        const found = {};
+        const rowRe = /`([^`]+)`\s*\|\s*`([^`]*)`/;
+        for (const raw of text.split(/\r?\n/)) {
+            const m = raw.match(rowRe);
+            if (!m) continue;
+            const id = m[1].trim(), val = m[2].trim();
+            if (known[id]) found[id] = val;
+        }
+        return found;
+    }
+    function applyPreset(found) {
+        let applied = 0, structuralChanged = false;
+        const skipped = [];
+        for (const c of PRESET_CONTROLS) {
+            if (!(c.id in found)) continue;
+            const el = document.getElementById(c.id); if (!el) { skipped.push(c.id); continue; }
+            const val = found[c.id];
+            if (c.kind === 'check') {
+                const want = (val === 'on' || val === 'true' || val === '1');
+                if (el.checked !== want) { el.checked = want; if (c.structural) structuralChanged = true; el.dispatchEvent(new Event(c.evt, { bubbles: true })); }
+            } else if (c.kind === 'select') {
+                const ok = Array.from(el.options).some(o => o.value === val);
+                if (!ok) { skipped.push(c.id); continue; }
+                if (el.value !== val) { el.value = val; if (c.structural) structuralChanged = true; el.dispatchEvent(new Event(c.evt, { bubbles: true })); }
+            } else { // range
+                if (el.value !== String(val)) { el.value = val; if (c.structural) structuralChanged = true; }
+                el.dispatchEvent(new Event(c.evt, { bubbles: true })); // refresh label + live var even if unchanged
+            }
+            applied++;
+        }
+        // Structural selects/checks already bound to initSimulation triggered a rebuild;
+        // structural RANGES (separation, tilt, star count via slider) do not, so if any
+        // structural value moved, offer exactly one rebuild.
+        if (structuralChanged) {
+            const doIt = window.confirm('Preset changes simulation-structure settings (star count, galaxy setup, collision geometry). Restart the simulation now to apply them?\n\nOK = restart now   |   Cancel = keep current bodies, apply visuals only');
+            if (doIt) { try { initSimulation(); } catch (e) { console.error('preset restart failed', e); } }
+        }
+        let msg = 'Loaded ' + applied + ' setting' + (applied === 1 ? '' : 's');
+        if (skipped.length) msg += ' · ' + skipped.length + ' skipped';
+        _presetSetStatus(msg);
+    }
+    (function wirePresetButtons(){
+        const eb = document.getElementById('exportPresetBtn');
+        const ib = document.getElementById('importPresetBtn');
+        const fi = document.getElementById('importPresetFile');
+        if (eb) eb.addEventListener('click', () => { try { exportPreset(); } catch (e) { console.error(e); _presetSetStatus('Export failed: ' + e.message, true); } });
+        if (ib && fi) ib.addEventListener('click', () => { fi.value = ''; fi.click(); });
+        if (fi) fi.addEventListener('change', () => {
+            const f = fi.files && fi.files[0]; if (!f) return;
+            const rd = new FileReader();
+            rd.onload = () => { try { const found = _parsePresetText(String(rd.result)); const n = Object.keys(found).length; if (!n) { _presetSetStatus('No recognizable settings in that file', true); return; } applyPreset(found); } catch (e) { console.error(e); _presetSetStatus('Load failed: ' + e.message, true); } };
+            rd.onerror = () => _presetSetStatus('Could not read file', true);
+            rd.readAsText(f);
+        });
+    })();
 
     function readSimSettings() {
         return {
