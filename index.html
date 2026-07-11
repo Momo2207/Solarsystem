@@ -423,6 +423,9 @@
 
         <label for="dustBrightness">Dust Opacity Bias: <span id="dustBrightnessValue">0</span></label>
         <input type="range" id="dustBrightness" min="-1" max="3" step="0.01" value="0">
+        <label for="popColor">Population Color: <span id="popColorValue">40%</span></label>
+        <input type="range" id="popColor" min="0" max="1.5" step="0.05" value="0.4">
+        <div class="help-text">Separates the stellar populations by colour: young disc &amp; arm stars turn bluer, the old bulge turns warmer gold. 0% = uniform blackbody colour; higher = stronger, more Hubble-like colour contrast.</div>
         
         <label for="starScale">Star Size Scaling: <span id="starScaleValue">0</span></label>
         <input type="range" id="starScale" min="-1" max="3" step="0.1" value="0">
@@ -1619,6 +1622,13 @@
     const hotGasBrightnessValue = document.getElementById('hotGasBrightnessValue');
     const coldGasBrightnessSlider = document.getElementById('coldGasBrightness');
     const coldGasBrightnessValue = document.getElementById('coldGasBrightnessValue');
+    let popColorStrength = 0.4; // 0 = pure blackbody; higher = stronger blue-disc/gold-bulge population tint
+    const popColorSlider = document.getElementById('popColor');
+    const popColorValue = document.getElementById('popColorValue');
+    if (popColorSlider) popColorSlider.addEventListener('input', () => {
+        popColorStrength = parseFloat(popColorSlider.value);
+        if (popColorValue) popColorValue.textContent = Math.round(popColorStrength / 1.5 * 100) + '%';
+    });
     const dustBrightnessSlider = document.getElementById('dustBrightness');
     const dustBrightnessValue = document.getElementById('dustBrightnessValue');
     
@@ -2017,6 +2027,7 @@
       uniform vec2 uTranslate; uniform float uScale; uniform vec2 uCanvasSize;
       uniform float uRotX; uniform float uRotY; uniform float uIsOrtho;
       uniform float uStarVisualMult; uniform float uRealColors; uniform float uDustEnabled; uniform float uShowEvolvingDust;
+      uniform float uPopColor; // population colour-separation strength (blue disc / gold bulge)
       uniform float uEdgeOn; uniform float uPatternAngle; uniform float uBulge; uniform float uGalaxyR; uniform float uPostMerger;
       uniform vec3 uBH0; uniform vec3 uBH1; uniform float uBHCount;
       uniform vec2 uPresetA; uniform vec2 uPresetB; // (armCount, type: 0 other / 1 spiral / 2 ring)
@@ -2070,6 +2081,24 @@
         if (uRealColors < 0.5) {
           if (T > 10000.0) { col=vec3(0.6,0.7,1.0); } else if (T > 6000.0) { col=vec3(0.9,0.95,1.0); } else if (T > 4000.0) { col=vec3(1.0,0.9,0.6); } else { col=vec3(1.0,0.5,0.2); }
         } else { col = planck(T); }
+        // ---- population colour separation (uPopColor) ----
+        // Young/hot stars (low age, high T) shift blue; old stars in the central bulge
+        // shift warm gold. Physically motivated: young massive blue tracers live in the
+        // arms, metal-rich old K/M giants dominate the bulge. Strength is UI-controlled;
+        // uPopColor = 0 leaves the pure blackbody colour untouched.
+        if (uPopColor > 0.001) {
+          vec3 pcBH = uBH0; if (uBHCount > 1.5) { vec2 dpa = aStarPos.xy - uBH0.xy; vec2 dpb = aStarPos.xy - uBH1.xy; if (dot(dpb,dpb) < dot(dpa,dpa)) pcBH = uBH1; }
+          float pcR = length(aStarPos.xy - pcBH.xy);
+          float youth = clamp(1.0 - age / 400.0, 0.0, 1.0);          // 1 = very young, 0 = old (>400 Myr)
+          youth = max(youth, clamp((T - 7000.0) / 8000.0, 0.0, 1.0)); // hot MS stars count as young tracers too
+          float bulgeness = clamp(1.0 - pcR / max(1.0, uBulge * 1.2), 0.0, 1.0); // 1 = central, 0 = outer disc
+          vec3 blueTint = vec3(0.62, 0.74, 1.0);  // young arm blue
+          vec3 goldTint = vec3(1.0, 0.82, 0.52);  // old bulge gold
+          float wBlue = youth * (1.0 - bulgeness) * uPopColor;
+          float wGold = (1.0 - youth) * bulgeness * uPopColor;
+          col = mix(col, col * blueTint, clamp(wBlue, 0.0, 0.9));
+          col = mix(col, col * goldTint, clamp(wGold, 0.0, 0.9));
+        }
         float a = baseA;
         if (uDustEnabled > 0.5) {
           // analytic hint (nearest galaxy by 2D distance, matching getAnalyticDustHint)
@@ -2214,7 +2243,7 @@
                 const A = (n)=>gl.getAttribLocation(starProg,n), U = (n)=>gl.getUniformLocation(starProg,n);
                 SL = { aStarPos:A('aStarPos'), aPhysA:A('aPhysA'), aPhysB:A('aPhysB'), aStage:A('aStage'), aGalaxy:A('aGalaxy'),
                     uTranslate:U('uTranslate'), uScale:U('uScale'), uCanvasSize:U('uCanvasSize'), uRotX:U('uRotX'), uRotY:U('uRotY'), uIsOrtho:U('uIsOrtho'),
-                    uStarVisualMult:U('uStarVisualMult'), uRealColors:U('uRealColors'), uDustEnabled:U('uDustEnabled'), uShowEvolvingDust:U('uShowEvolvingDust'),
+                    uStarVisualMult:U('uStarVisualMult'), uRealColors:U('uRealColors'), uDustEnabled:U('uDustEnabled'), uShowEvolvingDust:U('uShowEvolvingDust'), uPopColor:U('uPopColor'),
                     uEdgeOn:U('uEdgeOn'), uPatternAngle:U('uPatternAngle'), uBulge:U('uBulge'), uGalaxyR:U('uGalaxyR'), uPostMerger:U('uPostMerger'),
                     uBH0:U('uBH0'), uBH1:U('uBH1'), uBHCount:U('uBHCount'), uPresetA:U('uPresetA'), uPresetB:U('uPresetB'),
                     uObsSynth:U('uObsSynth'), uCinDepth:U('uCinDepth'), uFocus:U('uFocus'), uCineSat:U('uCineSat'),
@@ -4913,6 +4942,17 @@
         if (!useRealisticColors) {
             if(star.temperature > 10000){ r=0.6; g=0.7; b=1.0; } else if(star.temperature > 6000){ r=0.9; g=0.95; b=1.0; } else if(star.temperature > 4000){ r=1.0; g=0.9; b=0.6; } else { r=1.0; g=0.5; b=0.2; }
         } else { const pc = getPlanckColor(star.temperature); r=pc[0]; g=pc[1]; b=pc[2]; }
+        // population colour separation (matches the GPU shader; popColorStrength=0 -> no change)
+        if (popColorStrength > 0.001) {
+            const ctx = getNearestGalaxyContextForPoint(star.x, star.y, star.z, star.galaxyIndex);
+            let youth = clamp(1.0 - (star.ageMyr || 0) / 400.0, 0, 1);
+            youth = Math.max(youth, clamp((star.temperature - 7000) / 8000, 0, 1));
+            const bulgeness = clamp(1.0 - ctx.rCyl / Math.max(1, bulgeRadius * 1.2), 0, 1);
+            const wBlue = clamp(youth * (1.0 - bulgeness) * popColorStrength, 0, 0.9);
+            const wGold = clamp((1.0 - youth) * bulgeness * popColorStrength, 0, 0.9);
+            r = r * (1 - wBlue) + (r * 0.62) * wBlue; g = g * (1 - wBlue) + (g * 0.74) * wBlue; b = b * (1 - wBlue) + (b * 1.0) * wBlue;
+            r = r * (1 - wGold) + (r * 1.0) * wGold; g = g * (1 - wGold) + (g * 0.82) * wGold; b = b * (1 - wGold) + (b * 0.52) * wGold;
+        }
 
         const useRealism = document.getElementById('tglRealism').checked;
         const dustAtt = getDustAttenuationForObject(star.x, star.y, star.z, modeId);
@@ -5537,6 +5577,7 @@
           gl.uniform1f(SL.uDiffraction, (useRealism && tglDiffraction.checked) ? currentMode.diffraction : 0.0);
           gl.uniform1f(SL.uSparse, currentMode.sparseMode); gl.uniform1f(SL.uGain, currentMode.exposureGain); gl.uniform1f(SL.uShoulder, currentMode.exposureShoulder);
           gl.uniform1f(SL.uStarVisualMult, starVisualMult);
+          gl.uniform1f(SL.uPopColor, popColorStrength);
           gl.uniform1f(SL.uRealColors, useRealisticColors ? 1.0 : 0.0);
           gl.uniform1f(SL.uDustEnabled, (useRealism && tglDust.checked && dustVisualMult > 0.0005) ? 1.0 : 0.0);
           gl.uniform1f(SL.uShowEvolvingDust, showEvolvingDust ? 1.0 : 0.0);
