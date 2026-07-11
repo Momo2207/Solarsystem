@@ -743,6 +743,15 @@
     const k = 5 / Math.pow(10, 1/3);
     const MASSIVE_STAR_THRESHOLD = 8.0;
     const SUPERNOVA_RADIUS = 50; const SUPERNOVA_FORCE = 1.5; const SUPERNOVA_ENRICHMENT = 0.5;
+    // Physical ceiling on gas-phase metallicity. Real galactic nuclei reach a few times
+    // solar and saturate there (metals lock into stars and drive winds as fast as they form).
+    // The raw += enrichment below has no such saturation, so without this the dense inner
+    // disk runs away to ~6-8 Zsun over a Gyr. MAX_GAS_METALLICITY caps the reservoir; the
+    // PER-EVENT cap stops a single close supernova (r^2 -> 0) from dumping up to +10 Zsun
+    // into one cloud in one step. Together they keep the (correct) enriched-centre gradient
+    // while removing the unphysical runaway.
+    const MAX_GAS_METALLICITY = 3.0;
+    const SN_ENRICH_PER_EVENT_CAP = 0.35;
     let starIdCounter = 0; // WORKER REFACTOR: persistent star ids so UI target references survive state mirroring
 
     // FEATURE MERGE: physics-owned feature state (mirrored to the main thread each step)
@@ -3696,7 +3705,7 @@
                         vy: star.vy + (dirY * explosionVelocity * 0.3), 
                         vz: star.vz + (dirZ * explosionVelocity * 0.3),
                         ax: 0, ay: 0, az: 0, mass: massPerFragment, heat: 5000, turbulence: 20, size: k * Math.pow(massPerFragment, 1/3) * 1.5,
-                        galaxyIndex: star.galaxyIndex, starsCreated: 0, stellarMassReservoir: 0, metallicity: star.metallicity + SUPERNOVA_ENRICHMENT,
+                        galaxyIndex: star.galaxyIndex, starsCreated: 0, stellarMassReservoir: 0, metallicity: Math.min(MAX_GAS_METALLICITY, star.metallicity + SUPERNOVA_ENRICHMENT),
                         dustMass: Math.max(0, massPerFragment * 0.005), dustTemp: 320, dustOpacity: 0.25, dustDestroyed: 0.5
                     });
                 }
@@ -3709,7 +3718,8 @@
                         const r = Math.max(0.1, Math.sqrt(r2)); const force = SUPERNOVA_FORCE / (r2 * 0.1 + 25.0); 
                         other.vx += force * (dx/r); other.vy += force * (dy/r); other.vz += force * (dz/r);
                         other.heat += 400; other.turbulence += 15;
-                        other.metallicity += (star.initialMass * 0.5) / (r2 * 0.05 + 1);
+                        const _dZ = Math.min(SN_ENRICH_PER_EVENT_CAP, (star.initialMass * 0.5) / (r2 * 0.05 + 1));
+                        other.metallicity = Math.min(MAX_GAS_METALLICITY, other.metallicity + _dZ);
                         destroyCloudDust(other, 0.15 * (1.0 - r / SUPERNOVA_RADIUS));
                     }
                 }
