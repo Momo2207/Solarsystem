@@ -736,6 +736,31 @@
     let totalPhysicsSteps = 0; // FIX: dedicated step counter for periodic physics-side updates
     let rho0=25, rs=85;
     let patternAngle = 0; let barAngle = 0; let ringShockRadius = 0;
+    // ===== DENSITY-WAVE PATTERN SPEED (fixes spiral winding) =====
+    // The arms are a rotating density wave, not material. Material orbits on the flat
+    // rotation curve (Omega ~ v/r, steeply radius-dependent), so a hand-placed material
+    // arm shears into a disc within a few Myr -- the classic winding problem. A real
+    // grand-design pattern instead rotates RIGIDLY at a single pattern speed Omega_p,
+    // chosen so it co-rotates with the disk near mid-radius; arms then persist between
+    // the inner and outer Lindblad resonances instead of winding up. These are set once
+    // per galaxy in recomputePatternSpeeds() from the actual rotation curve, so they stay
+    // self-consistent with mass, DM halo and disk. The old code advanced the pattern at a
+    // fixed 0.0005 -- ~600x too slow, effectively a standing wave the disk streamed past.
+    let patternOmega = 0.0005; // rad per unit time (patternAngle += patternOmega*dt)
+    let barOmega = 0.0015;     // bars rotate faster than the spiral pattern
+    const COROTATION_FRAC = 0.55; // co-rotation radius as a fraction of galaxyRadius
+    function recomputePatternSpeeds() {
+        // Omega_p = v_circ(R_CR) / R_CR, using the same theoretical rotation curve the
+        // science panel plots. Averaged over galaxy 0 (single) or both (collision uses A).
+        const R_CR = Math.max(60, galaxyRadius * COROTATION_FRAC);
+        let omega = 0.0005;
+        try {
+            const v = getTheoreticalVelocities(R_CR, 0).vTotal; // circular speed at co-rotation radius
+            if (isFinite(v) && v > 0) omega = v / R_CR;
+        } catch (e) { /* keep fallback */ }
+        patternOmega = omega;
+        barOmega = omega * 1.8; // bar pattern speed higher than the spiral (typical for barred disks)
+    }
     const SPIRAL_PITCH = 0.2; const DYNAMICAL_FRICTION_COEFF = 0.002; const BH_FRICTION_COEFF = 90000.0;
     const JET_ACCRETION_SPIKE_THRESHOLD = 0.005; const JET_DURATION = 50; const JET_PARTICLES_PER_STEP = 4;
     const JET_VELOCITY = 200; const JET_LIFETIME = 150; const JET_INTERACTION_RADIUS = 5; const JET_KICK_FORCE = 2.0; const JET_HEATING = 15;
@@ -2489,7 +2514,7 @@
             if ((p.galaxyIndex === g && !isPostMerger) || r_cyl < galaxyRadius) {
                 if (morphologyType === "spiral" && p.mass > 0 && r_cyl > 50) {
                     const theta = Math.atan2(dy, dx); const phase = armCount * (theta - patternAngle) - (armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
-                    const F_radial_total = Math.sqrt(dax*dax + day*day); const F_pert = F_radial_total * (p.heat !== undefined ? 0.055 : 0.02); // gas (has .heat) responds ~2.75x more strongly to the wave than stars 
+                    const F_radial_total = Math.sqrt(dax*dax + day*day); const F_pert = F_radial_total * (p.heat !== undefined ? 0.075 : 0.06); // stars now trap in the wave (0.02 was a ripple that could not hold arms); gas still responds more strongly. Local self-gravity amplifies the resulting overdensity (swing amplification). 
                     const F_r_spiral = F_pert * Math.cos(phase); const F_t_spiral = -F_pert * Math.sin(phase); 
                     dax += F_r_spiral * (dx/r_cyl) - F_t_spiral * (dy/r_cyl); day += F_r_spiral * (dy/r_cyl) + F_t_spiral * (dx/r_cyl);
                 }
@@ -3213,7 +3238,7 @@
     function updatePhysics(steps) {
       for (let step = 0; step < steps; step++) {
         elapsedTime += dt * yearsPerStep;
-        patternAngle += 0.0005 * dt; barAngle += 0.0015 * dt; 
+        patternAngle += patternOmega * dt; barAngle += barOmega * dt; 
         
         if (isPostMerger && postMergerTimer < 1.0) {
             postMergerTimer += 0.0005 * dt; 
@@ -6045,6 +6070,7 @@
       }
 
       patternAngle = 0; barAngle = 0; ringShockRadius = bulgeRadius * 0.5; 
+      recomputePatternSpeeds(); // derive co-rotating density-wave speed from the rotation curve
       
       elapsedTime=0;
       updateLiveMassModel();
