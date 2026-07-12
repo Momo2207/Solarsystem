@@ -693,6 +693,29 @@
 
     //<<PHYSICS>>
     // ================================================================
+    // DETERMINISTIC RNG (reproducibility). All stochastic draws inside
+    // the physics regions go through physicsRandom() rather than
+    // physicsRandom(), so a given seed reproduces a run bit-for-bit on
+    // both the worker and the synchronous fallback path. The seed is
+    // stored in SIM_SETTINGS.randomSeed, logged, and written to the CSV
+    // telemetry so any run can be reproduced exactly. (Rendering-only
+    // randomness on the main thread is intentionally left on Math.random.)
+    let _rngState = 0x9e3779b9 >>> 0;
+    function seedPhysicsRandom(seed) {
+        let s = (seed >>> 0) || 1;
+        _rngState = s >>> 0;
+        // advance a few times so nearby seeds decorrelate immediately
+        for (let i = 0; i < 4; i++) { physicsRandom(); }
+    }
+    function physicsRandom() {
+        // mulberry32
+        _rngState = (_rngState + 0x6D2B79F5) >>> 0;
+        let t = _rngState;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    }
+    // ================================================================
     // WORKER REFACTOR: SHARED PHYSICS CORE.
     // Everything between the PHYSICS start/end comment markers runs on
     // BOTH the main thread and the physics Web Worker (the worker
@@ -708,7 +731,7 @@
         simMode: 'single', galaxyAType: 'spiral-2', galaxyBType: 'spiral-2',
         galaxyAStage: 'adult', galaxyBStage: 'adult',
         initialSeparation: 2000, impactParam: 200, appVel: 100, galaxyATilt: 0, galaxyBTilt: 0,
-        enableClusters: true, useLeapfrog: true, showJets: true, recordTrails: true, localGravity: true,
+        enableClusters: true, useLeapfrog: true, showJets: true, recordTrails: true, localGravity: true, randomSeed: ((Date.now() ^ (Date.now() >>> 11)) >>> 0),
         showHIIRegions: true, showJetLobes: true,
         enableOldStarConsolidation: true, useObservationSynthesis: true, reduceResolvedOldStars: true,
         protectedStarIds: [] // star ids the main thread wants excluded from consolidation (analysis targets, chase camera, hover)
@@ -1109,7 +1132,10 @@
     let lgMinX = 0, lgMinY = 0, lgCell = 1, lgInvCell = 1, lgReady = false;
 
     function buildLocalGravityGrid() {
-        if (SIM_SETTINGS.localGravity === false || blackHoles.length === 0) { lgReady = false; return; }
+        // The grid is ALWAYS built when a galaxy exists, so it can be measured as a live
+        // diagnostic even when the cohesion FORCE is disabled (SIM_SETTINGS.localGravity=false).
+        // Only the force application below is gated on the toggle; see computeAccelerations.
+        if (blackHoles.length === 0) { lgReady = false; return; }
         let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
         for (let g = 0; g < blackHoles.length; g++) {
             const bh = blackHoles[g]; if (!bh) continue;
@@ -1456,7 +1482,7 @@
         "rotation_radii_pc", "rotation_model_total_km_s", "rotation_baryonic_km_s", "rotation_dark_matter_km_s", "rotation_star_median_km_s", "rotation_gas_median_km_s",
         "sfr_history_time_myr", "sfr_history_index_sim_units",
         "metallicity_radii_pc", "stellar_metallicity_z", "gas_metallicity_z",
-        "observation_filter", "galaxy_a_type", "galaxy_a_stage", "galaxy_b_type", "galaxy_b_stage", "simulation_mode"
+        "observation_filter", "galaxy_a_type", "galaxy_a_stage", "galaxy_b_type", "galaxy_b_stage", "simulation_mode", "random_seed"
     ];
     let dataRecordPart = 1;
 
@@ -1525,7 +1551,8 @@
             galaxyAStageSelect.value,
             galaxyBTypeSelect.value,
             galaxyBStageSelect.value,
-            simModeSelect.value
+            simModeSelect.value,
+            (SIM_SETTINGS.randomSeed >>> 0)
         ];
     }
 
@@ -2595,7 +2622,7 @@
         // LIVING DYNAMICS: local self-gravity + GMC stirring (see buildLocalGravityGrid).
         // Pull along the live density gradient, capped against the mean field so it
         // enriches structure without ever destabilizing orbits.
-        if (lgReady && !p.isBH) {
+        if (lgReady && SIM_SETTINGS.localGravity !== false && !p.isBH) {
             const ci = Math.floor((p.x - lgMinX) * lgInvCell);
             const cj = Math.floor((p.y - lgMinY) * lgInvCell);
             if (ci >= 2 && cj >= 2 && ci <= LG_N - 3 && cj <= LG_N - 3) {
@@ -2908,16 +2935,16 @@
     }
 
     //<<PHYSICS>>
-    function gaussianRandom(m=0,s=1){const u1=1-Math.random(),u2=Math.random();return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2)*s+m;} // FIX: 1-Math.random() keeps u1 in (0,1], preventing log(0) = -Infinity / NaN velocities
+    function gaussianRandom(m=0,s=1){const u1=1-physicsRandom(),u2=physicsRandom();return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2)*s+m;} // FIX: 1-physicsRandom() keeps u1 in (0,1], preventing log(0) = -Infinity / NaN velocities
     // Truncated gaussian: resample beyond k*sigma so a distribution's spatial EXTENT is
     // independent of the number of samples (keeps the disc a fixed thickness at any particle count).
     function gaussianRandomBounded(m=0,s=1,k=3){ let v,n=0; do{ v=gaussianRandom(0,s); n++; }while(Math.abs(v)>k*s && n<8); if(Math.abs(v)>k*s) v=(v>0?k*s:-k*s); return v+m; }
     
     function generateStarMass(heatFactor = 0, massBias = 1.0) {
         let minM = 0.1, maxM = 50.0;
-        let u = Math.random();
+        let u = physicsRandom();
         
-        if (heatFactor > 250 && Math.random() < 0.4) {
+        if (heatFactor > 250 && physicsRandom() < 0.4) {
             u = u * 0.05; 
         }
         // Top-heavier IMF in high-pressure (spiral-arm shocked) gas: skews the
@@ -3130,9 +3157,9 @@
     }
 
     function initBlackHoleVisualState(bh) {
-        bh.diskAngle = Math.random() * Math.PI * 2;
-        bh.diskSpin = 0.035 + Math.random() * 0.035;
-        bh.diskFlicker = Math.random();
+        bh.diskAngle = physicsRandom() * Math.PI * 2;
+        bh.diskSpin = 0.035 + physicsRandom() * 0.035;
+        bh.diskFlicker = physicsRandom();
         bh.jetAxis = {x: 0, y: 0, z: 1};
         return bh;
     }
@@ -3147,8 +3174,8 @@
             id: hiiRegionIdCounter++, x: star.x, y: star.y, z: star.z,
             vx: star.vx, vy: star.vy, vz: star.vz,
             galaxyIndex: star.galaxyIndex, parentStar: star,
-            ageMyr: 0, lifetimeMyr: 8 + Math.random() * 12,
-            radius: 8 + Math.random() * 10,
+            ageMyr: 0, lifetimeMyr: 8 + physicsRandom() * 12,
+            radius: 8 + physicsRandom() * 10,
             maxRadius: 34 + strengthFromMass * 36,
             intensity: strengthFromMass * strengthFromDensity,
             temperature: 10000 + star.temperature * 0.1,
@@ -3200,12 +3227,12 @@
 
     function spawnJetLobe(bh, galaxyIndex, side) {
         if (jetLobes.length >= MAX_JET_LOBES) jetLobes.shift();
-        const distance = 250 + Math.random() * 180;
+        const distance = 250 + physicsRandom() * 180;
         jetLobes.push({
             id: jetLobeIdCounter++, galaxyIndex, bh,
             x: bh.x, y: bh.y, z: bh.z + side * distance,
             vx: bh.vx, vy: bh.vy, vz: bh.vz + side * 8,
-            age: 0, lifetime: 180 + Math.random() * 130,
+            age: 0, lifetime: 180 + physicsRandom() * 130,
             radius: 20, maxRadius: 120 + clamp(bh.accretionGlow,0,1) * 170,
             energy: clamp(bh.accretionGlow + 0.25, 0.2, 1.6), side, currentEnergy: 1
         });
@@ -3297,12 +3324,12 @@
         while (cosmologicalInflowReservoir >= spawnMass && gasClouds.length < maxClouds) {
             cosmologicalInflowReservoir -= spawnMass;
             
-            let targetGIndex = Math.floor(Math.random() * blackHoles.length);
+            let targetGIndex = Math.floor(physicsRandom() * blackHoles.length);
             let bh = blackHoles[targetGIndex];
             if (!bh) continue;
 
             let spawnRadius = galaxyRadius * 1.8;
-            let theta = Math.random() * 2 * Math.PI;
+            let theta = physicsRandom() * 2 * Math.PI;
             let cx = spawnRadius * Math.cos(theta);
             let cy = spawnRadius * Math.sin(theta);
             let cz = gaussianRandom(0, 50); 
@@ -3347,12 +3374,12 @@
             bh.accretionGlow *= 0.95; 
             if (bh.diskAngle === undefined) initBlackHoleVisualState(bh);
             bh.diskAngle += (bh.diskSpin || 0.04) * (0.5 + bh.accretionGlow) * dt;
-            bh.diskFlicker = (bh.diskFlicker || 0) * 0.88 + Math.random() * 0.12;
+            bh.diskFlicker = (bh.diskFlicker || 0) * 0.88 + physicsRandom() * 0.12;
         }
 
         let collisionChecks = Math.min(gasClouds.length, 350); 
         for (let c = 0; c < collisionChecks; c++) {
-            let idx = Math.floor(Math.random() * gasClouds.length);
+            let idx = Math.floor(physicsRandom() * gasClouds.length);
             let c1 = gasClouds[idx];
             if (c1.mass < 0.5) continue;
             
@@ -3655,7 +3682,7 @@
                   }
               }
           } else if (!isPostMerger) {
-              cloud.heat += (5.0 / (r_cyl * 0.005 + 1.0)) * dt + (Math.random() * 0.5 * dt);
+              cloud.heat += (5.0 / (r_cyl * 0.005 + 1.0)) * dt + (physicsRandom() * 0.5 * dt);
           }
           
           if (presetId === "ring") {
@@ -3702,9 +3729,9 @@
                   
                   let newStar = { 
                       id: starIdCounter++, // WORKER REFACTOR: persistent id
-                      x: cloud.x+(Math.random()-.5)*cloud.size, 
-                      y: cloud.y+(Math.random()-.5)*cloud.size, 
-                      z: cloud.z+(Math.random()-.5)*cloud.size, 
+                      x: cloud.x+(physicsRandom()-.5)*cloud.size, 
+                      y: cloud.y+(physicsRandom()-.5)*cloud.size, 
+                      z: cloud.z+(physicsRandom()-.5)*cloud.size, 
                       vx: cloud.vx, vy: cloud.vy, vz: cloud.vz, 
                       initialMass: massVariation, 
                       ageMyr:0, 
@@ -5901,6 +5928,9 @@
       // physics -- fall back to a valid spiral instead.
       if (!GALAXY_PRESETS[SIM_SETTINGS.galaxyAType]) SIM_SETTINGS.galaxyAType = 'spiral-2';
       if (!GALAXY_PRESETS[SIM_SETTINGS.galaxyBType]) SIM_SETTINGS.galaxyBType = 'spiral-2';
+      // Deterministic RNG: seed once per initialization so the whole run reproduces from this seed.
+      if (SIM_SETTINGS.randomSeed === undefined || SIM_SETTINGS.randomSeed === null) SIM_SETTINGS.randomSeed = ((Date.now() ^ (Date.now() >>> 11)) >>> 0);
+      seedPhysicsRandom(SIM_SETTINGS.randomSeed);
       const peakStarCapacity = SIM_SETTINGS.starCount; 
       const gasAmountMultiplier = SIM_SETTINGS.gasAmount;
       const useClusters = SIM_SETTINGS.enableClusters;
@@ -5967,8 +5997,8 @@
           let clusters = [];
           if (useClusters) {
               for(let i=0; i<4; i++) {
-                  let r = Math.random() * (bulgeRadius * 1.5);
-                  let th = Math.random() * Math.PI * 2;
+                  let r = physicsRandom() * (bulgeRadius * 1.5);
+                  let th = physicsRandom() * Math.PI * 2;
                   clusters.push({x: r*Math.cos(th), y: r*Math.sin(th), z: gaussianRandomBounded(0, 15, 3)});
               }
           }
@@ -5983,24 +6013,24 @@
           for(let i=0;i<actualStarCount;i++){
             let r,theta,z;
             
-            if(Math.random()<_bulgeSplit){ 
+            if(physicsRandom()<_bulgeSplit){ 
                 r = Math.abs(gaussianRandomBounded(0, _presetBulgeR * 0.4, 3.5)); 
-                theta=Math.random()*2*Math.PI;
-                const phi=Math.acos(2*Math.random()-1); z=r*Math.cos(phi); r=r*Math.sin(phi); 
+                theta=physicsRandom()*2*Math.PI;
+                const phi=Math.acos(2*physicsRandom()-1); z=r*Math.cos(phi); r=r*Math.sin(phi); 
             }
             else{ 
-                if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else { r = -diskScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); let _rg = 0; while (r > diskMaxRadius && _rg++ < 6) r = -diskScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); if (r > diskMaxRadius) r = diskMaxRadius; } 
-                theta=Math.random()*2*Math.PI; 
-                if(preset.type === "spiral" && Math.random() < 0.2) { 
-                    const armOffset = Math.log(Math.max(r, _presetBulgeR * 0.5) / _presetBulgeR) / _pitchTan; const arm = Math.floor(Math.random() * preset.armCount); 
+                if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else { r = -diskScaleLength * Math.log((1 - physicsRandom()) * (1 - physicsRandom())); let _rg = 0; while (r > diskMaxRadius && _rg++ < 6) r = -diskScaleLength * Math.log((1 - physicsRandom()) * (1 - physicsRandom())); if (r > diskMaxRadius) r = diskMaxRadius; } 
+                theta=physicsRandom()*2*Math.PI; 
+                if(preset.type === "spiral" && physicsRandom() < 0.2) { 
+                    const armOffset = Math.log(Math.max(r, _presetBulgeR * 0.5) / _presetBulgeR) / _pitchTan; const arm = Math.floor(physicsRandom() * preset.armCount); 
                     theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.4 / preset.armCount); 
                 } 
                 z=gaussianRandomBounded(0,preset.thickness,3); 
             }
             
             let lx=r*Math.cos(theta), ly=r*Math.sin(theta);
-            if (useClusters && Math.random() < 0.15) {
-                let c = clusters[Math.floor(Math.random()*clusters.length)];
+            if (useClusters && physicsRandom() < 0.15) {
+                let c = clusters[Math.floor(physicsRandom()*clusters.length)];
                 lx = c.x + gaussianRandom(0, 25);
                 ly = c.y + gaussianRandom(0, 25);
                 z = c.z + gaussianRandomBounded(0, 25, 3);
@@ -6028,7 +6058,7 @@
             let massVar = generateStarMass();
             
             if (dist < bulgeRadius) {
-                massVar = Math.min(massVar, 0.7 + Math.random()*0.5); 
+                massVar = Math.min(massVar, 0.7 + physicsRandom()*0.5); 
             }
 
             let initialZ = (Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05) * _metalScale;
@@ -6048,9 +6078,9 @@
             
             let maxPossibleAge = stageMaxAgeYears / 1e6;
             if (massVar > MASSIVE_STAR_THRESHOLD) {
-                newStar.ageMyr = Math.random() * Math.min(newStar.t_ms, maxPossibleAge);
+                newStar.ageMyr = physicsRandom() * Math.min(newStar.t_ms, maxPossibleAge);
             } else {
-                newStar.ageMyr = Math.random() * maxPossibleAge;
+                newStar.ageMyr = physicsRandom() * maxPossibleAge;
             }
             
             updateStarEvolution(newStar);
@@ -6059,16 +6089,16 @@
           
           for(let i=0;i<gasCloudCount;i++){
             let r, theta, z = gaussianRandomBounded(0,preset.thickness,3);
-            if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else { r = -gasScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); let _rg = 0; while (r > gasMaxRadius && _rg++ < 6) r = -gasScaleLength * Math.log((1 - Math.random()) * (1 - Math.random())); if (r > gasMaxRadius) r = gasMaxRadius; }
-            theta=Math.random()*2*Math.PI;
-            if(preset.type === "spiral" && Math.random() < 0.5) { 
-                const armOffset = Math.log(Math.max(r, presetBulgeR(preset) * 0.5) / presetBulgeR(preset)) / presetPitchTan(preset); const arm = Math.floor(Math.random() * preset.armCount); 
+            if (presetId === "ring") r = galaxyRadius * 0.75 + gaussianRandom(0, 30); else { r = -gasScaleLength * Math.log((1 - physicsRandom()) * (1 - physicsRandom())); let _rg = 0; while (r > gasMaxRadius && _rg++ < 6) r = -gasScaleLength * Math.log((1 - physicsRandom()) * (1 - physicsRandom())); if (r > gasMaxRadius) r = gasMaxRadius; }
+            theta=physicsRandom()*2*Math.PI;
+            if(preset.type === "spiral" && physicsRandom() < 0.5) { 
+                const armOffset = Math.log(Math.max(r, presetBulgeR(preset) * 0.5) / presetBulgeR(preset)) / presetPitchTan(preset); const arm = Math.floor(physicsRandom() * preset.armCount); 
                 theta = (2 * Math.PI / preset.armCount) * arm + armOffset + gaussianRandom(0, 0.3 / preset.armCount); 
             }
             
             let lx=r*Math.cos(theta), ly=r*Math.sin(theta);
-            if (useClusters && Math.random() < 0.15) {
-                let c = clusters[Math.floor(Math.random()*clusters.length)];
+            if (useClusters && physicsRandom() < 0.15) {
+                let c = clusters[Math.floor(physicsRandom()*clusters.length)];
                 lx = c.x + gaussianRandom(0, 35);
                 ly = c.y + gaussianRandom(0, 35);
                 z = c.z + gaussianRandomBounded(0, 35, 3);
@@ -6087,17 +6117,17 @@
             // REDUCED INITIAL VERTICAL VELOCITY SCATTER
             const localVz = gaussianRandomBounded(0, v * 0.02, 3);
             
-            const mass=stageParams.avgGasMass*(0.5+Math.random()); const initialZ = (Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05) * presetMetalScale(preset);
+            const mass=stageParams.avgGasMass*(0.5+physicsRandom()); const initialZ = (Math.exp(-dist / (galaxyRadius * 0.5)) * 2.5 + 0.05) * presetMetalScale(preset);
             
-            let initialHeat = 10 + Math.random()*10;
+            let initialHeat = 10 + physicsRandom()*10;
             if (preset.type === "spiral" && r_cyl > 50 && r_cyl < galaxyRadius) {
                 const phase = preset.armCount * (theta) - (preset.armCount / Math.tan(SPIRAL_PITCH)) * Math.log(r_cyl / 50.0);
-                if (Math.cos(phase) > 0.6) initialHeat = 60 + Math.random()*100;
+                if (Math.cos(phase) > 0.6) initialHeat = 60 + physicsRandom()*100;
             } else if (presetId === "ring") {
-                if (Math.abs(r_cyl - ringShockRadius) < 60) initialHeat = 80 + Math.random()*100;
+                if (Math.abs(r_cyl - ringShockRadius) < 60) initialHeat = 80 + physicsRandom()*100;
             }
 
-            let initialTurbulence = 15.0 + (Math.random() * 20.0);
+            let initialTurbulence = 15.0 + (physicsRandom() * 20.0);
 
             gasClouds.push({
                 id: cloudIdCounter++, 
