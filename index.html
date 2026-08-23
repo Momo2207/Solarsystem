@@ -404,6 +404,14 @@
         <input type="range" id="dustDetail" min="1000" max="60000" step="1000" value="8000">
         <label class="checkbox-label"><input type="checkbox" id="tglGPUStars" checked> GPU Star Renderer (draws every star, much faster)</label>
         <label class="checkbox-label"><input type="checkbox" id="tglHDRPipe" checked> HDR Pipeline (real bloom + filmic tonemap)</label>
+        <label for="renderQuality">Render Quality (supersampling):</label>
+        <select id="renderQuality">
+            <option value="auto" selected>Auto (sharpen still frames)</option>
+            <option value="1">1× (native)</option>
+            <option value="1.5">1.5× (crisper)</option>
+            <option value="2">2× (max detail)</option>
+        </select>
+        <div class="help-text">Renders internally above display resolution then downsamples — cleaner star points and dust edges. Auto stays 1× while moving and boosts to 2× on a paused, still frame.</div>
         <label for="bloomBalance">Bloom Strength: <span id="bloomBalanceValue">1.00&times;</span></label>
         <input type="range" id="bloomBalance" min="0" max="2" step="0.05" value="1">
       </div>
@@ -462,6 +470,8 @@
       <div class="group-content collapsed">
         <label class="checkbox-label"><input type="checkbox" id="showHIIRegions" checked> H II Regions</label>
         <div class="help-text">Young massive stars ionize nearby gas clouds and light up star-forming arms.</div>
+        <label class="checkbox-label"><input type="checkbox" id="tglFineGas" checked> Fine Gas Structure</label>
+        <div class="help-text">Splats an extra high-frequency sub-cloud per gas particle so arms and knots show filamentary texture instead of smooth blobs.</div>
         <label class="checkbox-label"><input type="checkbox" id="showAccretionDisks" checked> Accretion Disks</label>
         <label class="checkbox-label"><input type="checkbox" id="showJetLobes" checked> Jet Lobes</label>
         <label class="checkbox-label"><input type="checkbox" id="showEvolvingDust" checked> Evolving Dust</label>
@@ -1122,7 +1132,7 @@
     // surface-density grid, smoothed once, and every particle feels a capped
     // pull along the local density gradient. Gas falls into gas, stars fall
     // into gas-rich arms, tidal debris fragments into knots.
-    const LG_N = 96;
+    const LG_N = 128; // DETAIL: was 96; finer self-gravity grid -> spurs/feathering/knots resolve (LG_CAP still bounds the force)
     let LG_STRENGTH = 140.0;   // fluctuation-force gain (headless-tuned: median |a_loc|/|a_mean| = 10.0%)
     const LG_CAP = 0.35;       // |a_loc| never exceeds 35% of the mean field at that point
     const GMC_HEAT_K = 0.0015; // stochastic star stirring by dense gas (secular disk heating)
@@ -1449,6 +1459,8 @@
     document.getElementById('showAccretionDisks').addEventListener('change',(e)=>{showAccretionDisks=e.target.checked;});
     document.getElementById('showJetLobes').addEventListener('change',(e)=>{showJetLobes=e.target.checked;});
     document.getElementById('showEvolvingDust').addEventListener('change',(e)=>{showEvolvingDust=e.target.checked;});
+    document.getElementById('tglFineGas').addEventListener('change',(e)=>{fineGasDetail=e.target.checked;});
+    document.getElementById('renderQuality').addEventListener('change',(e)=>{ renderScaleSetting=e.target.value; applyRenderScale(); });
     document.getElementById('showColdGasOverlay').addEventListener('change',(e)=>{showColdGasOverlay=e.target.checked;});
     document.getElementById('showForegroundStars').addEventListener('change',(e)=>{showForegroundStars=e.target.checked;});
     document.getElementById('showBackgroundLensing').addEventListener('change',(e)=>{showBackgroundLensing=e.target.checked;});
@@ -1466,6 +1478,12 @@
     let showHIIRegions=true,showAccretionDisks=true,showJetLobes=true,showEvolvingDust=true,showForegroundStars=true,showBackgroundLensing=true,showColdGasOverlay=false;
     let useRealisticColors = true, useLeapfrog = true, useCinematicDepth = true;
     let useObservationSynthesis = true, reduceResolvedOldStars = true, enableOldStarConsolidation = true, showPopulationMaps = true, showGasPhaseMaps = true;
+    // DETAIL: finer-render feature state
+    let fineGasDetail = true;                                 // #3 extra sub-cloud splat
+    let renderScaleSetting = 'auto';                          // #6/#7 'auto' | '1' | '1.5' | '2'
+    let activeRenderScale = 1.0;                              // scale currently applied (== highResMult during live view)
+    let stillBoosted = false, _lastCamSig = NaN, _camStillFrames = 0; // auto still-frame supersampling
+    let lastVisibleStarCount = 0, lastVisibleGasCount = 0;    // #4 temporal-feedback LOD
     let bgStars = [], bgGalaxies = [], foregroundStars = [];
     const MAX_FOREGROUND_STARS = 32;
     
@@ -1670,7 +1688,7 @@
         return Math.pow(10, val * 0.33);
     }
 
-    const DUST_FIELD_SIZE = 96;
+    const DUST_FIELD_SIZE = 192; // DETAIL: was 96; 2x finer dust-lane resolution (dustTexData/dustTex/uDustN all derive from this)
     let dustTauField = new Float32Array(DUST_FIELD_SIZE * DUST_FIELD_SIZE);
     let dustDepthField = new Float32Array(DUST_FIELD_SIZE * DUST_FIELD_SIZE);
     let dustTempField = new Float32Array(DUST_FIELD_SIZE * DUST_FIELD_SIZE);
@@ -1738,7 +1756,7 @@
             const gx = Math.floor((sx / w) * DUST_FIELD_SIZE);
             const gy = Math.floor((sy / h) * DUST_FIELD_SIZE);
             const screenR = Math.max(1.0, c.size * 2.0 * scale * highResMult);
-            const mapR = clamp(Math.ceil((screenR / Math.max(w, h)) * DUST_FIELD_SIZE), 1, 4);
+            const mapR = clamp(Math.ceil((screenR / Math.max(w, h)) * DUST_FIELD_SIZE), 1, 8); // DETAIL: cap raised 4->8 to preserve physical splat coverage at 2x field resolution
             const sigma2 = Math.max(1.0, mapR * mapR * 0.72);
             const dustTemp = c.dustTemp || 22;
 
@@ -1896,7 +1914,7 @@
     // how many particles the worker is simulating. The simulation still tracks
     // the full population; we just draw a representative sample of it.
     const RENDER_STAR_BUDGET = 90000;
-    const RENDER_GAS_BUDGET = 30000;
+    const RENDER_GAS_BUDGET = 60000; // DETAIL: was 30000; >= cloud cap so every on-screen cloud draws (bounded by frustum-cull LOD)
     // Perf-meter state (shown in the HUD).
     let _fpsSmooth = 0, _lastFrameTs = 0, _renderMsSmooth = 0, _physicsMsSmooth = 0, perfMeterEl = null;
     const posData = new Float32Array(MAX_RENDER_PARTICLES * 3), sizData = new Float32Array(MAX_RENDER_PARTICLES);
@@ -2060,6 +2078,7 @@
       uniform vec2 uPresetA; uniform vec2 uPresetB; // (armCount, type: 0 other / 1 spiral / 2 ring)
       uniform float uObsSynth; uniform float uCinDepth; uniform vec4 uFocus; uniform float uCineSat;
       uniform float uDustHintNorm; uniform sampler2D uDustTex; uniform float uDustN;
+      uniform sampler2D uNoiseTex; // DETAIL: sub-grid dust filament texture (bound at unit 1)
       uniform float uGlowPass; uniform float uGlowSize; uniform float uGlowAlpha;
       varying vec4 vColor; varying float vType; varying float vPitch; varying float vSize; varying float vSeed;
       vec3 planck(float temp){
@@ -2167,6 +2186,9 @@
             if (tauF > 0.00001) {
               float dw = (v16(t00)*w00 + v16(t10)*w10 + v16(t01)*w01 + v16(t11)*w11) / 65535.0 * 40000.0 - 20000.0;
               depthAvg = dw / tauF;
+              // DETAIL: world-locked, mean-preserving sub-grid dust texture (filament structure below field resolution; factor mean ~1.0)
+              float dn = texture2D(uNoiseTex, aStarPos.xy * 0.020).r * 0.6 + texture2D(uNoiseTex, aStarPos.xy * 0.061 + 0.37).r * 0.4;
+              tauF *= 0.72 + 0.56 * dn;
             } else { tauF = 0.0; }
           }
           float tauColumn = tauF + hint * 0.12;
@@ -2318,7 +2340,7 @@
     // aSeed attribute) so clouds render as wispy filamentary structure instead of
     // smooth gaussian blobs.
     const noiseTex = (function(){
-        const N = 128, P = 32, data = new Uint8Array(N*N*4);
+        const N = 256, P = 128, data = new Uint8Array(N*N*4); // DETAIL: 256px, 128-lattice, 6-octave fBm (was 128/32/4) -> ~2x finer wisps
         let s = 987654321; const rnd = () => { s = (s*1103515245 + 12345) & 0x7fffffff; return s/0x7fffffff; };
         const lat = new Float32Array(P*P); for (let i = 0; i < P*P; i++) lat[i] = rnd();
         const smo = t => t*t*(3-2*t);
@@ -2332,7 +2354,7 @@
         }
         for (let y = 0; y < N; y++) for (let x = 0; x < N; x++){
             let sum = 0, norm = 0;
-            for (let o = 0; o < 4; o++){ const amp = Math.pow(0.55, o), f = 4 << o; sum += amp*vn(x/N*f, y/N*f, f); norm += amp; }
+            for (let o = 0; o < 6; o++){ const amp = Math.pow(0.55, o), f = 4 << o; sum += amp*vn(x/N*f, y/N*f, f); norm += amp; } // 6 octaves; max f = 4<<5 = 128 = P (lattice), invariant f<=P preserved
             const v8 = Math.max(0, Math.min(255, Math.round((sum/norm)*255)));
             const o4 = (y*N + x)*4; data[o4] = v8; data[o4+1] = v8; data[o4+2] = v8; data[o4+3] = 255;
         }
@@ -2493,12 +2515,23 @@
     const particlePositionBuffer=gl.createBuffer(), particleSizeBuffer=gl.createBuffer(), particleTypeBuffer=gl.createBuffer(), particleColorBuffer=gl.createBuffer(), particleSeedBuffer=gl.createBuffer();
     
     function onResize() {
-      const w=document.getElementById('sim-container').clientWidth, h=document.getElementById('sim-container').clientHeight;
-      bgCanvas.width=glCanvas.width=overlayCanvas.width=w; bgCanvas.height=glCanvas.height=overlayCanvas.height=h; centerX=w/2; centerY=h/2; pcPerPixel=totalSizePc/w; gl.viewport(0,0,w,h);
+      // DETAIL (#6/#7): render internally at activeRenderScale x display resolution, then let the
+      // browser downsample the canvas element -> supersampling AA. highResMult carries the scale
+      // through all projection/size/overlay math (the same field the screenshot path already uses).
+      const cw=document.getElementById('sim-container').clientWidth, ch=document.getElementById('sim-container').clientHeight;
+      highResMult = activeRenderScale;
+      const w=Math.max(1,Math.round(cw*activeRenderScale)), h=Math.max(1,Math.round(ch*activeRenderScale));
+      bgCanvas.width=glCanvas.width=overlayCanvas.width=w; bgCanvas.height=glCanvas.height=overlayCanvas.height=h; centerX=w/2; centerY=h/2; pcPerPixel=totalSizePc/cw; gl.viewport(0,0,w,h);
       sciCanvas.width = sciCanvas.parentElement.clientWidth - 16;
       resizeSpecCanvas();
       sampleDiagnostics();
       updateSciencePanels(true);
+    }
+    // DETAIL (#6/#7): apply a manual render-quality choice (or reset auto to native), then resize.
+    function applyRenderScale() {
+      stillBoosted = false; _camStillFrames = 0;
+      activeRenderScale = (renderScaleSetting === 'auto') ? 1.0 : (parseFloat(renderScaleSetting) || 1.0);
+      if (!isProcessingScreenshots && screenshotQueue.length === 0) onResize();
     }
 
     //<<PHYSICS>>
@@ -4768,12 +4801,43 @@
             const dust = getApproxDustDensity(r.x, r.y, r.z);
             if (isOpticalLikeMode()) alpha *= Math.exp(-dust * 0.8);
             if (currentModeId === 'ultraviolet') alpha *= Math.exp(-dust * 2.0);
-            const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
-            grad.addColorStop(0.0, `rgba(${color[0]},${color[1]},${color[2]},${alpha})`);
-            grad.addColorStop(0.38, `rgba(${color[0]},${color[1]},${color[2]},${alpha * 0.30})`);
-            grad.addColorStop(1.0, `rgba(${color[0]},${color[1]},${color[2]},0)`);
-            ctx.fillStyle = grad;
-            ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+            const cs = `${color[0]},${color[1]},${color[2]}`;
+            if (sr < 7) {
+                // too small to resolve substructure: cheap single blob
+                const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+                grad.addColorStop(0.0, `rgba(${cs},${alpha})`);
+                grad.addColorStop(0.38, `rgba(${cs},${alpha * 0.30})`);
+                grad.addColorStop(1.0, `rgba(${cs},0)`);
+                ctx.fillStyle = grad;
+                ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+            } else {
+                // DETAIL: ionisation-bubble shell (dimmer cavity, bright rim) + embedded knots.
+                // Mean-similar to the old blob (rim gain offsets the cavity dip); adds real structure.
+                const grad = ctx.createRadialGradient(sx, sy, 0, sx, sy, sr);
+                grad.addColorStop(0.0,  `rgba(${cs},${alpha * 0.60})`);
+                grad.addColorStop(0.34, `rgba(${cs},${alpha * 0.82})`);
+                grad.addColorStop(0.56, `rgba(${cs},${alpha * 1.12})`); // ionisation rim
+                grad.addColorStop(0.80, `rgba(${cs},${alpha * 0.42})`);
+                grad.addColorStop(1.0,  `rgba(${cs},0)`);
+                ctx.fillStyle = grad;
+                ctx.beginPath(); ctx.arc(sx, sy, sr, 0, Math.PI * 2); ctx.fill();
+                // stable per-region pseudo-random knots (Knuth multiplicative hash on r.id)
+                const h = ((r.id || 0) * 2654435761) >>> 0;
+                const rnd = (n) => (((h ^ ((n * 0x9E3779B1) >>> 0)) >>> 0) % 10000) / 10000;
+                const knots = 2 + (h % 2);
+                for (let kk = 0; kk < knots; kk++) {
+                    const ang = rnd(kk * 3 + 1) * 6.2831853;
+                    const kd = (0.20 + rnd(kk * 3 + 2) * 0.52) * sr;
+                    const kr = (0.12 + rnd(kk * 3 + 3) * 0.16) * sr;
+                    const kx = sx + Math.cos(ang) * kd, ky = sy + Math.sin(ang) * kd;
+                    const ka = alpha * (0.45 + rnd(kk * 3 + 5) * 0.4);
+                    const kg = ctx.createRadialGradient(kx, ky, 0, kx, ky, kr);
+                    kg.addColorStop(0.0, `rgba(${cs},${ka})`);
+                    kg.addColorStop(1.0, `rgba(${cs},0)`);
+                    ctx.fillStyle = kg;
+                    ctx.beginPath(); ctx.arc(kx, ky, kr, 0, Math.PI * 2); ctx.fill();
+                }
+            }
         }
         ctx.restore();
     }
@@ -5430,11 +5494,12 @@
       _lastFrameTs = _drawStart;
       updateCineState();
       if (captureScreenshotRequest.pending) {
-          highResMult = captureScreenshotRequest.mult;
+          // DETAIL: layer the capture multiplier on top of the live render scale.
+          highResMult = captureScreenshotRequest.mult * activeRenderScale;
           captureScreenshotRequest.pending = false;
           isProcessingScreenshots = true;
-          
-          if (highResMult > 1) {
+
+          if (highResMult > activeRenderScale) {
               const w = document.getElementById('sim-container').clientWidth * highResMult;
               const h = document.getElementById('sim-container').clientHeight * highResMult;
               bgCanvas.width = glCanvas.width = overlayCanvas.width = w;
@@ -5442,6 +5507,15 @@
               centerX = w / 2; centerY = h / 2;
               gl.viewport(0, 0, w, h);
           }
+      }
+      // DETAIL (#7): auto still-frame supersampling — boost to 2x on a paused, still, mouse-out
+      // frame; revert instantly on any camera move / hover / unpause / capture.
+      if (renderScaleSetting === 'auto' && !isProcessingScreenshots && screenshotQueue.length === 0) {
+          const camSig = rotationX + rotationY * 1.7 + scale * 1000 + translateX * 0.13 + translateY * 0.17;
+          if (camSig !== _lastCamSig) { _lastCamSig = camSig; _camStillFrames = 0; } else { _camStillFrames++; }
+          const wantBoost = isPaused && currentMouseX < 0 && astrometryTargets.length === 0 && _camStillFrames > 45;
+          if (wantBoost && !stillBoosted) { stillBoosted = true; activeRenderScale = 2.0; onResize(); }
+          else if (!wantBoost && stillBoosted) { stillBoosted = false; activeRenderScale = 1.0; onResize(); }
       }
       
       let isCapturingSequence = captureScreenshotRequest.pending || isProcessingScreenshots || screenshotQueue.length > 0;
@@ -5526,33 +5600,67 @@
       }
       
       const cineGlowSize = Math.min(120, 22 + 38 * CINE.glowStr); // soft diffuse-glow sprite size
-      const gasStride = Math.max(1, Math.floor(gasClouds.length / RENDER_GAS_BUDGET));
-      for(let gi = 0; gi < gasClouds.length; gi += gasStride) {
+
+      // DETAIL (#4): shared frustum cull. world->screen replicates the vertex-shader projection
+      // exactly (precomputed trig), with a near-plane guard, so culling never drops visible points.
+      const _cX = Math.cos(rotationX*Math.PI/180), _sXr = Math.sin(rotationX*Math.PI/180);
+      const _cY = Math.cos(rotationY*Math.PI/180), _sYr = Math.sin(rotationY*Math.PI/180);
+      const _sMul = scale * highResMult, _tXo = translateX*highResMult + centerX, _tYo = translateY*highResMult + centerY;
+      const _orthoR = isOrthographicRender, _Wc = glCanvas.width, _Hc = glCanvas.height, _cullPad = 140 * highResMult;
+      const _onScreen = (x, y, z) => {
+          const x1 = x*_cY + z*_sYr, z1 = -x*_sYr + z*_cY;
+          const y2 = y*_cX - z1*_sXr, z2 = y*_sXr + z1*_cX;
+          if (!_orthoR && z2 <= -999.0) return false;
+          const sf = _orthoR ? 1.0 : 1000.0/(1000.0+z2);
+          const px = x1*sf*_sMul + _tXo, py = y2*sf*_sMul + _tYo;
+          return px >= -_cullPad && px <= _Wc+_cullPad && py >= -_cullPad && py <= _Hc+_cullPad;
+      };
+
+      // DETAIL (#3/#4): gas — draw every on-screen cloud (temporal-feedback decimation only when the
+      // visible set exceeds the budget), plus an optional fine sub-sprite for filament texture.
+      const gasDrawStride = Math.max(1, Math.round(lastVisibleGasCount / RENDER_GAS_BUDGET));
+      const gasSizeBoost = Math.min(1.7, Math.sqrt(gasDrawStride));
+      let _visGas = 0, _drawnGas = 0;
+      for(let gi = 0; gi < gasClouds.length; gi++) {
           const cloud = gasClouds[gi];
+          if (!_onScreen(cloud.x, cloud.y, cloud.z)) continue;
+          _visGas++;
+          if ((_visGas % gasDrawStride) !== 0) continue;
           let rp = getGasRenderParams(cloud, currentModeId);
           if (rp.a > 0) {
               const gSeed = ((((cloud.id != null ? cloud.id : gi) * 0.61803398875) % 1) + 1) % 1; // stable per cloud
-              addPoint(cloud.x, cloud.y, cloud.z, rp.size * 1.2, 1, rp.r, rp.g, rp.b, rp.a * 0.5, gSeed);
-              addPoint(cloud.x, cloud.y, cloud.z, rp.size * 0.6, 1, rp.r, rp.g, rp.b, rp.a * 0.8, ((gSeed + 0.37) % 1));
-              if (CINE.on && CINE.glow && (gi % (gasStride * 3) === 0)) {
+              addPoint(cloud.x, cloud.y, cloud.z, rp.size * 1.2 * gasSizeBoost, 1, rp.r, rp.g, rp.b, rp.a * 0.5, gSeed);
+              addPoint(cloud.x, cloud.y, cloud.z, rp.size * 0.6 * gasSizeBoost, 1, rp.r, rp.g, rp.b, rp.a * 0.8, ((gSeed + 0.37) % 1));
+              if (fineGasDetail && rp.size > 1.1) { // fine knot sub-sprite: high-frequency filament texture
+                  addPoint(cloud.x, cloud.y, cloud.z, rp.size * 0.34 * gasSizeBoost, 1, rp.r, rp.g, rp.b, rp.a * 0.9, ((gSeed + 0.71) % 1));
+              }
+              if (CINE.on && CINE.glow && (_drawnGas % 3 === 0)) {
                   addPoint(cloud.x, cloud.y, cloud.z, cineGlowSize * 1.4, 8, rp.r, rp.g, rp.b, rp.a * 0.10 * CINE.glowStr);
               }
+              _drawnGas++;
           }
       }
+      lastVisibleGasCount = _visGas;
 
       const useGPUStars = gpuStarsOK && document.getElementById('tglGPUStars').checked && currentModeId === 'visible' && gpuStarCount > 0 && stars.length > 0;
-      const starStride = useGPUStars ? 1 : Math.max(1, Math.floor(stars.length / RENDER_STAR_BUDGET));
-      const starSizeBoost = Math.min(2.2, Math.sqrt(starStride)); // keep perceived brightness ~constant when striding
+      // DETAIL (#4): CPU star path (non-visible modes / GPU-off) — cull off-screen, decimate the
+      // visible set to budget so zooming in spends the whole budget on what is actually on screen.
+      const starDrawStride = useGPUStars ? 1 : Math.max(1, Math.round(lastVisibleStarCount / RENDER_STAR_BUDGET));
+      const starSizeBoost = Math.min(2.2, Math.sqrt(starDrawStride)); // keep perceived brightness ~constant when decimating
       if (!useGPUStars) {
-      for(let si = 0; si < stars.length; si += starStride){
+      let _visStar = 0;
+      for(let si = 0; si < stars.length; si++){
         const star = stars[si];
+        if (!_onScreen(star.x, star.y, star.z)) continue;
+        _visStar++;
+        if ((_visStar % starDrawStride) !== 0) continue;
         let sp = getStarRenderParams(star, currentModeId);
-        if (sp.a > 0.005) { 
+        if (sp.a > 0.005) {
             addPoint(star.x, star.y, star.z, sp.size * starSizeBoost, sp.type, sp.r, sp.g, sp.b, sp.a);
-            if (CINE.on && CINE.glow && (si % (starStride * 4) === 0)) {
+            if (CINE.on && CINE.glow && (_visStar % (starDrawStride * 4) === 0)) {
                 addPoint(star.x, star.y, star.z, cineGlowSize, 8, sp.r, sp.g, sp.b, sp.a * 0.16 * CINE.glowStr);
             }
-            if (showStreaks && currentModeId !== 'spectroscopy' && starStride === 1) {
+            if (showStreaks && currentModeId !== 'spectroscopy' && starDrawStride === 1) {
                 const tr = trailStore.get(star.id);
                 if (tr) for(let j=0; j<tr.count; j++) {
                     let idx = tr.idx - 1 - j; if (idx < 0) idx += MAX_TRAIL_LENGTH;
@@ -5561,6 +5669,7 @@
             }
         }
       }
+      lastVisibleStarCount = _visStar;
       } else if (showStreaks && currentModeId !== 'spectroscopy') {
           // GPU path draws every star on the GPU; only trails stay on the CPU (bounded by TRAIL_TRACK_CAP).
           const _tl = Math.min(stars.length, TRAIL_TRACK_CAP);
@@ -5882,9 +5991,9 @@
           
           document.getElementById('snapshotList').prepend(div);
           
-          if (highResMult > 1) {
-              highResMult = 1.0;
-              onResize(); 
+          if (highResMult > activeRenderScale) {
+              highResMult = activeRenderScale; // DETAIL: restore to live render scale, not hard 1x
+              onResize();
           }
           isProcessingScreenshots = false;
 
@@ -6305,7 +6414,8 @@
         const dragDist = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
         if (dragDist > 5) return; 
         const rect = glCanvas.getBoundingClientRect();
-        const clickedStar = getStarUnderCursor(e.clientX - rect.left, e.clientY - rect.top, SCANNER_RADIUS);
+        // DETAIL: map CSS-pixel click into backing-store space (== activeRenderScale) so selection works at any render quality
+        const clickedStar = getStarUnderCursor((e.clientX - rect.left) * activeRenderScale, (e.clientY - rect.top) * activeRenderScale, SCANNER_RADIUS * activeRenderScale);
         
         if (!clickedStar) {
             astrometryTargets = [];
