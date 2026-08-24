@@ -431,6 +431,19 @@
         <div class="help-text">Renders internally above display resolution then downsamples — cleaner star points and dust edges. Auto stays 1× while moving and boosts to 2× on a paused, still frame.</div>
         <label for="bloomBalance">Bloom Strength: <span id="bloomBalanceValue">1.00&times;</span></label>
         <input type="range" id="bloomBalance" min="0" max="2" step="0.05" value="1">
+        <div class="section-title" style="margin-top:10px;">GPU Particle-Mesh Layer (WebGL2)</div>
+        <label class="checkbox-label"><input type="checkbox" id="tglGPUSim"> <strong>Emergent Dynamics Layer</strong></label>
+        <div class="help-text" style="margin-bottom:6px;">Adds a second population living entirely in GPU memory, moving under the analytic halo plus <em>particle-mesh self-gravity</em> from its own density field. Its spiral structure is not drawn &mdash; it grows from gravity. Independent of the main simulation, which keeps running.</div>
+        <label for="gpuParticleCount">Layer Particles: <span id="gpuParticleCountValue">1.0M</span></label>
+        <select id="gpuParticleCount">
+            <option value="256">65k (light)</option>
+            <option value="512">262k</option>
+            <option value="1024" selected>1.0M</option>
+            <option value="2048">4.2M (heavy)</option>
+        </select>
+        <label for="gpuSelfGravity">Self-Gravity: <span id="gpuSelfGravityValue">100%</span></label>
+        <input type="range" id="gpuSelfGravity" min="0" max="200" step="5" value="100">
+        <div class="help-text">0% = test particles on smooth orbits (no structure). Higher values let overdensities pull on each other and arms grow. Capped at 35% of the mean field for stability.</div>
       </div>
     </div>
     
@@ -1486,6 +1499,20 @@
     document.getElementById('showEvolvingDust').addEventListener('change',(e)=>{showEvolvingDust=e.target.checked;});
     document.getElementById('tglFineGas').addEventListener('change',(e)=>{fineGasDetail=e.target.checked;});
     document.getElementById('tglVolumetric').addEventListener('change',(e)=>{useVolumetric=e.target.checked;});
+    document.getElementById('tglGPUSim').addEventListener('change',(e)=>{
+        gpuSimOn = e.target.checked;
+        if (gpuSimOn && gpuSimOK && !gpuSimReady) seedGPUSim();
+    });
+    document.getElementById('gpuParticleCount').addEventListener('change',(e)=>{
+        GPUP_N = parseInt(e.target.value)||1024;
+        const n = GPUP_N*GPUP_N;
+        document.getElementById('gpuParticleCountValue').textContent = n>=1e6 ? (n/1e6).toFixed(1)+'M' : Math.round(n/1000)+'k';
+        if (gpuSimOK && gpuSimOn) seedGPUSim();
+    });
+    document.getElementById('gpuSelfGravity').addEventListener('input',(e)=>{
+        gpuSelfGrav = parseFloat(e.target.value)/100;
+        document.getElementById('gpuSelfGravityValue').textContent = e.target.value+'%';
+    });
     document.getElementById('volScatter').addEventListener('input',(e)=>{ volScatterStr=parseFloat(e.target.value)/100; document.getElementById('volScatterValue').textContent=e.target.value+'%'; });
     document.getElementById('volDensity').addEventListener('input',(e)=>{ volDensityMult=parseFloat(e.target.value)/100; document.getElementById('volDensityValue').textContent=e.target.value+'%'; });
     document.getElementById('volQuality').addEventListener('input',(e)=>{ volSteps=parseInt(e.target.value); document.getElementById('volQualityValue').textContent=e.target.value; });
@@ -1518,6 +1545,10 @@
     let volScatterStr = 0.50;        // scattering albedo -- how much starlight the dust returns
     let volDensityMult = 1.0;        // dust density multiplier for the volume
     let volSteps = 44;               // raymarch quality
+    // PHASE 2: GPU particle-mesh layer. Disc mass ~23% of the halo mass inside galaxyRadius,
+    // i.e. a realistic baryonic fraction, which is what makes the disc self-gravitate enough
+    // for spiral structure to grow on its own.
+    const GPU_DISK_MASS = 8.0e7;
     let VOL_LIGHT_GAIN = 6.5;      // normalised-radiance gain (offsets mip-blur energy spread)
     const VOL_SIGMA_REF = 0.5;       // encoding ceiling for extinction coefficient (1/world unit)
     let volDbg = null;
@@ -3024,6 +3055,434 @@ void main(){
         gl.bindTexture(gl.TEXTURE_3D, null);
         gl.useProgram(program);
         gl.blendEquation(gl.FUNC_ADD);
+        if (tglHDR.checked) { gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE); }
+        else { gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE); }
+    }
+
+    // ===================================================================
+    // PHASE 2: GPU-RESIDENT PARTICLES + PARTICLE-MESH SELF-GRAVITY (WebGL2)
+    // -------------------------------------------------------------------
+    // The worker simulation is rich (stellar evolution, gas chemistry, SFR, BH
+    // accretion) but CPU-bound at ~1e5 particles, and its spiral arms are PAINTED:
+    // computeAccelerations() applies a fixed ~7% perturbation along a prescribed
+    // logarithmic spiral, so arms are maintained rather than formed. This adds a
+    // second, GPU-resident population whose entire state lives in float textures
+    // and never crosses the CPU boundary, moving under:
+    //   analytic axisymmetric gravity (NFW halo + bulge + BH)  [exact, cheap]
+    // + particle-mesh SELF-gravity from the population's own density field
+    // so arms, spurs and clumps EMERGE from gravity instead of being drawn.
+    //
+    // This is a grid/Poisson method, NOT a tree code -- there is deliberately no
+    // Barnes-Hut here.
+    //
+    // Poisson note: only the FLUCTUATION potential is solved for. The smooth
+    // axisymmetric field is already exact analytically, so the source term is
+    // (rho - blurred rho). That part of the spectrum is high-frequency, which is
+    // exactly where Jacobi relaxation converges fastest -- so a modest number of
+    // iterations resolves it well, with no multigrid machinery.
+    //
+    // Purely additive: the existing simulation is untouched, and this layer is
+    // off by default. Any failure disables it and leaves the app unchanged.
+    // ===================================================================
+    let gpuSimOK = false, gpuSimOn = false, gpuSimReady = false;
+    let GPUP_N = 1024;                       // particle texture side -> N*N particles
+    const GPU_GRID = 128;                    // particle-mesh resolution
+    let gpuJacobiIters = 32;
+    let gpuSelfGrav = 1.0;                   // self-gravity strength multiplier
+    let gpuPosA=null,gpuPosB=null,gpuVelA=null,gpuVelB=null;   // {tex,fbo}
+    let gpuDens=null, gpuPhiA=null, gpuPhiB=null, gpuAcc=null;
+    let progDeposit=null, progJacobi=null, progAccel=null, progUpdate=null, progPRender=null;
+    let PD=null, PJ=null, PA=null, PU=null, PR=null;
+    let gpuIndexVBO=null, gpuCount=0, gpuInited=false;
+    let gpuBoxHalf = 900;                    // half-width of the mesh in world units
+
+    function _mkFloatTarget(w,h,internal,type,filter){
+        const tex=gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D,tex);
+        gl.texImage2D(gl.TEXTURE_2D,0,internal,w,h,0,gl.RGBA,type,null);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,filter);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,filter);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+        const fbo=gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,tex,0);
+        const ok=gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE;
+        gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+        return ok?{tex,fbo,w,h}:null;
+    }
+
+    const vsQuad3 = `#version 300 es
+precision highp float;
+in vec2 aQuad;
+void main(){ gl_Position=vec4(aQuad,0.0,1.0); }`;
+
+    // ---- mass deposit: one point per particle, additively splatted into the mesh ----
+    const vsDepositSrc = `#version 300 es
+precision highp float;
+in float aIndex;
+uniform sampler2D uPos;
+uniform float uTexN, uBoxHalf;
+void main(){
+  float x = mod(aIndex, uTexN), y = floor(aIndex / uTexN);
+  vec4 P = texelFetch(uPos, ivec2(int(x), int(y)), 0);
+  vec2 g = P.xy / uBoxHalf;                 // -1..1 across the mesh
+  gl_Position = vec4(g, 0.0, 1.0);
+  gl_PointSize = 1.0;
+}`;
+    const fsDepositSrc = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform float uMass;
+void main(){ fragColor = vec4(uMass, 0.0, 0.0, 1.0); }`;
+
+    // ---- Jacobi relaxation for the FLUCTUATION potential ----
+    const fsJacobiSrc = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform sampler2D uPhi, uRho;
+uniform float uN, uH, uFourPiG;
+void main(){
+  ivec2 c = ivec2(gl_FragCoord.xy);
+  int m = int(uN) - 1;
+  float l = texelFetch(uPhi, ivec2(max(c.x-1,0), c.y), 0).r;
+  float r = texelFetch(uPhi, ivec2(min(c.x+1,m), c.y), 0).r;
+  float d = texelFetch(uPhi, ivec2(c.x, max(c.y-1,0)), 0).r;
+  float u = texelFetch(uPhi, ivec2(c.x, min(c.y+1,m)), 0).r;
+  vec2 uv = (vec2(c) + 0.5) / uN;
+  // source = density fluctuation: total minus its own blurred (smooth) part, because the
+  // smooth axisymmetric field is already supplied analytically.
+  float rho  = texture(uRho, uv).r;
+  float bg   = textureLod(uRho, uv, 4.0).r;
+  float f    = uFourPiG * (rho - bg);
+  fragColor = vec4((l + r + d + u - uH*uH*f) * 0.25, 0.0, 0.0, 1.0);
+}`;
+
+    // ---- potential -> acceleration (central differences) ----
+    const fsAccelSrc = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform sampler2D uPhi;
+uniform float uN, uH;
+void main(){
+  ivec2 c = ivec2(gl_FragCoord.xy);
+  int m = int(uN) - 1;
+  float l = texelFetch(uPhi, ivec2(max(c.x-1,0), c.y), 0).r;
+  float r = texelFetch(uPhi, ivec2(min(c.x+1,m), c.y), 0).r;
+  float d = texelFetch(uPhi, ivec2(c.x, max(c.y-1,0)), 0).r;
+  float u = texelFetch(uPhi, ivec2(c.x, min(c.y+1,m)), 0).r;
+  fragColor = vec4(-(r-l)/(2.0*uH), -(u-d)/(2.0*uH), 0.0, 1.0);
+}`;
+
+    // ---- leapfrog integration: analytic axisymmetric field + PM fluctuation ----
+    const fsUpdateSrc = `#version 300 es
+precision highp float;
+out vec4 fragColor;
+uniform sampler2D uPos, uVel, uAcc;
+uniform float uTexN, uBoxHalf, uDt, uMode;
+uniform float uG, uRho0, uRs, uBulgeM, uBulgeR, uBHM, uSelfG, uSoft, uDiskM, uDiskRd;
+uniform vec3 uBH;
+
+vec3 analyticAccel(vec3 p){
+  vec3 d = p - uBH;
+  float r = max(length(d), 4.0);
+  float x = r / uRs;
+  float mDM = 12.566370614 * uRho0 * uRs*uRs*uRs * (log(1.0+x) - x/(1.0+x));
+  float mB  = uBulgeM * min(1.0, pow(r/uBulgeR, 3.0));
+  // Enclosed mass of a razor-thin exponential disc. Supplying this analytically keeps the disc
+  // in centrifugal balance without asking Jacobi to converge the long-wavelength potential
+  // (which it does only very slowly); the mesh then carries the fluctuations alone.
+  float xd = r / uDiskRd;
+  float mD = uDiskM * (1.0 - (1.0 + xd) * exp(-xd));
+  float M = mDM + mB + uBHM + mD;
+  float a = uG * M / (r*r + uSoft*uSoft);
+  return -a * (d / r);
+}
+void main(){
+  ivec2 c = ivec2(gl_FragCoord.xy);
+  vec4 P = texelFetch(uPos, c, 0);
+  vec4 V = texelFetch(uVel, c, 0);
+  vec3 p = P.xyz, v = V.xyz;
+
+  vec2 g = (p.xy / uBoxHalf) * 0.5 + 0.5;
+  vec3 aSelf = vec3(0.0);
+  if (g.x > 0.001 && g.x < 0.999 && g.y > 0.001 && g.y < 0.999) {
+    aSelf.xy = texture(uAcc, g).xy * uSelfG;
+  }
+  // Cap the fluctuation force at a fraction of the mean field. Self-gravity amplitude
+  // depends on grid spacing and deposit mass; without a cap a badly calibrated run can
+  // eject particles. This mirrors LG_CAP in the CPU solver and makes the layer
+  // unconditionally stable regardless of calibration.
+  if (any(isnan(aSelf)) || any(isinf(aSelf))) aSelf = vec3(0.0);
+  vec3 aA = analyticAccel(p);
+  float mA = length(aA), mS = length(aSelf);
+  float lim = 0.35 * mA;
+  if (mS > lim) aSelf *= lim / max(mS, 1e-6);
+  vec3 a = aA + aSelf;
+
+  // Semi-implicit (symplectic) Euler: kick then drift. Both passes read the SAME
+  // input textures and the SAME acceleration, so the two writes stay consistent.
+  vec3 vNew = v + a * uDt;
+  if (uMode < 0.5) { fragColor = vec4(p + vNew * uDt, P.w); }
+  else             { fragColor = vec4(vNew, V.w); }
+}`;
+
+    // ---- particle rendering ----
+    const vsPRenderSrc = `#version 300 es
+precision highp float;
+in float aIndex;
+uniform sampler2D uPos;
+uniform float uTexN;
+uniform vec2 uTranslate, uCanvasSize;
+uniform float uScale, uRotX, uRotY, uIsOrtho, uPointSize, uGalaxyR;
+out vec4 vCol;
+void main(){
+  float x = mod(aIndex, uTexN), y = floor(aIndex / uTexN);
+  vec4 P = texelFetch(uPos, ivec2(int(x), int(y)), 0);
+  float cy = cos(uRotY), sy = sin(uRotY);
+  float x1 = P.x*cy + P.z*sy, z1 = -P.x*sy + P.z*cy;
+  float cx = cos(uRotX), sx = sin(uRotX);
+  float y2 = P.y*cx - z1*sx, z2 = P.y*sx + z1*cx;
+  float sf = (uIsOrtho > 0.5) ? 1.0 : (1000.0/(1000.0+z2));
+  vec2 sp = vec2(x1,y2)*sf*uScale + uTranslate + uCanvasSize*0.5;
+  gl_Position = vec4((2.0*sp.x/uCanvasSize.x)-1.0, 1.0-(2.0*sp.y/uCanvasSize.y), 0.0, 1.0);
+  gl_PointSize = max(1.0, uPointSize * sf);
+  // warm inner disc -> cooler outskirts, with per-particle variation from the seed in P.w
+  float rr = clamp(length(P.xy)/max(uGalaxyR,1.0), 0.0, 1.6);
+  vec3 warm = vec3(1.0, 0.80, 0.52), cool = vec3(0.66, 0.78, 1.0);
+  vec3 col = mix(warm, cool, smoothstep(0.15, 1.05, rr));
+  float jitter = fract(P.w * 9.7);
+  col *= 0.75 + 0.5*jitter;
+  vCol = vec4(col, 0.055 + 0.05*jitter);
+}`;
+    const fsPRenderSrc = `#version 300 es
+precision highp float;
+in vec4 vCol;
+out vec4 fragColor;
+void main(){
+  vec2 d = gl_PointCoord - vec2(0.5);
+  float f = exp(-dot(d,d)*7.0);
+  fragColor = vec4(vCol.rgb * vCol.a * f, vCol.a * f);
+}`;
+
+    function initGPUSim() {
+        if (!isGL2) return false;
+        try {
+            if (!gl.getExtension('EXT_color_buffer_float')) { console.warn('[GPU sim] float colour buffers unavailable'); return false; }
+            gl.getExtension('EXT_float_blend');       // additive deposit on some drivers
+            gl.getExtension('OES_texture_float_linear'); // linear filtering of float targets
+            progDeposit = createShaderProgram(gl, vsDepositSrc, fsDepositSrc);
+            progJacobi  = createShaderProgram(gl, vsQuad3, fsJacobiSrc);
+            progAccel   = createShaderProgram(gl, vsQuad3, fsAccelSrc);
+            progUpdate  = createShaderProgram(gl, vsQuad3, fsUpdateSrc);
+            progPRender = createShaderProgram(gl, vsPRenderSrc, fsPRenderSrc);
+            for (const [nm,pr] of [['deposit',progDeposit],['jacobi',progJacobi],['accel',progAccel],['update',progUpdate],['render',progPRender]]) {
+                if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) { console.warn('[GPU sim] link failed:', nm, gl.getProgramInfoLog(pr)); return false; }
+            }
+            const U=(p,n)=>gl.getUniformLocation(p,n), A=(p,n)=>gl.getAttribLocation(p,n);
+            PD={aIndex:A(progDeposit,'aIndex'),uPos:U(progDeposit,'uPos'),uTexN:U(progDeposit,'uTexN'),uBoxHalf:U(progDeposit,'uBoxHalf'),uMass:U(progDeposit,'uMass')};
+            PJ={aQuad:A(progJacobi,'aQuad'),uPhi:U(progJacobi,'uPhi'),uRho:U(progJacobi,'uRho'),uN:U(progJacobi,'uN'),uH:U(progJacobi,'uH'),uFourPiG:U(progJacobi,'uFourPiG')};
+            PA={aQuad:A(progAccel,'aQuad'),uPhi:U(progAccel,'uPhi'),uN:U(progAccel,'uN'),uH:U(progAccel,'uH')};
+            PU={aQuad:A(progUpdate,'aQuad'),uPos:U(progUpdate,'uPos'),uVel:U(progUpdate,'uVel'),uAcc:U(progUpdate,'uAcc'),
+                uTexN:U(progUpdate,'uTexN'),uBoxHalf:U(progUpdate,'uBoxHalf'),uDt:U(progUpdate,'uDt'),uMode:U(progUpdate,'uMode'),
+                uG:U(progUpdate,'uG'),uRho0:U(progUpdate,'uRho0'),uRs:U(progUpdate,'uRs'),uBulgeM:U(progUpdate,'uBulgeM'),
+                uBulgeR:U(progUpdate,'uBulgeR'),uBHM:U(progUpdate,'uBHM'),uSelfG:U(progUpdate,'uSelfG'),uSoft:U(progUpdate,'uSoft'),uBH:U(progUpdate,'uBH'),
+                uDiskM:U(progUpdate,'uDiskM'),uDiskRd:U(progUpdate,'uDiskRd')};
+            PR={aIndex:A(progPRender,'aIndex'),uPos:U(progPRender,'uPos'),uTexN:U(progPRender,'uTexN'),uTranslate:U(progPRender,'uTranslate'),
+                uCanvasSize:U(progPRender,'uCanvasSize'),uScale:U(progPRender,'uScale'),uRotX:U(progPRender,'uRotX'),uRotY:U(progPRender,'uRotY'),
+                uIsOrtho:U(progPRender,'uIsOrtho'),uPointSize:U(progPRender,'uPointSize'),uGalaxyR:U(progPRender,'uGalaxyR')};
+            if (!volQuadVBO) {   // the full-screen triangle is shared; create it if volumetrics is off
+                volQuadVBO = gl.createBuffer();
+                gl.bindBuffer(gl.ARRAY_BUFFER, volQuadVBO);
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+            }
+            gpuSimOK = true;
+            console.info('[Galaxy Simulation] GPU particle-mesh layer ready.');
+            return true;
+        } catch (e) { console.warn('[GPU sim] unavailable.', e); gpuSimOK=false; return false; }
+    }
+
+    function _gpuFreeTargets(){
+        for (const t of [gpuPosA,gpuPosB,gpuVelA,gpuVelB,gpuDens,gpuPhiA,gpuPhiB,gpuAcc])
+            if (t) { gl.deleteTexture(t.tex); gl.deleteFramebuffer(t.fbo); }
+        gpuPosA=gpuPosB=gpuVelA=gpuVelB=gpuDens=gpuPhiA=gpuPhiB=gpuAcc=null;
+    }
+
+    // Seeds an axisymmetric exponential disc in centrifugal balance with the analytic field.
+    // Deliberately smooth: any spiral structure that appears afterwards is EMERGENT, not drawn.
+    function seedGPUSim() {
+        if (!gpuSimOK) return false;
+        try {
+            _gpuFreeTargets();
+            const N = GPUP_N; gpuCount = N*N;
+            const pos = new Float32Array(gpuCount*4), vel = new Float32Array(gpuCount*4);
+            const bh = blackHoles[0] || {x:0,y:0,z:0};
+            const presetId = (typeof galaxyATypeSelect!=='undefined' && galaxyATypeSelect.value) || 'milkyway';
+            const pr = GALAXY_PRESETS[presetId] || GALAXY_PRESETS['spiral-2'];
+            const haloScale = pr.HALO_DENSITY_SCALE || 2.0;
+            const rho0e = rho0 * haloScale;
+            const Rd = galaxyRadius * presetDiskScaleFrac(pr);
+            const Rmax = galaxyRadius * 1.30, thick = pr.thickness || 18;
+            const accelAt = (r) => {
+                const rr = Math.max(r,4.0);
+                const x = rr/rs;
+                const mDM = 4*Math.PI * rho0e * rs*rs*rs * (Math.log(1+x) - x/(1+x));
+                const mB  = bulgeMass * Math.min(1, Math.pow(rr/bulgeRadius, 3));
+                const xd  = rr/Rd;
+                const mD  = GPU_DISK_MASS * (1 - (1 + xd)*Math.exp(-xd));   // must match the shader
+                return G * (mDM + mB + centralBHMass + mD) / (rr*rr + 400);
+            };
+            let s = 0x9e3779b9 >>> 0;
+            const rnd = () => { s ^= s<<13; s>>>=0; s ^= s>>17; s ^= s<<5; s>>>=0; return s/4294967296; };
+            const gauss = (sd) => { const u1=1-rnd(), u2=rnd(); return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2)*sd; };
+            for (let i=0; i<gpuCount; i++) {
+                let r = -Rd * Math.log(Math.max(1e-6,(1-rnd())*(1-rnd())));
+                let guard=0; while (r > Rmax && guard++ < 6) r = -Rd*Math.log(Math.max(1e-6,(1-rnd())*(1-rnd())));
+                if (r > Rmax) r = Rmax;
+                if (r < 6) r = 6;
+                const th = rnd()*2*Math.PI;
+                const px = bh.x + r*Math.cos(th), py = bh.y + r*Math.sin(th), pz = bh.z + gauss(thick*0.55);
+                const v = Math.sqrt(Math.max(0, r*accelAt(r)));
+                const sig = v * 0.065;
+                const o=i*4;
+                pos[o]=px; pos[o+1]=py; pos[o+2]=pz; pos[o+3]=rnd();
+                vel[o]   = -v*Math.sin(th) + gauss(sig);
+                vel[o+1] =  v*Math.cos(th) + gauss(sig);
+                vel[o+2] = gauss(sig*0.45);
+                vel[o+3] = 0;
+            }
+            const mk=(data)=>{ const t=_mkFloatTarget(N,N,gl.RGBA32F,gl.FLOAT,gl.NEAREST);
+                if(!t) return null; gl.bindTexture(gl.TEXTURE_2D,t.tex);
+                gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA32F,N,N,0,gl.RGBA,gl.FLOAT,data); return t; };
+            gpuPosA=mk(pos); gpuPosB=mk(null); gpuVelA=mk(vel); gpuVelB=mk(null);
+            gpuDens=_mkFloatTarget(GPU_GRID,GPU_GRID,gl.RGBA16F,gl.HALF_FLOAT,gl.LINEAR);
+            gpuPhiA=_mkFloatTarget(GPU_GRID,GPU_GRID,gl.RGBA32F,gl.FLOAT,gl.NEAREST);
+            gpuPhiB=_mkFloatTarget(GPU_GRID,GPU_GRID,gl.RGBA32F,gl.FLOAT,gl.NEAREST);
+            // RGBA16F, not 32F: the update shader samples this with LINEAR filtering, and linear
+            // filtering of 32-bit float textures needs OES_texture_float_linear. Without it the
+            // texture is incomplete and sampling yields NaN, which poisons every particle.
+            // Half-float is linearly filterable in core WebGL2 and is ample for an acceleration field.
+            gpuAcc =_mkFloatTarget(GPU_GRID,GPU_GRID,gl.RGBA16F,gl.HALF_FLOAT,gl.LINEAR);
+            if(!gpuPosA||!gpuPosB||!gpuVelA||!gpuVelB||!gpuDens||!gpuPhiA||!gpuPhiB||!gpuAcc){
+                console.warn('[GPU sim] target allocation failed'); _gpuFreeTargets(); gpuSimReady=false; return false; }
+            // density needs mips: the Jacobi source subtracts the blurred (smooth) component
+            gl.bindTexture(gl.TEXTURE_2D,gpuDens.tex);
+            gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR_MIPMAP_LINEAR);
+            gl.generateMipmap(gl.TEXTURE_2D);
+            const idx = new Float32Array(gpuCount);
+            for (let i=0;i<gpuCount;i++) idx[i]=i;
+            if (gpuIndexVBO) gl.deleteBuffer(gpuIndexVBO);
+            gpuIndexVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER,gpuIndexVBO);
+            gl.bufferData(gl.ARRAY_BUFFER,idx,gl.STATIC_DRAW);
+            gpuBoxHalf = Math.max(300, galaxyRadius*1.6);
+            gl.bindTexture(gl.TEXTURE_2D,null);
+            gpuInited=true; gpuSimReady=true;
+            return true;
+        } catch(e){ console.warn('[GPU sim] seed failed', e); gpuSimReady=false; return false; }
+    }
+
+    function _gpuQuadDraw(loc){
+        gl.bindBuffer(gl.ARRAY_BUFFER, volQuadVBO);
+        gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+        gl.enableVertexAttribArray(loc);
+        gl.drawArrays(gl.TRIANGLES,0,3);
+        gl.disableVertexAttribArray(loc);
+    }
+
+    function stepGPUSim(dtSim) {
+        if (!gpuSimReady) return;
+        const prevBlend = gl.getParameter(gl.BLEND);
+        // ---- 1. deposit particle mass into the mesh (additive points) ----
+        gl.bindFramebuffer(gl.FRAMEBUFFER, gpuDens.fbo);
+        gl.viewport(0,0,GPU_GRID,GPU_GRID);
+        gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD); gl.blendFunc(gl.ONE, gl.ONE);
+        gl.useProgram(progDeposit);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, gpuPosA.tex);
+        gl.uniform1i(PD.uPos,0); gl.uniform1f(PD.uTexN,GPUP_N); gl.uniform1f(PD.uBoxHalf,gpuBoxHalf);
+        gl.uniform1f(PD.uMass, GPU_DISK_MASS / gpuCount);
+        gl.bindBuffer(gl.ARRAY_BUFFER,gpuIndexVBO);
+        gl.vertexAttribPointer(PD.aIndex,1,gl.FLOAT,false,0,0);
+        gl.enableVertexAttribArray(PD.aIndex);
+        gl.drawArrays(gl.POINTS,0,gpuCount);
+        gl.disableVertexAttribArray(PD.aIndex);
+        gl.disable(gl.BLEND);
+        gl.bindTexture(gl.TEXTURE_2D,gpuDens.tex); gl.generateMipmap(gl.TEXTURE_2D);
+
+        // ---- 2. Jacobi relaxation for the fluctuation potential ----
+        const h = (2*gpuBoxHalf)/GPU_GRID;
+        const cellArea = h*h;
+        gl.useProgram(progJacobi);
+        gl.uniform1f(PJ.uN,GPU_GRID); gl.uniform1f(PJ.uH,h);
+        gl.uniform1f(PJ.uFourPiG, (4*Math.PI*G)/cellArea);
+        gl.uniform1i(PJ.uRho,1);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,gpuDens.tex);
+        // clear phi to zero before relaxing
+        gl.bindFramebuffer(gl.FRAMEBUFFER,gpuPhiA.fbo); gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER,gpuPhiB.fbo); gl.clear(gl.COLOR_BUFFER_BIT);
+        let src=gpuPhiA, dst=gpuPhiB;
+        for (let it=0; it<gpuJacobiIters; it++){
+            gl.bindFramebuffer(gl.FRAMEBUFFER,dst.fbo);
+            gl.viewport(0,0,GPU_GRID,GPU_GRID);
+            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,src.tex);
+            gl.uniform1i(PJ.uPhi,0);
+            _gpuQuadDraw(PJ.aQuad);
+            const t=src; src=dst; dst=t;
+        }
+        // ---- 3. potential -> acceleration ----
+        gl.useProgram(progAccel);
+        gl.bindFramebuffer(gl.FRAMEBUFFER,gpuAcc.fbo);
+        gl.viewport(0,0,GPU_GRID,GPU_GRID);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,src.tex);
+        gl.uniform1i(PA.uPhi,0); gl.uniform1f(PA.uN,GPU_GRID); gl.uniform1f(PA.uH,h);
+        _gpuQuadDraw(PA.aQuad);
+
+        // ---- 4. integrate (both passes read the same inputs, write to the B set) ----
+        const bh = blackHoles[0] || {x:0,y:0,z:0};
+        const presetId = (typeof galaxyATypeSelect!=='undefined' && galaxyATypeSelect.value) || 'milkyway';
+        const pr = GALAXY_PRESETS[presetId] || GALAXY_PRESETS['spiral-2'];
+        gl.useProgram(progUpdate);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,gpuPosA.tex); gl.uniform1i(PU.uPos,0);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,gpuVelA.tex); gl.uniform1i(PU.uVel,1);
+        gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D,gpuAcc.tex);  gl.uniform1i(PU.uAcc,2);
+        gl.uniform1f(PU.uTexN,GPUP_N); gl.uniform1f(PU.uBoxHalf,gpuBoxHalf); gl.uniform1f(PU.uDt,dtSim);
+        gl.uniform1f(PU.uG,G); gl.uniform1f(PU.uRho0, rho0*(pr.HALO_DENSITY_SCALE||2.0)); gl.uniform1f(PU.uRs,rs);
+        gl.uniform1f(PU.uBulgeM,bulgeMass); gl.uniform1f(PU.uBulgeR,bulgeRadius); gl.uniform1f(PU.uBHM,centralBHMass);
+        gl.uniform1f(PU.uSelfG,gpuSelfGrav); gl.uniform1f(PU.uSoft,20.0);
+        gl.uniform1f(PU.uDiskM, GPU_DISK_MASS); gl.uniform1f(PU.uDiskRd, galaxyRadius*presetDiskScaleFrac(pr));
+        gl.uniform3f(PU.uBH,bh.x,bh.y,bh.z);
+        gl.viewport(0,0,GPUP_N,GPUP_N);
+        gl.bindFramebuffer(gl.FRAMEBUFFER,gpuPosB.fbo); gl.uniform1f(PU.uMode,0.0); _gpuQuadDraw(PU.aQuad);
+        gl.bindFramebuffer(gl.FRAMEBUFFER,gpuVelB.fbo); gl.uniform1f(PU.uMode,1.0); _gpuQuadDraw(PU.aQuad);
+        let t1=gpuPosA; gpuPosA=gpuPosB; gpuPosB=t1;
+        let t2=gpuVelA; gpuVelA=gpuVelB; gpuVelB=t2;
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+        gl.activeTexture(gl.TEXTURE0);
+        if (prevBlend) gl.enable(gl.BLEND); else gl.disable(gl.BLEND);
+    }
+
+    function drawGPUSim() {
+        if (!gpuSimReady) return;
+        gl.useProgram(progPRender);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,gpuPosA.tex);
+        gl.uniform1i(PR.uPos,0); gl.uniform1f(PR.uTexN,GPUP_N);
+        gl.uniform2f(PR.uTranslate, translateX*highResMult, translateY*highResMult);
+        gl.uniform2f(PR.uCanvasSize, glCanvas.width, glCanvas.height);
+        gl.uniform1f(PR.uScale, scale*highResMult);
+        gl.uniform1f(PR.uRotX, rotationX*Math.PI/180); gl.uniform1f(PR.uRotY, rotationY*Math.PI/180);
+        gl.uniform1f(PR.uIsOrtho, isOrthographicRender?1.0:0.0);
+        gl.uniform1f(PR.uPointSize, 1.6*highResMult);
+        gl.uniform1f(PR.uGalaxyR, galaxyRadius);
+        gl.enable(gl.BLEND); gl.blendEquation(gl.FUNC_ADD);
+        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+        gl.bindBuffer(gl.ARRAY_BUFFER,gpuIndexVBO);
+        gl.vertexAttribPointer(PR.aIndex,1,gl.FLOAT,false,0,0);
+        gl.enableVertexAttribArray(PR.aIndex);
+        gl.drawArrays(gl.POINTS,0,gpuCount);
+        gl.disableVertexAttribArray(PR.aIndex);
+        gl.useProgram(program);
         if (tglHDR.checked) { gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE); }
         else { gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE); }
     }
@@ -6301,6 +6760,19 @@ void main(){
       }
 
       // ---- HDR post chain (CINEMATIC #2): bright pass -> blur pyramid -> ACES composite ----
+      // PHASE 2: advance and draw the GPU particle-mesh layer. Substepped at the same dt the
+      // CPU solver uses so both populations evolve at the same rate; capped so a big
+      // Fast-Forward can't stall the frame.
+      if (gpuSimOn && gpuSimReady) {
+          if (!isPaused && !isCapturingSequence) {
+              const subs = Math.max(1, Math.min(4, physicsSteps));
+              for (let sIt = 0; sIt < subs; sIt++) stepGPUSim(0.01);
+              gl.bindFramebuffer(gl.FRAMEBUFFER, useHDRPipe ? hdrScene.fbo : null);
+              gl.viewport(0, 0, glCanvas.width, glCanvas.height);
+          }
+          drawGPUSim();
+      }
+
       // PHASE 1: lit dust. Runs after the star field so it can dim what is behind it and
       // add its own scattered light, and before the HDR chain so bloom blooms the glow.
       if (volActive) drawVolumetric();
@@ -6793,6 +7265,8 @@ void main(){
     // ================================================================
     function initSimulation() {
       Object.assign(SIM_SETTINGS, readSimSettings());
+      // PHASE 2: reseed the GPU layer so it restarts alongside the CPU simulation
+      if (gpuSimOK && gpuSimOn) seedGPUSim();
       
       astrometryTargets = []; spectroscopyTarget = null; hoveredStar = null; trackingTarget = null; projectedOrbitPath = [];
       mergerFlashGlow = 0.0;
@@ -7394,7 +7868,7 @@ void main(){
         }, 150);
     });
 
-    if (isGL2) initVolumetrics();
+    if (isGL2) { initVolumetrics(); initGPUSim(); }
     initBackgroundUniverse(); onResize(); initSimulation(); requestAnimationFrame(draw);
     updateInteractionHint();
   </script>
