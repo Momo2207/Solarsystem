@@ -1738,7 +1738,21 @@
         if (ratio < 0.00035) return 0;
         const massFactor = clamp(Math.pow(cloud.mass / 140.0, 0.22), 0.55, 1.85);
         const layer = dustLayerWeight(cloud.x, cloud.y, cloud.z);
-        return clamp(ratio * 24.0 * massFactor * dustVisualMult * layer, 0.0, 0.85);
+        // DUST FIX: fade extinction across the bright bulge. Dust is a thin-disk/arm feature;
+        // dark blobs over the luminous spheroid read as stains, not gas. Fades to ~0 inside the
+        // inner bulge and ramps to full by ~1.15 bulge radii. Folded in here so EVERY dust path
+        // inherits it: the cinematic 3D sprites, the projected field (hence per-star GPU
+        // extinction and its sub-grid noise), and CPU gas/overlay attenuation.
+        let dbh = blackHoles[0];
+        if (dbh && blackHoles.length > 1) {
+            const b2 = blackHoles[1];
+            const dA = (cloud.x - dbh.x) * (cloud.x - dbh.x) + (cloud.y - dbh.y) * (cloud.y - dbh.y);
+            const dB = (cloud.x - b2.x) * (cloud.x - b2.x) + (cloud.y - b2.y) * (cloud.y - b2.y);
+            if (dB < dA) dbh = b2;
+        }
+        const rCyl = dbh ? Math.sqrt((cloud.x - dbh.x) * (cloud.x - dbh.x) + (cloud.y - dbh.y) * (cloud.y - dbh.y)) : 1e9;
+        const bulgeFade = smoothstep(bulgeRadius * 0.35, bulgeRadius * 1.15, rCyl);
+        return clamp(ratio * 24.0 * massFactor * dustVisualMult * layer * bulgeFade, 0.0, 0.85);
     }
 
     function buildProjectedDustField() {
@@ -1970,8 +1984,12 @@
             float ca9 = cos(vSeed * 6.2831853); float sa9 = sin(vSeed * 6.2831853);
             vec2 nuv9 = mat2(ca9, -sa9, sa9, ca9) * dc * (1.15 + vSeed * 0.9) + vec2(vSeed * 5.1, vSeed * 9.3);
             float n9 = texture2D(uNoiseTex, nuv9).r;
-            float body = exp(-dd * dd * 5.0);
-            float wisps = smoothstep(0.18, 0.78, n9 * (1.35 - dd * 1.5));
+            float body = exp(-dd * dd * 3.6);
+            // DUST FIX: floor the erosion so each sprite is a soft puff, not a torn silhouette.
+            // A hard 0->1 wisp mask makes overlapping core clouds show ragged holes (the "grainy
+            // stain" look); flooring at 0.5 and widening the transition lets dense overlaps
+            // integrate into a smooth veil that reads as gas.
+            float wisps = mix(0.5, 1.0, smoothstep(0.05, 0.85, n9 * (1.28 - dd * 1.1)));
             float sm = body * wisps * vColor.a;
             vec3 trans = clamp(vec3(1.0) - vColor.rgb * sm, 0.0, 1.0);
             gl_FragColor = vec4(trans, 1.0);
@@ -5771,7 +5789,7 @@
               const c = gasClouds[di];
               const tau = estimateCloudOpticalDepth(c);
               if (tau <= 0.002) continue;
-              const strength = Math.min(0.96, tau * 4.4 * dMul); // x1.84 compensates the measured mean noise-erosion of the sprite (0.543)
+              const strength = Math.min(0.96, tau * 3.2 * dMul); // gain lowered 4.4->3.2: the softened/floored sprite (higher mean opacity) needs less compensation, keeping disk-lane darkness ~constant
               const dWorld = c.size * 3.0 + 2.0; // world units; vertex shader applies zoom
               // colour packs per-channel extinction weight (blue absorbed most -> reddening)
               const dSeed = ((((c.id != null ? c.id : di) * 0.61803398875) % 1) + 1) % 1;
