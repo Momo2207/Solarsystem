@@ -288,7 +288,7 @@
             <div class="help-text">Impact Parameter controls head-on (0) vs glancing blow (>0).</div>
 
             <label for="appVel">Approach Velocity: <span id="appVelValue">60 km/s</span></label>
-            <input type="range" id="appVel" min="0" max="400" step="0.1" value="60">
+            <input type="range" id="appVel" min="0" max="400" step="0.1" value="50">
         </div>
         <div class="help-text text-warning" style="text-align:center; margin-top:8px;">Applies on restart</div>
       </div>
@@ -363,6 +363,15 @@
         <label class="checkbox-label"><input type="checkbox" id="tglCineCore" checked> Luminous Core</label>
         <label class="checkbox-label"><input type="checkbox" id="tglCineHII" checked> H II Star-Forming Knots</label>
         <label class="checkbox-label"><input type="checkbox" id="tglCineFG" checked> Bright Foreground Stars</label>
+        <div class="section-title" style="margin-top:8px;">Volumetric Dust (WebGL2)</div>
+        <label class="checkbox-label"><input type="checkbox" id="tglVolumetric" checked> <strong>Lit Volumetric Dust</strong></label>
+        <div class="help-text" style="margin-bottom:6px;">Raymarches a real 3D dust volume lit by the stars, so dust scatters light instead of only blocking it &mdash; warm haze around the bulge, blue reflection nebulae beside young clusters, self-shadowing and depth parallax. Replaces the flat sprite dust while active.</div>
+        <label for="volScatter">Scattering: <span id="volScatterValue">50%</span></label>
+        <input type="range" id="volScatter" min="0" max="200" step="5" value="50">
+        <label for="volDensity">Volume Density: <span id="volDensityValue">100%</span></label>
+        <input type="range" id="volDensity" min="0" max="300" step="5" value="100">
+        <label for="volQuality">Raymarch Quality: <span id="volQualityValue">44</span></label>
+        <input type="range" id="volQuality" min="16" max="96" step="4" value="44">
         <div class="section-title" style="margin-top:8px;">Intensity</div>
         <label for="cineGlowStr">Glow Intensity: <span id="cineGlowStrValue">100%</span></label>
         <input type="range" id="cineGlowStr" min="0" max="300" step="5" value="100">
@@ -608,8 +617,15 @@
     const bgCanvas=document.getElementById('background-canvas');const bgCtx=bgCanvas.getContext('2d');
     const glCanvas=document.getElementById('simulation');
 
+    // GL2 UPGRADE: prefer WebGL2 (3D textures, float colour buffers, MRT, instancing).
+    // Existing GLSL 1.00 programs compile unchanged under a WebGL2 context -- only the new
+    // volumetric / GPU-physics programs are authored in GLSL ES 3.00. WebGL1 remains a full
+    // fallback: every GL2-only feature is feature-gated on isGL2 and degrades to the old path.
+    let isGL2 = false;
     function createGalaxyWebGLContext(canvas) {
         const attempts = [
+            { label: 'webgl2 / full quality', type: 'webgl2', attrs: { preserveDrawingBuffer: true, antialias: true, alpha: true, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'high-performance' } },
+            { label: 'webgl2 / no antialias', type: 'webgl2', attrs: { preserveDrawingBuffer: true, antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'default' } },
             { label: 'webgl / full quality', type: 'webgl', attrs: { preserveDrawingBuffer: true, antialias: true, alpha: true, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'high-performance' } },
             { label: 'webgl / no antialias', type: 'webgl', attrs: { preserveDrawingBuffer: true, antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'default' } },
             { label: 'webgl / safe driver fallback', type: 'webgl', attrs: { preserveDrawingBuffer: false, antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, failIfMajorPerformanceCaveat: false, powerPreference: 'default' } },
@@ -621,8 +637,9 @@
             try {
                 const ctx = canvas.getContext(attempt.type, attempt.attrs);
                 if (ctx) {
-                    window.__galaxyWebGLContext = { label: attempt.label, attrs: attempt.attrs };
-                    console.info('[Galaxy Simulation] WebGL context created:', attempt.label);
+                    isGL2 = (typeof WebGL2RenderingContext !== 'undefined') && (ctx instanceof WebGL2RenderingContext);
+                    window.__galaxyWebGLContext = { label: attempt.label, attrs: attempt.attrs, gl2: isGL2 };
+                    console.info('[Galaxy Simulation] WebGL context created:', attempt.label, isGL2 ? '(WebGL2)' : '(WebGL1)');
                     return ctx;
                 }
             } catch (err) {
@@ -1468,6 +1485,10 @@
     document.getElementById('showJetLobes').addEventListener('change',(e)=>{showJetLobes=e.target.checked;});
     document.getElementById('showEvolvingDust').addEventListener('change',(e)=>{showEvolvingDust=e.target.checked;});
     document.getElementById('tglFineGas').addEventListener('change',(e)=>{fineGasDetail=e.target.checked;});
+    document.getElementById('tglVolumetric').addEventListener('change',(e)=>{useVolumetric=e.target.checked;});
+    document.getElementById('volScatter').addEventListener('input',(e)=>{ volScatterStr=parseFloat(e.target.value)/100; document.getElementById('volScatterValue').textContent=e.target.value+'%'; });
+    document.getElementById('volDensity').addEventListener('input',(e)=>{ volDensityMult=parseFloat(e.target.value)/100; document.getElementById('volDensityValue').textContent=e.target.value+'%'; });
+    document.getElementById('volQuality').addEventListener('input',(e)=>{ volSteps=parseInt(e.target.value); document.getElementById('volQualityValue').textContent=e.target.value; });
     document.getElementById('renderQuality').addEventListener('change',(e)=>{ renderScaleSetting=e.target.value; applyRenderScale(); });
     document.getElementById('showColdGasOverlay').addEventListener('change',(e)=>{showColdGasOverlay=e.target.checked;});
     document.getElementById('showForegroundStars').addEventListener('change',(e)=>{showForegroundStars=e.target.checked;});
@@ -1492,6 +1513,14 @@
     let activeRenderScale = 1.0;                              // scale currently applied (== highResMult during live view)
     let stillBoosted = false, _lastCamSig = NaN, _camStillFrames = 0; // auto still-frame supersampling
     let lastVisibleStarCount = 0, lastVisibleGasCount = 0;    // #4 temporal-feedback LOD
+    // PHASE 1: volumetric lit-dust state
+    let useVolumetric = true;        // master (auto-disabled if WebGL2/volume init fails)
+    let volScatterStr = 0.50;        // scattering albedo -- how much starlight the dust returns
+    let volDensityMult = 1.0;        // dust density multiplier for the volume
+    let volSteps = 44;               // raymarch quality
+    let VOL_LIGHT_GAIN = 6.5;      // normalised-radiance gain (offsets mip-blur energy spread)
+    const VOL_SIGMA_REF = 0.5;       // encoding ceiling for extinction coefficient (1/world unit)
+    let volDbg = null;
     let bgStars = [], bgGalaxies = [], foregroundStars = [];
     const MAX_FOREGROUND_STARS = 32;
     
@@ -2437,7 +2466,7 @@
         float a = clamp(scene.a + dot(bloom, vec3(0.3333)) * 0.8 * uBloomStrP, 0.0, 1.0);
         gl_FragColor = vec4(col, a);
       }`;
-    let hdrPipeOK = false, hdrTexType = null, hdrFilter = null;
+    let hdrPipeOK = false, hdrTexType = null, hdrFilter = null, hdrInternal = null;
     let hdrScene = null, hdrBright = null, hdrA4 = null, hdrB4 = null, hdrA8 = null, hdrB8 = null;
     let hdrW = 0, hdrH = 0;
     let progBright = null, progBlur = null, progComp = null, PB = null, PL = null, PC = null;
@@ -2445,7 +2474,9 @@
     function _mkTarget(w, h) {
         const tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, hdrTexType, null);
+        // GL2 UPGRADE: float render targets need SIZED internal formats (RGBA16F/RGBA32F).
+        // hdrInternal stays gl.RGBA on WebGL1 so the old unsized path is byte-identical.
+        gl.texImage2D(gl.TEXTURE_2D, 0, hdrInternal, w, h, 0, gl.RGBA, hdrTexType, null);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, hdrFilter); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, hdrFilter);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
         const fbo = gl.createFramebuffer();
@@ -2456,16 +2487,28 @@
         return ok ? { tex, fbo, w, h } : null;
     }
     try {
-        const extHF = gl.getExtension('OES_texture_half_float');
-        const extHFL = gl.getExtension('OES_texture_half_float_linear');
-        const extF = gl.getExtension('OES_texture_float');
-        const extFL = gl.getExtension('OES_texture_float_linear');
         const ladder = [];
-        if (extHF) ladder.push({ type: extHF.HALF_FLOAT_OES, lin: !!extHFL });
-        if (extF) ladder.push({ type: gl.FLOAT, lin: !!extFL });
-        ladder.push({ type: gl.UNSIGNED_BYTE, lin: true }); // LDR fallback: bloom still works, tonemap tames it
+        if (isGL2) {
+            // WebGL2: half/float are core types, but rendering TO them requires EXT_color_buffer_float.
+            // HALF_FLOAT is linearly filterable in core GL2; FLOAT still needs OES_texture_float_linear.
+            const cbf = gl.getExtension('EXT_color_buffer_float');
+            const extFL2 = gl.getExtension('OES_texture_float_linear');
+            if (cbf) {
+                ladder.push({ internal: gl.RGBA16F, type: gl.HALF_FLOAT, lin: true });
+                ladder.push({ internal: gl.RGBA32F, type: gl.FLOAT, lin: !!extFL2 });
+            }
+            ladder.push({ internal: gl.RGBA8, type: gl.UNSIGNED_BYTE, lin: true });
+        } else {
+            const extHF = gl.getExtension('OES_texture_half_float');
+            const extHFL = gl.getExtension('OES_texture_half_float_linear');
+            const extF = gl.getExtension('OES_texture_float');
+            const extFL = gl.getExtension('OES_texture_float_linear');
+            if (extHF) ladder.push({ internal: gl.RGBA, type: extHF.HALF_FLOAT_OES, lin: !!extHFL });
+            if (extF) ladder.push({ internal: gl.RGBA, type: gl.FLOAT, lin: !!extFL });
+            ladder.push({ internal: gl.RGBA, type: gl.UNSIGNED_BYTE, lin: true }); // LDR fallback: bloom still works, tonemap tames it
+        }
         for (const cand of ladder) {
-            hdrTexType = cand.type; hdrFilter = cand.lin ? gl.LINEAR : gl.NEAREST;
+            hdrTexType = cand.type; hdrInternal = cand.internal; hdrFilter = cand.lin ? gl.LINEAR : gl.NEAREST;
             const probe = _mkTarget(4, 4);
             if (probe) { gl.deleteTexture(probe.tex); gl.deleteFramebuffer(probe.fbo); hdrPipeOK = true; break; }
         }
@@ -2538,6 +2581,453 @@
         gl.useProgram(program);
     }
     
+    // ===================================================================
+    // PHASE 1: LIT DUST + VOLUMETRIC RAYMARCH  (WebGL2 only)
+    // -------------------------------------------------------------------
+    // The sprite pipeline can only ever SUBTRACT light: dust is a dark
+    // multiplicative billboard, so it silhouettes but never glows. Real dust
+    // does both -- it scatters starlight, which is why galaxy photographs show
+    // warm haze around the bulge and blue reflection nebulae beside young
+    // clusters. This builds a real 3D volume of the galaxy (RGB = stellar
+    // emissivity, A = dust density), mip-blurs it to approximate the local
+    // irradiance, then raymarches it with single scattering. Dust now
+    // silhouettes AND glows, self-shadows, and shows depth parallax.
+    // Falls back cleanly: on WebGL1, or if anything fails to build, the old
+    // sprite-extinction path is used unchanged.
+    // ===================================================================
+    // Grid is deliberately anisotropic: galactic dust is a THIN layer (DUST_SCALE_HEIGHT ~7 world
+    // units) inside a wide disk, so Z needs far finer sampling than X/Y or the lane smears into
+    // uniform haze across one voxel. 48 Z cells over ~+-77 units gives ~2 cells per scale height.
+    const VOL_NX = 96, VOL_NY = 96, VOL_NZ = 48;
+    const VOL_VOXELS = VOL_NX * VOL_NY * VOL_NZ;
+    let volLight = null, volDens = null, volBytes = null;
+    let volTex = null, volNoiseTex = null, volProg = null, VL = null, volQuadVBO = null;
+    let volOK = false, volBuilt = false;
+    let volMinW = [0,0,0], volMaxW = [1,1,1];
+    // EMA-smoothed normalisation: keeps 8-bit encoding stable frame to frame
+    // (a per-frame max would make the whole volume flicker as bright stars move).
+    let volLightRef = 1.0, volDensRef = 1.0;
+    let volFrame = 0;
+
+    const vsVolSrc = `#version 300 es
+precision highp float;
+in vec2 aQuad;
+void main(){ gl_Position = vec4(aQuad, 0.0, 1.0); }`;
+
+    const fsVolSrc = `#version 300 es
+precision highp float;
+precision highp sampler3D;
+out vec4 fragColor;
+uniform sampler3D uVol;
+uniform sampler3D uNoise3;
+uniform vec3 uVolMin, uVolMax, uCore;
+uniform vec2 uCanvas, uTranslate, uCenter;
+uniform float uScale, uIsOrtho;
+uniform float uCosX, uSinX, uCosY, uSinY;
+uniform float uLightScale, uDensScale;
+uniform float uScatter, uExtinct, uPhaseG, uSteps, uDetail, uShadow, uExposure;
+
+vec3 viewToWorld(vec3 v){
+  float y  =  v.y*uCosX + v.z*uSinX;
+  float z1 = -v.y*uSinX + v.z*uCosX;
+  float x  =  v.x*uCosY - z1*uSinY;
+  float z  =  v.x*uSinY + z1*uCosY;
+  return vec3(x, y, z);
+}
+// sqrt-encoded light -> linear radiance
+vec3 decodeL(vec3 s){ return s*s*uLightScale; }
+
+void main(){
+  float sx = gl_FragCoord.x;
+  float sy = uCanvas.y - gl_FragCoord.y;          // canvas Y is top-down
+  float a = (sx - uTranslate.x - uCenter.x) / (1000.0 * uScale);
+  float b = (sy - uTranslate.y - uCenter.y) / (1000.0 * uScale);
+
+  vec3 ro, rd;
+  if (uIsOrtho > 0.5) {
+    ro = viewToWorld(vec3(a*1000.0, b*1000.0, -20000.0));
+    rd = normalize(viewToWorld(vec3(0.0, 0.0, 1.0)));
+  } else {
+    ro = viewToWorld(vec3(0.0, 0.0, -1000.0));     // eye sits at view-space z = -1000
+    rd = normalize(viewToWorld(vec3(a, b, 1.0)));
+  }
+
+  // slab intersection against the volume AABB
+  vec3 inv = 1.0 / max(abs(rd), vec3(1e-6)) * sign(rd + vec3(1e-9));
+  vec3 t0v = (uVolMin - ro) * inv;
+  vec3 t1v = (uVolMax - ro) * inv;
+  vec3 tmin3 = min(t0v, t1v), tmax3 = max(t0v, t1v);
+  float t0 = max(max(tmin3.x, tmin3.y), max(tmin3.z, 0.0));
+  float t1 = min(min(tmax3.x, tmax3.y), tmax3.z);
+  if (t1 <= t0) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+
+  float steps = uSteps;
+  float dt = (t1 - t0) / steps;
+  vec3 span = max(uVolMax - uVolMin, vec3(1e-6));
+
+  // per-pixel dither breaks the slice banding raymarching would otherwise show
+  float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+  float t = t0 + dt * jitter;
+
+  vec3 acc = vec3(0.0);
+  float T = 1.0;
+  for (int i = 0; i < 96; i++) {
+    if (float(i) >= steps || T < 0.006) break;
+    vec3 p = ro + rd * t;
+    vec3 uvw = (p - uVolMin) / span;
+    vec4 s = texture(uVol, uvw);
+
+    float d = s.a * uDensScale;
+    if (uDetail > 0.001) {
+      // high-frequency 3D detail so a 64-cell volume doesn't read as blocky
+      float n = texture(uNoise3, p * 0.0075).r * 0.65 + texture(uNoise3, p * 0.023 + 0.37).r * 0.35;
+      d *= mix(1.0 - uDetail, 1.0 + uDetail, n);
+    }
+
+    if (d > 0.006) {
+      // irradiance ~ mip-blurred emissivity, self-shadowed by blurred density
+      vec3 E = decodeL(textureLod(uVol, uvw, 2.0).rgb);
+      float shD = textureLod(uVol, uvw, 3.5).a;   // normalised 0..1 blurred density
+      E *= exp(-uShadow * shD);
+      // Scattering efficiency rises toward the blue, which is exactly why reflection nebulae
+      // are blue while transmitted starlight reddens.
+      E *= vec3(0.86, 0.97, 1.24);
+
+      // mild forward scattering toward the bright core
+      vec3 toCore = uCore - p;
+      float cl = length(toCore);
+      float phase = 1.0;
+      if (cl > 1e-3) {
+        float ct = dot(rd, toCore / cl);
+        float g = uPhaseG;
+        float hg = (1.0 - g*g) / pow(max(1.0 + g*g - 2.0*g*ct, 1e-4), 1.5);
+        phase = mix(1.0, clamp(hg, 0.0, 6.0), 0.55);
+      }
+
+      // uDensScale carries optical depth PER WORLD UNIT, so sigT*dt is a true optical depth.
+      float sigT = d * uExtinct;
+      float aT = exp(-sigT * dt);
+      // Energy-conserving and bounded: the segment integral of sigma_s*E*T reduces exactly to
+      // E*albedo*(1-exp(-sigma_t*dt)), so scattered light can never exceed the albedo.
+      acc += T * (E * uScatter * phase) * (1.0 - aT);
+      T *= aT;
+    }
+    t += dt;
+  }
+  fragColor = vec4(acc * uExposure, clamp(T, 0.0, 1.0));
+}`;
+
+    function initVolumetrics() {
+        if (!isGL2) return false;
+        try {
+            volProg = createShaderProgram(gl, vsVolSrc, fsVolSrc);
+            if (!gl.getProgramParameter(volProg, gl.LINK_STATUS)) {
+                console.warn('[Volumetric] program link failed:', gl.getProgramInfoLog(volProg));
+                return false;
+            }
+            const U = n => gl.getUniformLocation(volProg, n);
+            VL = { aQuad: gl.getAttribLocation(volProg, 'aQuad'),
+                uVol: U('uVol'), uNoise3: U('uNoise3'), uVolMin: U('uVolMin'), uVolMax: U('uVolMax'), uCore: U('uCore'),
+                uCanvas: U('uCanvas'), uTranslate: U('uTranslate'), uCenter: U('uCenter'), uScale: U('uScale'), uIsOrtho: U('uIsOrtho'),
+                uCosX: U('uCosX'), uSinX: U('uSinX'), uCosY: U('uCosY'), uSinY: U('uSinY'),
+                uLightScale: U('uLightScale'), uDensScale: U('uDensScale'),
+                uScatter: U('uScatter'), uExtinct: U('uExtinct'), uPhaseG: U('uPhaseG'),
+                uSteps: U('uSteps'), uDetail: U('uDetail'), uShadow: U('uShadow'), uExposure: U('uExposure') };
+
+            volLight = new Float32Array(VOL_VOXELS * 3);
+            volDens  = new Float32Array(VOL_VOXELS);
+            volBytes = new Uint8Array(VOL_VOXELS * 4);
+
+            volTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_3D, volTex);
+            gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, VOL_NX, VOL_NY, VOL_NZ, 0, gl.RGBA, gl.UNSIGNED_BYTE, volBytes);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
+            gl.generateMipmap(gl.TEXTURE_3D);
+
+            // 32^3 tileable value-noise volume for sub-voxel detail
+            const NN = 32, nd = new Uint8Array(NN*NN*NN*4);
+            let sN = 22222221; const rr = () => { sN = (sN*1103515245 + 12345) & 0x7fffffff; return sN/0x7fffffff; };
+            const lat = new Float32Array(NN*NN*NN); for (let i=0;i<lat.length;i++) lat[i]=rr();
+            const sm3 = t => t*t*(3-2*t);
+            const at3 = (x,y,z,f)=>lat[(((z%f)+f)%f)*NN*NN + (((y%f)+f)%f)*NN + (((x%f)+f)%f)];
+            function vn3(u,v,w,f){
+                const xi=Math.floor(u), yi=Math.floor(v), zi=Math.floor(w);
+                const fx=sm3(u-xi), fy=sm3(v-yi), fz=sm3(w-zi);
+                const c000=at3(xi,yi,zi,f), c100=at3(xi+1,yi,zi,f), c010=at3(xi,yi+1,zi,f), c110=at3(xi+1,yi+1,zi,f);
+                const c001=at3(xi,yi,zi+1,f), c101=at3(xi+1,yi,zi+1,f), c011=at3(xi,yi+1,zi+1,f), c111=at3(xi+1,yi+1,zi+1,f);
+                const x00=c000+(c100-c000)*fx, x10=c010+(c110-c010)*fx, x01=c001+(c101-c001)*fx, x11=c011+(c111-c011)*fx;
+                const y0=x00+(x10-x00)*fy, y1=x01+(x11-x01)*fy;
+                return y0+(y1-y0)*fz;
+            }
+            for (let z=0; z<NN; z++) for (let y=0; y<NN; y++) for (let x=0; x<NN; x++){
+                let sum=0, nrm=0;
+                for (let o=0;o<3;o++){ const amp=Math.pow(0.55,o), f=4<<o; sum+=amp*vn3(x/NN*f, y/NN*f, z/NN*f, f); nrm+=amp; }
+                const v8=Math.max(0,Math.min(255,Math.round((sum/nrm)*255)));
+                const q=((z*NN+y)*NN+x)*4; nd[q]=v8; nd[q+1]=v8; nd[q+2]=v8; nd[q+3]=255;
+            }
+            volNoiseTex = gl.createTexture();
+            gl.bindTexture(gl.TEXTURE_3D, volNoiseTex);
+            gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, NN, NN, NN, 0, gl.RGBA, gl.UNSIGNED_BYTE, nd);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+            gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.REPEAT);
+            gl.bindTexture(gl.TEXTURE_3D, null);
+
+            volQuadVBO = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, volQuadVBO);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+            volOK = true;
+            console.info('[Galaxy Simulation] Volumetric lit-dust renderer ready.');
+            return true;
+        } catch (e) {
+            console.warn('[Volumetric] unavailable; sprite dust in use.', e);
+            volOK = false; return false;
+        }
+    }
+
+    // Trilinear (CIC) deposit of stellar light + dust density into the volume.
+    const _planckMemo = new Map();
+    function planckCached(temp) {
+        const k = Math.round(temp / 250);
+        let c = _planckMemo.get(k);
+        if (!c) { c = getPlanckColor(k * 250 || 100); if (_planckMemo.size < 400) _planckMemo.set(k, c); }
+        return c;
+    }
+    function buildLightVolume() {
+        if (!volOK) return;
+        volBuilt = false;
+        if (!blackHoles.length) return;
+        let minX=Infinity,maxX=-Infinity,minY=Infinity,maxY=-Infinity,cz=0;
+        for (const bh of blackHoles){ if(!bh) continue;
+            if(bh.x<minX)minX=bh.x; if(bh.x>maxX)maxX=bh.x;
+            if(bh.y<minY)minY=bh.y; if(bh.y>maxY)maxY=bh.y; cz+=bh.z; }
+        if (!isFinite(minX)) return;
+        cz /= blackHoles.length;
+        const pad = galaxyRadius * 1.5;
+        const span = Math.max((maxX-minX), (maxY-minY)) + 2*pad;
+        const ccx = (minX+maxX)*0.5, ccy = (minY+maxY)*0.5;
+        const halfZ = Math.max(45, galaxyRadius * 0.14);
+        volMinW = [ccx - span*0.5, ccy - span*0.5, cz - halfZ];
+        volMaxW = [ccx + span*0.5, ccy + span*0.5, cz + halfZ];
+        const invX = VOL_NX/(volMaxW[0]-volMinW[0]), invY = VOL_NY/(volMaxW[1]-volMinW[1]), invZ = VOL_NZ/(volMaxW[2]-volMinW[2]);
+        const voxVolPre = (1/invX) * (1/invY) * (1/invZ);
+
+        volLight.fill(0); volDens.fill(0);
+
+        // --- CIC helper (inlined per-channel for speed) ---
+        function dep(px,py,pz, lr,lg,lb, dd) {
+            const gx=(px-volMinW[0])*invX-0.5, gy=(py-volMinW[1])*invY-0.5, gz=(pz-volMinW[2])*invZ-0.5;
+            const i0=Math.floor(gx), j0=Math.floor(gy), k0=Math.floor(gz);
+            if (i0<0||j0<0||k0<0||i0>=VOL_NX-1||j0>=VOL_NY-1||k0>=VOL_NZ-1) return;
+            const fx=gx-i0, fy=gy-j0, fz=gz-k0;
+            for (let dz=0; dz<2; dz++){ const wz = dz? fz : 1-fz;
+              for (let dy=0; dy<2; dy++){ const wy = dy? fy : 1-fy;
+                for (let dx=0; dx<2; dx++){ const w = (dx? fx : 1-fx)*wy*wz;
+                  const idx=((k0+dz)*VOL_NY+(j0+dy))*VOL_NX+(i0+dx);
+                  if (dd>0) volDens[idx]+=dd*w;
+                  if (lr>0||lg>0||lb>0){ const o=idx*3; volLight[o]+=lr*w; volLight[o+1]+=lg*w; volLight[o+2]+=lb*w; }
+                }}}
+        }
+
+        // Spread a cloud's extinction cross-section over its actual radius. A point/CIC deposit
+        // concentrates a 12-unit-wide cloud into one 3-unit-tall voxel, producing an opaque needle.
+        function depBlob(px,py,pz, amount, radWorld) {
+            const gx=(px-volMinW[0])*invX-0.5, gy=(py-volMinW[1])*invY-0.5, gz=(pz-volMinW[2])*invZ-0.5;
+            const rx=Math.min(3,Math.max(1,Math.ceil(radWorld*invX))), ry=Math.min(3,Math.max(1,Math.ceil(radWorld*invY))), rz=Math.min(6,Math.max(1,Math.ceil(radWorld*invZ)));
+            const i0=Math.round(gx), j0=Math.round(gy), k0=Math.round(gz);
+            let wsum=0;
+            for(let dz=-rz; dz<=rz; dz++){ const k=k0+dz; if(k<0||k>=VOL_NZ) continue;
+              for(let dy=-ry; dy<=ry; dy++){ const j=j0+dy; if(j<0||j>=VOL_NY) continue;
+                for(let dx=-rx; dx<=rx; dx++){ const i=i0+dx; if(i<0||i>=VOL_NX) continue;
+                  wsum += Math.exp(-((dx*dx)/(rx*rx+0.25) + (dy*dy)/(ry*ry+0.25) + (dz*dz)/(rz*rz+0.25)));
+                }}}
+            if (wsum <= 0) return;
+            const norm = amount / wsum;
+            for(let dz=-rz; dz<=rz; dz++){ const k=k0+dz; if(k<0||k>=VOL_NZ) continue;
+              for(let dy=-ry; dy<=ry; dy++){ const j=j0+dy; if(j<0||j>=VOL_NY) continue;
+                const row=(k*VOL_NY+j)*VOL_NX;
+                for(let dx=-rx; dx<=rx; dx++){ const i=i0+dx; if(i<0||i>=VOL_NX) continue;
+                  volDens[row+i] += norm * Math.exp(-((dx*dx)/(rx*rx+0.25) + (dy*dy)/(ry*ry+0.25) + (dz*dz)/(rz*rz+0.25)));
+                }}}
+        }
+
+        // stellar emissivity (strided sample keeps the per-frame cost bounded)
+        const STAR_CAP = 30000;
+        const sStride = Math.max(1, Math.floor(stars.length / STAR_CAP));
+        const sBoost = sStride;
+        for (let i=0; i<stars.length; i+=sStride) {
+            const st = stars[i];
+            const L = st.luminosity; if (!(L>0)) continue;
+            const c = planckCached(st.temperature||5000);
+            const e = L * sBoost;
+            dep(st.x, st.y, st.z, c[0]*e, c[1]*e, c[2]*e, 0);
+        }
+        // H II knots are strong local light sources (this is what lights reflection nebulae)
+        for (const r of hiiRegions) {
+            const ii = r.currentIntensity; if (!(ii>0.01)) continue;
+            const e = ii * 4200.0;
+            dep(r.x, r.y, r.z, e*1.0, e*0.42, e*0.55, 0);
+        }
+        // dust density -- estimateCloudOpticalDepth already carries the thin-disk
+        // profile, the bulge fade and the user's dust bias.
+        // --- DUST: smooth medium + clumps -------------------------------------------------
+        // A galaxy only ever holds ~1-2k gas-cloud PARTICLES, so point-depositing them yields
+        // needle-thin opaque specks in a vacuum (measured: sigma_max*40 = 64 optical depths,
+        // sigma_mean*40 = 0.02) -- a raymarch either misses them or hits a wall. Real dust is a
+        // continuous medium, so the volume gets an analytic exponential disk with the correct
+        // thin vertical profile and spiral-arm modulation, and the clouds add clumpiness on top.
+        // The disk is separable (radial x vertical) so the smooth term costs one 2D map, not 442k
+        // 3D evaluations.
+        const smXY = new Float32Array(VOL_NX * VOL_NY);
+        const dustH = DUST_SCALE_HEIGHT;
+        // Central face-on optical depth target -> surface density; tau_faceon = D0 * 2H.
+        const D0 = (0.55 * dustVisualMult) / (2 * dustH);
+        const gasScaleFac = clamp(Math.sqrt(Math.max(0, totalGasMassCached) / 150000), 0.25, 2.2);
+        for (let g = 0; g < blackHoles.length; g++) {
+            const bh = blackHoles[g]; if (!bh) continue;
+            const pid = g === 0 ? galaxyATypeSelect.value : galaxyBTypeSelect.value;
+            const pr = GALAXY_PRESETS[pid] || GALAXY_PRESETS['spiral-2'];
+            const isSpiral = pr.type === 'spiral', isRing = pid === 'ring';
+            const armN = pr.armCount || 0, pitchK = armN / Math.tan(SPIRAL_PITCH);
+            const Rd = galaxyRadius * 0.48, Rmax = galaxyRadius * 1.15;
+            for (let j = 0; j < VOL_NY; j++) {
+                const wy = volMinW[1] + (j + 0.5) / invY - bh.y;
+                for (let i = 0; i < VOL_NX; i++) {
+                    const wx = volMinW[0] + (i + 0.5) / invX - bh.x;
+                    const R = Math.sqrt(wx*wx + wy*wy);
+                    if (R > Rmax) continue;
+                    let prof;
+                    if (isRing) { const dr = R - galaxyRadius * 0.75; prof = Math.exp(-(dr*dr) / 5200); }
+                    else prof = Math.exp(-R / Rd);
+                    // same bulge fade the sprite path uses, so the core stays dust-free
+                    prof *= smoothstep(bulgeRadius * 0.35, bulgeRadius * 1.15, R);
+                    if (isSpiral && armN > 0 && R > 40) {
+                        const th = Math.atan2(wy, wx);
+                        const ph = armN * (th - patternAngle) - pitchK * Math.log(Math.max(R, 41) / 50.0);
+                        const arm = Math.pow(Math.max(0, Math.cos(ph + 0.9)), 3.0);
+                        prof *= (0.26 + 1.95 * arm);   // lanes ride the arms, inter-arm stays thin
+                    }
+                    smXY[j * VOL_NX + i] += prof;
+                }
+            }
+        }
+        // expand the 2D surface density through the thin vertical profile
+        const czBH = (blackHoles[0] ? blackHoles[0].z : 0);
+        const dzStep = 1 / invZ;
+        for (let k = 0; k < VOL_NZ; k++) {
+            const wz = volMinW[2] + (k + 0.5) * dzStep - czBH;
+            const vz = Math.exp(-Math.abs(wz) / dustH);
+            if (vz < 1e-4) continue;
+            const base = k * VOL_NY * VOL_NX;
+            const amp = D0 * gasScaleFac * vz * voxVolPre;   // stored as cross-section; /voxVol later
+            for (let j = 0; j < VOL_NY; j++) {
+                const row = base + j * VOL_NX, srow = j * VOL_NX;
+                for (let i = 0; i < VOL_NX; i++) {
+                    const s = smXY[srow + i];
+                    if (s > 0) volDens[row + i] += s * amp;
+                }
+            }
+        }
+        // clumps: each cloud smeared over its physical radius (a point deposit makes needles)
+        for (let i=0; i<gasClouds.length; i++) {
+            const c = gasClouds[i];
+            const tau = estimateCloudOpticalDepth(c);
+            if (tau <= 0.0015) continue;
+            const rad = Math.max(1.0, c.size);
+            depBlob(c.x, c.y, c.z, tau * Math.PI * rad * rad, rad);
+        }
+
+        // --- normalise (EMA) and pack to RGBA8 ---
+        const voxVol = ((volMaxW[0]-volMinW[0])/VOL_NX) * ((volMaxW[1]-volMinW[1])/VOL_NY) * ((volMaxW[2]-volMinW[2])/VOL_NZ);
+        const invVoxVol = 1 / Math.max(voxVol, 1e-6);
+        let lMax=0;
+        for (let i=0;i<VOL_VOXELS;i++){
+            const o=i*3; const m=Math.max(volLight[o],volLight[o+1],volLight[o+2]);
+            if(m>lMax)lMax=m;
+        }
+        if (!(lMax>0)) lMax = 1;
+        volLightRef = volLightRef*0.9 + lMax*0.1;   // light stays relative (a gain knob rescales it)
+        const invL = 1/Math.max(volLightRef,1e-6);
+        // Density uses a FIXED physical reference so extinction is absolute and temporally stable
+        // (an EMA max made faint frames as dark as dense ones). Clamping at VOL_SIGMA_REF costs
+        // nothing: that is already an optically thick line of sight.
+        let dSum=0, dMax=0;
+        for (let i=0;i<VOL_VOXELS;i++){
+            const o=i*3, q=i*4;
+            volBytes[q]   = Math.min(255, Math.sqrt(Math.max(0,volLight[o]  )*invL)*255)|0;
+            volBytes[q+1] = Math.min(255, Math.sqrt(Math.max(0,volLight[o+1])*invL)*255)|0;
+            volBytes[q+2] = Math.min(255, Math.sqrt(Math.max(0,volLight[o+2])*invL)*255)|0;
+            const sig = volDens[i] * invVoxVol;      // 1/length
+            if (sig > dMax) dMax = sig; dSum += sig;
+            volBytes[q+3] = Math.min(255, (sig / VOL_SIGMA_REF) * 255)|0;
+        }
+        volDensRef = VOL_SIGMA_REF;
+        volDbg = { sigMax: dMax, sigMean: dSum / VOL_VOXELS, lightMax: lMax };
+        gl.bindTexture(gl.TEXTURE_3D, volTex);
+        gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, VOL_NX, VOL_NY, VOL_NZ, 0, gl.RGBA, gl.UNSIGNED_BYTE, volBytes);
+        gl.generateMipmap(gl.TEXTURE_3D);
+        gl.bindTexture(gl.TEXTURE_3D, null);
+        volBuilt = true;
+    }
+
+    // Composited as: dst*T + inscatter  (blend ONE, SRC_ALPHA) so the volume both
+    // dims what is behind it and adds its own scattered light, in one pass.
+    function drawVolumetric() {
+        if (!volOK || !volBuilt) return;
+        const bh0 = blackHoles[0] || {x:0,y:0,z:0};
+        gl.useProgram(volProg);
+        gl.uniform1i(VL.uVol, 0); gl.uniform1i(VL.uNoise3, 1);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_3D, volTex);
+        gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_3D, volNoiseTex);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.uniform3f(VL.uVolMin, volMinW[0], volMinW[1], volMinW[2]);
+        gl.uniform3f(VL.uVolMax, volMaxW[0], volMaxW[1], volMaxW[2]);
+        gl.uniform3f(VL.uCore, bh0.x, bh0.y, bh0.z);
+        gl.uniform2f(VL.uCanvas, glCanvas.width, glCanvas.height);
+        gl.uniform2f(VL.uTranslate, translateX*highResMult, translateY*highResMult);
+        gl.uniform2f(VL.uCenter, centerX, centerY);
+        gl.uniform1f(VL.uScale, scale*highResMult);
+        gl.uniform1f(VL.uIsOrtho, isOrthographicRender ? 1.0 : 0.0);
+        const rX = rotationX*Math.PI/180, rY = rotationY*Math.PI/180;
+        gl.uniform1f(VL.uCosX, Math.cos(rX)); gl.uniform1f(VL.uSinX, Math.sin(rX));
+        gl.uniform1f(VL.uCosY, Math.cos(rY)); gl.uniform1f(VL.uSinY, Math.sin(rY));
+        // Light is stored RELATIVE to the brightest voxel, so the shader works in normalised
+        // radiance; VOL_LIGHT_GAIN compensates for the energy the mip blur spreads out.
+        gl.uniform1f(VL.uLightScale, VOL_LIGHT_GAIN);
+        // Stored A is 0..1 of volDensRef, which is a sum of per-cloud optical depths in a voxel.
+        // Dividing by the voxel edge converts that to optical depth PER WORLD UNIT, which is what
+        // the raymarch integrates over. Without this the exponent scales with step size (opaque).
+        gl.uniform1f(VL.uDensScale, VOL_SIGMA_REF * volDensityMult);
+        gl.uniform1f(VL.uScatter, volScatterStr);
+        gl.uniform1f(VL.uExtinct, 1.0);
+        gl.uniform1f(VL.uPhaseG, 0.35);
+        gl.uniform1f(VL.uSteps, volSteps);
+        gl.uniform1f(VL.uDetail, 0.55);
+        gl.uniform1f(VL.uShadow, 1.35);
+        gl.uniform1f(VL.uExposure, currentExposure * 0.85);
+        gl.enable(gl.BLEND);
+        // RGB: dst*T + inscatter. Alpha is left ALONE -- a plain blendFunc would also write
+        // T into the alpha channel, which drives how this canvas composites over the separate
+        // background-universe canvas and would wash the deep field out.
+        gl.blendFuncSeparate(gl.ONE, gl.SRC_ALPHA, gl.ZERO, gl.ONE);
+        gl.bindBuffer(gl.ARRAY_BUFFER, volQuadVBO);
+        gl.vertexAttribPointer(VL.aQuad, 2, gl.FLOAT, false, 0, 0);
+        gl.enableVertexAttribArray(VL.aQuad);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.disableVertexAttribArray(VL.aQuad);
+        gl.bindTexture(gl.TEXTURE_3D, null);
+        gl.useProgram(program);
+        gl.blendEquation(gl.FUNC_ADD);
+        if (tglHDR.checked) { gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_COLOR, gl.ONE, gl.ONE); }
+        else { gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE); }
+    }
+
     const particlePositionBuffer=gl.createBuffer(), particleSizeBuffer=gl.createBuffer(), particleTypeBuffer=gl.createBuffer(), particleColorBuffer=gl.createBuffer(), particleSeedBuffer=gl.createBuffer();
     
     function onResize() {
@@ -5572,6 +6062,10 @@
 
       totalGasMassCached = gasClouds.reduce((acc, c) => acc + c.mass, 0);
       buildProjectedDustField();
+      // PHASE 1: the light/dust volume is world-space, so it only needs rebuilding as the
+      // simulation evolves -- camera moves reuse it. Rebuilt on alternate frames to bound cost.
+      const volActive = useVolumetric && volOK && currentModeId !== 'xray' && currentModeId !== 'radio' && currentModeId !== 'spectroscopy';
+      if (volActive && (!volBuilt || (frameCount & 1) === 0)) buildLightVolume();
       if (gpuStarsOK) uploadDustTexture();
       drawBackgroundUniverse(bgCtx);
       drawObservationSynthesisMaps(bgCtx);
@@ -5781,7 +6275,7 @@
       }
 
       // ---- Cinematic 3D dust extinction: real particles sharing the stars'/gas' space ----
-      if (CINE.on && CINE.dust && pIdx > 0 && currentModeId !== 'xray' && currentModeId !== 'radio' && currentModeId !== 'spectroscopy') {
+      if (CINE.on && CINE.dust && !volActive && pIdx > 0 && currentModeId !== 'xray' && currentModeId !== 'radio' && currentModeId !== 'spectroscopy') {
           pIdx = 0;
           const dStride = Math.max(1, Math.floor(gasClouds.length / RENDER_GAS_BUDGET));
           const dMul = CINE.dustStr;
@@ -5807,6 +6301,10 @@
       }
 
       // ---- HDR post chain (CINEMATIC #2): bright pass -> blur pyramid -> ACES composite ----
+      // PHASE 1: lit dust. Runs after the star field so it can dim what is behind it and
+      // add its own scattered light, and before the HDR chain so bloom blooms the glow.
+      if (volActive) drawVolumetric();
+
       if (useHDRPipe) runHDRPost();
 
       overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
@@ -6896,6 +7394,7 @@
         }, 150);
     });
 
+    if (isGL2) initVolumetrics();
     initBackgroundUniverse(); onResize(); initSimulation(); requestAnimationFrame(draw);
     updateInteractionHint();
   </script>
