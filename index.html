@@ -364,7 +364,7 @@
         <label class="checkbox-label"><input type="checkbox" id="tglCineHII" checked> H II Star-Forming Knots</label>
         <label class="checkbox-label"><input type="checkbox" id="tglCineFG" checked> Bright Foreground Stars</label>
         <div class="section-title" style="margin-top:8px;">Volumetric Dust (WebGL2)</div>
-        <label class="checkbox-label"><input type="checkbox" id="tglVolumetric" checked> <strong>Lit Volumetric Dust</strong></label>
+        <label class="checkbox-label"><input type="checkbox" id="tglVolumetric"> <strong>Lit Volumetric Dust</strong></label>
         <div class="help-text" style="margin-bottom:6px;">Raymarches a real 3D dust volume lit by the stars, so dust scatters light instead of only blocking it &mdash; warm haze around the bulge, blue reflection nebulae beside young clusters, self-shadowing and depth parallax. Replaces the flat sprite dust while active.</div>
         <label for="volScatter">Scattering: <span id="volScatterValue">50%</span></label>
         <input type="range" id="volScatter" min="0" max="200" step="5" value="50">
@@ -377,6 +377,9 @@
         <input type="range" id="cineGlowStr" min="0" max="300" step="5" value="100">
         <label for="cineDustStr">Dust Strength: <span id="cineDustStrValue">140%</span></label>
         <input type="range" id="cineDustStr" min="0" max="400" step="5" value="140">
+        <label for="dustGrainSlider">Dust Grain: <span id="dustGrainValue">49 motes</span></label>
+        <input type="range" id="dustGrainSlider" min="1" max="12" step="1" value="7">
+        <div class="help-text">How finely dust lanes are broken up. Each gas cloud is drawn as this many small motes rather than one large sprite, so lanes are built from grains too small to pick out individually. Total lane darkness stays the same &mdash; only the texture changes.</div>
         <label for="cineSat">Colour Saturation: <span id="cineSatValue">140%</span></label>
         <input type="range" id="cineSat" min="50" max="300" step="5" value="140">
         <label for="cineCoreStr">Core Glow: <span id="cineCoreStrValue">120%</span></label>
@@ -1499,6 +1502,10 @@
     document.getElementById('showEvolvingDust').addEventListener('change',(e)=>{showEvolvingDust=e.target.checked;});
     document.getElementById('tglFineGas').addEventListener('change',(e)=>{fineGasDetail=e.target.checked;});
     document.getElementById('tglVolumetric').addEventListener('change',(e)=>{useVolumetric=e.target.checked;});
+    document.getElementById('dustGrainSlider').addEventListener('input',(e)=>{
+        dustGrain = parseInt(e.target.value) || 5;
+        document.getElementById('dustGrainValue').textContent = (dustGrain*dustGrain) + ' motes';
+    });
     document.getElementById('tglGPUSim').addEventListener('change',(e)=>{
         gpuSimOn = e.target.checked;
         if (gpuSimOn && gpuSimOK && !gpuSimReady) seedGPUSim();
@@ -1541,7 +1548,12 @@
     let stillBoosted = false, _lastCamSig = NaN, _camStillFrames = 0; // auto still-frame supersampling
     let lastVisibleStarCount = 0, lastVisibleGasCount = 0;    // #4 temporal-feedback LOD
     // PHASE 1: volumetric lit-dust state
-    let useVolumetric = true;        // master (auto-disabled if WebGL2/volume init fails)
+    // Volumetric extinction is achromatic, so its lanes read grey/black; the sprite path carries
+    // per-channel weights and reads warm brown, which is the preferred look. Off by default.
+    let useVolumetric = false;       // master (auto-disabled if WebGL2/volume init fails)
+    let dustGrain = 7;               // motes per cloud = dustGrain^2; higher = finer dust
+    const DUST_SPRITE_BUDGET = 260000;
+    const DUST_MOTE_NORM = 1.201;   // sqrt(E[s^2]) for s = 0.45 + 1.85*u^2, so the size spread is area-neutral
     let volScatterStr = 0.50;        // scattering albedo -- how much starlight the dust returns
     let volDensityMult = 1.0;        // dust density multiplier for the volume
     let volSteps = 44;               // raymarch quality
@@ -6738,15 +6750,54 @@ void main(){
           pIdx = 0;
           const dStride = Math.max(1, Math.floor(gasClouds.length / RENDER_GAS_BUDGET));
           const dMul = CINE.dustStr;
+          // GRAIN: real dust is a fine-grained medium, not a handful of discs. A galaxy only
+          // holds ~1-2k gas-cloud PARTICLES, so one sprite per cloud has to be huge to cover
+          // the disc -- and then reads as exactly that: overlapping translucent circles.
+          // Each cloud now emits many small motes scattered through its volume instead.
+          // Coverage is conserved: mote radius shrinks by sqrt(motes) while the count rises by
+          // motes, so total covered area -- and therefore lane darkness -- stays put while the
+          // visible grain gets sqrt(motes) times finer.
+          const _cloudsDrawn = Math.max(1, Math.ceil(gasClouds.length / dStride));
+          const _perCloudCap = Math.max(1, Math.floor(DUST_SPRITE_BUDGET / _cloudsDrawn));
+          const dMotes = Math.max(1, Math.min(dustGrain * dustGrain, _perCloudCap));
+          const dShrink = 1 / Math.sqrt(dMotes);   // matched to the motes we can actually afford
           for (let di = 0; di < gasClouds.length; di += dStride) {
               const c = gasClouds[di];
               const tau = estimateCloudOpticalDepth(c);
               if (tau <= 0.002) continue;
-              const strength = Math.min(0.96, tau * 3.2 * dMul); // gain lowered 4.4->3.2: the softened/floored sprite (higher mean opacity) needs less compensation, keeping disk-lane darkness ~constant
-              const dWorld = c.size * 3.0 + 2.0; // world units; vertex shader applies zoom
-              // colour packs per-channel extinction weight (blue absorbed most -> reddening)
-              const dSeed = ((((c.id != null ? c.id : di) * 0.61803398875) % 1) + 1) % 1;
-              addPoint(c.x, c.y, c.z, dWorld, 9, 0.60, 0.80, 1.0, strength, dSeed);
+              const strength = Math.min(0.96, tau * 3.2 * dMul);
+              const R = c.size * 3.0 + 2.0;        // the old single-sprite radius
+              const moteR = R * dShrink;
+              const cid = (c.id != null ? c.id : di);
+              if (dMotes === 1) {
+                  const dSeed = (((cid * 0.61803398875) % 1) + 1) % 1;
+                  addPoint(c.x, c.y, c.z, R, 9, 0.60, 0.80, 1.0, strength, dSeed);
+                  continue;
+              }
+              for (let m = 0; m < dMotes; m++) {
+                  // Deterministic scatter keyed on (cloud id, mote index): stable frame to frame,
+                  // so the grain never shimmers. Flattened in Z because dust is a thin layer.
+                  const h1 = Math.sin(cid * 12.9898 + m * 78.233) * 43758.5453;
+                  const h2 = Math.sin(cid * 39.3468 + m * 11.135) * 24634.6345;
+                  const h3 = Math.sin(cid * 93.9898 + m * 47.771) * 19873.1234;
+                  const h4 = Math.sin(cid * 57.1234 + m * 26.651) * 31517.9871;
+                  const u1 = h1 - Math.floor(h1), u2 = h2 - Math.floor(h2), u3 = h3 - Math.floor(h3), u4 = h4 - Math.floor(h4);
+                  const ang = u1 * 6.2831853;
+                  // Slightly centre-weighted (exponent < 0.5 would flatten it); keeps cloud cores denser.
+                  const rad = Math.pow(u2, 0.62) * R * 0.85;
+                  // Equal-sized motes read as regular stipple. Real dust is hierarchical: mostly fine
+                  // grains with occasional larger clumps. u^2 biases hard toward small, and
+                  // DUST_MOTE_NORM (= sqrt(E[s^2])) divides it back out so total covered area --
+                  // and therefore lane darkness -- is unchanged by the size spread.
+                  const sVar = (0.45 + 1.85 * u4 * u4) / DUST_MOTE_NORM;
+                  addPoint(
+                      c.x + Math.cos(ang) * rad,
+                      c.y + Math.sin(ang) * rad,
+                      c.z + (u3 - 0.5) * R * 0.55,           // thin in z
+                      moteR * sVar, 9, 0.60, 0.80, 1.0, strength,
+                      (((cid * 0.61803398875 + m * 0.2794) % 1) + 1) % 1
+                  );
+              }
           }
           if (pIdx > 0) {
               gl.blendFunc(gl.ZERO, gl.SRC_COLOR); // multiplicative extinction
@@ -7522,6 +7573,18 @@ void main(){
         { id:'useObservationSynthesis', kind:'check', evt:'change', group:'Rendering', label:'Observation Synthesis' },
         { id:'reduceResolvedOldStars', kind:'check', evt:'change', group:'Rendering', label:'Reduce Resolved Old Stars' },
         { id:'enableOldStarConsolidation', kind:'check', evt:'change', group:'Rendering', label:'Old Star Consolidation' },
+        // --- Added with the WebGL2 / volumetric / GPU-layer work; these were missing from the
+        //     preset system, so a saved look could not reproduce them. ---
+        { id:'renderQuality', kind:'select', evt:'change', group:'Rendering', label:'Render Quality' },
+        { id:'tglFineGas', kind:'check', evt:'change', group:'Rendering', label:'Fine Gas Structure' },
+        { id:'tglVolumetric', kind:'check', evt:'change', group:'Cinematic', label:'Lit Volumetric Dust' },
+        { id:'volScatter', kind:'range', evt:'input', group:'Cinematic', label:'Volumetric Scattering' },
+        { id:'volDensity', kind:'range', evt:'input', group:'Cinematic', label:'Volumetric Density' },
+        { id:'volQuality', kind:'range', evt:'input', group:'Cinematic', label:'Raymarch Quality' },
+        { id:'dustGrainSlider', kind:'range', evt:'input', group:'Cinematic', label:'Dust Grain' },
+        { id:'tglGPUSim', kind:'check', evt:'change', group:'Simulation', label:'Emergent Dynamics Layer' },
+        { id:'gpuParticleCount', kind:'select', evt:'change', group:'Simulation', label:'Layer Particles' },
+        { id:'gpuSelfGravity', kind:'range', evt:'input', group:'Simulation', label:'Layer Self-Gravity' },
         // --- Cinematic / Epic (live; polled each frame by updateCineState) ---
         { id:'tglCine', kind:'check', evt:'change', group:'Cinematic', label:'Cinematic / Epic Mode' },
         { id:'tglCineGlow', kind:'check', evt:'change', group:'Cinematic', label:'Diffuse Glow' },
