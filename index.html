@@ -364,10 +364,16 @@
         <label class="checkbox-label"><input type="checkbox" id="tglCineHII" checked> H II Star-Forming Knots</label>
         <label class="checkbox-label"><input type="checkbox" id="tglCineFG" checked> Bright Foreground Stars</label>
         <div class="section-title" style="margin-top:8px;">Volumetric Dust (WebGL2)</div>
-        <label class="checkbox-label"><input type="checkbox" id="tglVolumetric"> <strong>Lit Volumetric Dust</strong></label>
-        <div class="help-text" style="margin-bottom:6px;">Raymarches a real 3D dust volume lit by the stars, so dust scatters light instead of only blocking it &mdash; warm haze around the bulge, blue reflection nebulae beside young clusters, self-shadowing and depth parallax. Replaces the flat sprite dust while active.</div>
-        <label for="volScatter">Scattering: <span id="volScatterValue">50%</span></label>
-        <input type="range" id="volScatter" min="0" max="200" step="5" value="50">
+        <label class="checkbox-label"><input type="checkbox" id="tglVolumetric" checked> <strong>Filament Dust (3D)</strong></label>
+        <div class="help-text" style="margin-bottom:6px;">Raymarches a procedural 3D dust field through the disc instead of drawing sprites. Two decoupled scales of ridged, domain-warped noise — sparse lanes textured by fine threads, sheared by differential rotation and held columnar through the disc so the line of sight does not average them away — plus a detail cascade locked to the pixel size, so zooming in resolves finer threads rather than magnifying blobs. Extinction accumulates per colour channel, keeping lanes warm. Replaces the sprite dust while active.</div>
+        <label for="filFreqSlider">Filament Fineness: <span id="filFreqValue">100%</span></label>
+        <input type="range" id="filFreqSlider" min="30" max="300" step="5" value="100">
+        <label for="filCoverageSlider">Lane Coverage: <span id="filCoverageValue">38%</span></label>
+        <input type="range" id="filCoverageSlider" min="5" max="80" step="1" value="38">
+        <label for="filSharpSlider">Thread Definition: <span id="filSharpValue">3.4</span></label>
+        <input type="range" id="filSharpSlider" min="0.5" max="6" step="0.1" value="3.4">
+        <label for="filTwistSlider">Shear / Winding: <span id="filTwistValue">1.4</span></label>
+        <input type="range" id="filTwistSlider" min="0" max="6" step="0.1" value="1.4">
         <label for="volDensity">Volume Density: <span id="volDensityValue">100%</span></label>
         <input type="range" id="volDensity" min="0" max="300" step="5" value="100">
         <label for="volQuality">Raymarch Quality: <span id="volQualityValue">44</span></label>
@@ -1520,7 +1526,12 @@
         gpuSelfGrav = parseFloat(e.target.value)/100;
         document.getElementById('gpuSelfGravityValue').textContent = e.target.value+'%';
     });
-    document.getElementById('volScatter').addEventListener('input',(e)=>{ volScatterStr=parseFloat(e.target.value)/100; document.getElementById('volScatterValue').textContent=e.target.value+'%'; });
+    document.getElementById('filFreqSlider').addEventListener('input',(e)=>{ filFreq=parseFloat(e.target.value)/100; document.getElementById('filFreqValue').textContent=e.target.value+'%'; });
+    document.getElementById('filSharpSlider').addEventListener('input',(e)=>{ filSharp=parseFloat(e.target.value); document.getElementById('filSharpValue').textContent=e.target.value; });
+    // Slider reads as "how much of the disc the lanes cover"; the shader wants the opposite,
+    // a low cut on the lane field, so 80% coverage is a cut of 0.20.
+    document.getElementById('filCoverageSlider').addEventListener('input',(e)=>{ filCoverage=1-parseFloat(e.target.value)/100; document.getElementById('filCoverageValue').textContent=e.target.value+'%'; });
+    document.getElementById('filTwistSlider').addEventListener('input',(e)=>{ filTwist=parseFloat(e.target.value); document.getElementById('filTwistValue').textContent=e.target.value; });
     document.getElementById('volDensity').addEventListener('input',(e)=>{ volDensityMult=parseFloat(e.target.value)/100; document.getElementById('volDensityValue').textContent=e.target.value+'%'; });
     document.getElementById('volQuality').addEventListener('input',(e)=>{ volSteps=parseInt(e.target.value); document.getElementById('volQualityValue').textContent=e.target.value; });
     document.getElementById('renderQuality').addEventListener('change',(e)=>{ renderScaleSetting=e.target.value; applyRenderScale(); });
@@ -1548,10 +1559,34 @@
     let stillBoosted = false, _lastCamSig = NaN, _camStillFrames = 0; // auto still-frame supersampling
     let lastVisibleStarCount = 0, lastVisibleGasCount = 0;    // #4 temporal-feedback LOD
     // PHASE 1: volumetric lit-dust state
-    // Volumetric extinction is achromatic, so its lanes read grey/black; the sprite path carries
-    // per-channel weights and reads warm brown, which is the preferred look. Off by default.
-    let useVolumetric = false;       // master (auto-disabled if WebGL2/volume init fails)
+    // Filament dust: procedural ridged/warped noise raymarched through the disc. Replaced the
+    // earlier scattering version, whose achromatic extinction read grey; this accumulates optical
+    // depth per channel, so lanes stay warm brown like the sprites but form threads, not blobs.
+    let useVolumetric = true;        // master (auto-disabled if WebGL2/volume init fails)
     let dustGrain = 7;               // motes per cloud = dustGrain^2; higher = finer dust
+    // Filament field tunables (procedural dust structure)
+    let filFreq = 1.0;        // overall noise frequency: higher = finer threads
+    let filWarp = 0.90;       // domain-warp strength: higher = more stretched/folded
+    let filSharp = 3.4;       // thread sharpening: higher = thinner, more defined threads
+    let filContrast = 0.30;   // low cut on the thread field
+    let filTwist = 1.4;       // differential-rotation shear -> wound arcs
+    // Vertical frequency multiplier. Deliberately WELL BELOW 1: the structures must be
+    // columnar (long through the disc thickness) or the line-of-sight integration averages
+    // them away. Making them finer in z than in-plane is what turned v1 into smooth haze.
+    let filFlatten = 0.20;
+    // How strongly the simulated gas modulates the field. The gas envelope is sampled from a
+    // heavily blurred mip, so it is smooth and round by construction -- lean on it too hard
+    // and it stamps its own blobs back over the filaments. 0.40 places lanes on the arms
+    // without letting the envelope drive the texture.
+    let filEnvMix = 0.40;
+    let filCoverage = 0.62;   // low cut on the LANE field: higher = sparser, darker lanes
+    let filSharpLane = 2.0;   // lane edge hardness
+    let filFineScale = 6.0;   // thread frequency relative to lane frequency
+    const FIL_GRAIN_MIX = 0.85;
+    const FIL_REF_MEAN = 0.12; // mean of the old single-scale field; the density scale's origin
+    // Extinction per unit path at 100% Volume Density. Sized so a face-on disc reaches an
+    // optical depth around 0.5 in its lanes -- visibly dark, still translucent.
+    const FIL_DENSITY = 1.2;
     const DUST_SPRITE_BUDGET = 260000;
     const DUST_MOTE_NORM = 1.201;   // sqrt(E[s^2]) for s = 0.45 + 1.85*u^2, so the size spread is area-neutral
     let volScatterStr = 0.50;        // scattering albedo -- how much starlight the dust returns
@@ -2645,6 +2680,7 @@
     const VOL_VOXELS = VOL_NX * VOL_NY * VOL_NZ;
     let volLight = null, volDens = null, volBytes = null;
     let volTex = null, volNoiseTex = null, volProg = null, VL = null, volQuadVBO = null;
+    let volNoiseData = null, volNoiseN = 0;
     let volOK = false, volBuilt = false;
     let volMinW = [0,0,0], volMaxW = [1,1,1];
     // EMA-smoothed normalisation: keeps 8-bit encoding stable frame to frame
@@ -2667,8 +2703,15 @@ uniform vec3 uVolMin, uVolMax, uCore;
 uniform vec2 uCanvas, uTranslate, uCenter;
 uniform float uScale, uIsOrtho;
 uniform float uCosX, uSinX, uCosY, uSinY;
-uniform float uLightScale, uDensScale;
-uniform float uScatter, uExtinct, uPhaseG, uSteps, uDetail, uShadow, uExposure;
+uniform float uDensScale, uSteps, uExposure;
+uniform float uRd, uH, uBulgeR;           // disc scale length, dust scale height, bulge radius
+uniform float uTwist, uFxy, uFz;          // shear + anisotropic noise frequency
+uniform float uWarp, uSharp, uContrast;   // domain warp, ridge sharpening, threshold
+uniform float uCoverage, uSharpLane;      // lane scale: fraction of disc covered, edge hardness
+uniform float uFineScale;                 // thread frequency relative to lane frequency
+uniform float uGrainScale, uGrainMix;     // pixel-locked detail cascade
+uniform float uEnvMix, uEnvGain;          // how strongly simulated gas modulates the field
+uniform vec3 uExtCol;                     // per-channel extinction weights (blue absorbed most)
 
 vec3 viewToWorld(vec3 v){
   float y  =  v.y*uCosX + v.z*uSinX;
@@ -2677,12 +2720,92 @@ vec3 viewToWorld(vec3 v){
   float z  =  v.x*uSinY + z1*uCosY;
   return vec3(x, y, z);
 }
-// sqrt-encoded light -> linear radiance
-vec3 decodeL(vec3 s){ return s*s*uLightScale; }
+
+float n3(vec3 p){ return texture(uNoise3, p).r; }
+
+// Ridged noise: 1 - |2n-1| turns smooth lumps into sharp creases. Summed over octaves this
+// is what produces thread-like structure -- ordinary fBm can only ever give round blobs.
+float ridge(vec3 p){ float n = n3(p); return 1.0 - abs(n * 2.0 - 1.0); }
+
+// Ridged fBm over an ALREADY-WARPED point. The warp (displacing the sample point by a second
+// noise field before evaluating) stretches and folds otherwise-round features into elongated,
+// branching ones; it is hoisted out so all three scales share one fetch instead of three.
+// The loop bound is a literal because GLSL ES needs one; it exits early at oct.
+float rfbm(vec3 q, int oct){
+  float f = 0.0, amp = 0.5, fr = 1.0, norm = 0.0;
+  for (int i = 0; i < 4; i++){
+    if (i >= oct) break;
+    f += amp * ridge(q * fr);
+    norm += amp;
+    fr *= 2.07; amp *= 0.55;
+  }
+  return f / max(norm, 1e-4);
+}
+
+// Cut the low tail and sharpen what is left, so the field reads as distinct threads
+// against clear gaps rather than a continuous haze.
+float shape(float f, float cut, float sharp){
+  return pow(clamp((f - cut) / max(1.0 - cut, 1e-3), 0.0, 1.0), sharp);
+}
+
+// Decoupled scales. One scale alone cannot look like dust: a coarse field gives smooth
+// swirls, a fine one gives uniform brushing. A sparse coarse field decides WHERE the lanes
+// are, a fine field textures them into threads, and a third term -- whose frequency is
+// locked to the on-screen PIXEL size -- keeps resolving new threads as you zoom in, instead
+// of magnifying the same ones into blobs.
+float filamentField(vec3 p){
+  vec3 w = texture(uNoise3, p * 0.31).rgb - 0.5;    // three independent fields, one fetch
+  vec3 q = p + w * uWarp;
+  float lane = shape(rfbm(q, 2), uCoverage, uSharpLane);
+  if (lane <= 0.0) return 0.0;                      // most of the disc exits here
+  bool zoomed = uGrainScale > uFineScale * 1.2;
+  // When the pixel-locked cascade is running it already supplies the finest octave, so the
+  // thread term gives one back and the total fetch count stays flat as you zoom.
+  float thread = shape(rfbm(q * uFineScale + w, zoomed ? 2 : 3), uContrast, uSharp);
+  if (zoomed) {
+    float grain = shape(rfbm(q * uGrainScale + w, 2), uContrast, uSharp);
+    thread *= mix(1.0, grain, uGrainMix);
+  }
+  return lane * thread;
+}
+
+float dustDensity(vec3 p){
+  vec3 d = p - uCore;
+  float R = length(d.xy);
+  // Analytic disc envelope: exponential radially, thin vertically, faded across the bulge
+  // (the same dust-free-core rule the sprite path uses).
+  float prof = exp(-R / max(uRd, 1.0)) * exp(-abs(d.z) / max(uH, 0.5));
+  prof *= smoothstep(uBulgeR * 0.35, uBulgeR * 1.15, R);
+  if (prof < 2e-4) return 0.0;
+
+  // Large-scale envelope from the SIMULATED gas (heavily blurred), so arms and clumps still
+  // follow the simulation while the fine filaments come from the noise field.
+  if (uEnvMix > 0.001) {
+    vec3 uvw = (p - uVolMin) / max(uVolMax - uVolMin, vec3(1e-4));
+    if (all(greaterThan(uvw, vec3(0.0))) && all(lessThan(uvw, vec3(1.0)))) {
+      float env = textureLod(uVol, uvw, 2.0).a * uEnvGain;
+      prof *= mix(1.0, clamp(env, 0.0, 2.0), uEnvMix);
+    }
+  }
+
+  // Differential rotation winds structures into arcs. Rotating the sample point about z by an
+  // angle that grows with radius shears the noise field into trailing spirals -- and unlike
+  // stretching in theta directly, it has no seam at +-pi.
+  float tw = uTwist * log(max(R, 1.0));
+  float cs = cos(tw), sn = sin(tw);
+  vec3 q = vec3(d.x * cs - d.y * sn, d.x * sn + d.y * cs, d.z);
+  // Anisotropic frequency, and note uFz is much SMALLER than uFxy: the features are COLUMNAR,
+  // long through the disc thickness. That is what makes filaments survive. The raymarch
+  // integrates ~40 samples along the line of sight, so a field that decorrelates vertically
+  // averages itself into featureless haze -- which is exactly what the first version did.
+  q *= vec3(uFxy, uFxy, uFz);
+
+  return prof * filamentField(q) * uDensScale;
+}
 
 void main(){
   float sx = gl_FragCoord.x;
-  float sy = uCanvas.y - gl_FragCoord.y;          // canvas Y is top-down
+  float sy = uCanvas.y - gl_FragCoord.y;
   float a = (sx - uTranslate.x - uCenter.x) / (1000.0 * uScale);
   float b = (sy - uTranslate.y - uCenter.y) / (1000.0 * uScale);
 
@@ -2691,73 +2814,38 @@ void main(){
     ro = viewToWorld(vec3(a*1000.0, b*1000.0, -20000.0));
     rd = normalize(viewToWorld(vec3(0.0, 0.0, 1.0)));
   } else {
-    ro = viewToWorld(vec3(0.0, 0.0, -1000.0));     // eye sits at view-space z = -1000
+    ro = viewToWorld(vec3(0.0, 0.0, -1000.0));
     rd = normalize(viewToWorld(vec3(a, b, 1.0)));
   }
 
-  // slab intersection against the volume AABB
   vec3 inv = 1.0 / max(abs(rd), vec3(1e-6)) * sign(rd + vec3(1e-9));
   vec3 t0v = (uVolMin - ro) * inv;
   vec3 t1v = (uVolMax - ro) * inv;
   vec3 tmin3 = min(t0v, t1v), tmax3 = max(t0v, t1v);
   float t0 = max(max(tmin3.x, tmin3.y), max(tmin3.z, 0.0));
   float t1 = min(min(tmax3.x, tmax3.y), tmax3.z);
-  if (t1 <= t0) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+  if (t1 <= t0) { fragColor = vec4(1.0); return; }
 
   float steps = uSteps;
   float dt = (t1 - t0) / steps;
-  vec3 span = max(uVolMax - uVolMin, vec3(1e-6));
-
-  // per-pixel dither breaks the slice banding raymarching would otherwise show
   float jitter = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
   float t = t0 + dt * jitter;
 
-  vec3 acc = vec3(0.0);
-  float T = 1.0;
-  for (int i = 0; i < 96; i++) {
-    if (float(i) >= steps || T < 0.006) break;
+  // Pure chromatic extinction. Scattering is deliberately omitted: it is what washed the
+  // earlier version out to grey. Accumulating optical depth PER CHANNEL, with blue absorbed
+  // most, reproduces the warm brown of the sprite dust while the structure comes from the
+  // filament field above.
+  vec3 tau = vec3(0.0);
+  for (int i = 0; i < 128; i++) {
+    if (float(i) >= steps) break;
     vec3 p = ro + rd * t;
-    vec3 uvw = (p - uVolMin) / span;
-    vec4 s = texture(uVol, uvw);
-
-    float d = s.a * uDensScale;
-    if (uDetail > 0.001) {
-      // high-frequency 3D detail so a 64-cell volume doesn't read as blocky
-      float n = texture(uNoise3, p * 0.0075).r * 0.65 + texture(uNoise3, p * 0.023 + 0.37).r * 0.35;
-      d *= mix(1.0 - uDetail, 1.0 + uDetail, n);
-    }
-
-    if (d > 0.006) {
-      // irradiance ~ mip-blurred emissivity, self-shadowed by blurred density
-      vec3 E = decodeL(textureLod(uVol, uvw, 2.0).rgb);
-      float shD = textureLod(uVol, uvw, 3.5).a;   // normalised 0..1 blurred density
-      E *= exp(-uShadow * shD);
-      // Scattering efficiency rises toward the blue, which is exactly why reflection nebulae
-      // are blue while transmitted starlight reddens.
-      E *= vec3(0.86, 0.97, 1.24);
-
-      // mild forward scattering toward the bright core
-      vec3 toCore = uCore - p;
-      float cl = length(toCore);
-      float phase = 1.0;
-      if (cl > 1e-3) {
-        float ct = dot(rd, toCore / cl);
-        float g = uPhaseG;
-        float hg = (1.0 - g*g) / pow(max(1.0 + g*g - 2.0*g*ct, 1e-4), 1.5);
-        phase = mix(1.0, clamp(hg, 0.0, 6.0), 0.55);
-      }
-
-      // uDensScale carries optical depth PER WORLD UNIT, so sigT*dt is a true optical depth.
-      float sigT = d * uExtinct;
-      float aT = exp(-sigT * dt);
-      // Energy-conserving and bounded: the segment integral of sigma_s*E*T reduces exactly to
-      // E*albedo*(1-exp(-sigma_t*dt)), so scattered light can never exceed the albedo.
-      acc += T * (E * uScatter * phase) * (1.0 - aT);
-      T *= aT;
-    }
+    float dens = dustDensity(p);
+    if (dens > 1e-5) tau += dens * uExtCol * dt;
+    if (tau.b > 12.0) break;              // saturated; nothing below will show through
     t += dt;
   }
-  fragColor = vec4(acc * uExposure, clamp(T, 0.0, 1.0));
+  vec3 T = exp(-tau * uExposure);
+  fragColor = vec4(clamp(T, 0.0, 1.0), 1.0);
 }`;
 
     function initVolumetrics() {
@@ -2773,9 +2861,13 @@ void main(){
                 uVol: U('uVol'), uNoise3: U('uNoise3'), uVolMin: U('uVolMin'), uVolMax: U('uVolMax'), uCore: U('uCore'),
                 uCanvas: U('uCanvas'), uTranslate: U('uTranslate'), uCenter: U('uCenter'), uScale: U('uScale'), uIsOrtho: U('uIsOrtho'),
                 uCosX: U('uCosX'), uSinX: U('uSinX'), uCosY: U('uCosY'), uSinY: U('uSinY'),
-                uLightScale: U('uLightScale'), uDensScale: U('uDensScale'),
-                uScatter: U('uScatter'), uExtinct: U('uExtinct'), uPhaseG: U('uPhaseG'),
-                uSteps: U('uSteps'), uDetail: U('uDetail'), uShadow: U('uShadow'), uExposure: U('uExposure') };
+                uDensScale: U('uDensScale'), uSteps: U('uSteps'), uExposure: U('uExposure'),
+                uRd: U('uRd'), uH: U('uH'), uBulgeR: U('uBulgeR'),
+                uTwist: U('uTwist'), uFxy: U('uFxy'), uFz: U('uFz'),
+                uWarp: U('uWarp'), uSharp: U('uSharp'), uContrast: U('uContrast'),
+                uEnvMix: U('uEnvMix'), uEnvGain: U('uEnvGain'), uExtCol: U('uExtCol'),
+                uCoverage: U('uCoverage'), uSharpLane: U('uSharpLane'), uFineScale: U('uFineScale'),
+                uGrainScale: U('uGrainScale'), uGrainMix: U('uGrainMix') };
 
             volLight = new Float32Array(VOL_VOXELS * 3);
             volDens  = new Float32Array(VOL_VOXELS);
@@ -2791,8 +2883,8 @@ void main(){
             gl.texParameteri(gl.TEXTURE_3D, gl.TEXTURE_WRAP_R, gl.CLAMP_TO_EDGE);
             gl.generateMipmap(gl.TEXTURE_3D);
 
-            // 32^3 tileable value-noise volume for sub-voxel detail
-            const NN = 32, nd = new Uint8Array(NN*NN*NN*4);
+            // tileable value-noise volume for sub-voxel detail
+            const NN = 64, nd = new Uint8Array(NN*NN*NN*4);
             let sN = 22222221; const rr = () => { sN = (sN*1103515245 + 12345) & 0x7fffffff; return sN/0x7fffffff; };
             const lat = new Float32Array(NN*NN*NN); for (let i=0;i<lat.length;i++) lat[i]=rr();
             const sm3 = t => t*t*(3-2*t);
@@ -2806,12 +2898,24 @@ void main(){
                 const y0=x00+(x10-x00)*fy, y1=x01+(x11-x01)*fy;
                 return y0+(y1-y0)*fz;
             }
+            // R, G and B carry INDEPENDENT noise fields (offset lattices). The raymarch needs a
+            // 3-component vector for its domain warp; packing them here turns that into a single
+            // texture fetch per step instead of three, which roughly halves the march cost.
+            const off=[0.0, 13.37, 71.19];
             for (let z=0; z<NN; z++) for (let y=0; y<NN; y++) for (let x=0; x<NN; x++){
-                let sum=0, nrm=0;
-                for (let o=0;o<3;o++){ const amp=Math.pow(0.55,o), f=4<<o; sum+=amp*vn3(x/NN*f, y/NN*f, z/NN*f, f); nrm+=amp; }
-                const v8=Math.max(0,Math.min(255,Math.round((sum/nrm)*255)));
-                const q=((z*NN+y)*NN+x)*4; nd[q]=v8; nd[q+1]=v8; nd[q+2]=v8; nd[q+3]=255;
+                const q=((z*NN+y)*NN+x)*4;
+                for (let ch=0; ch<3; ch++){
+                    let sum=0, nrm=0;
+                    for (let o=0;o<3;o++){ const amp=Math.pow(0.55,o), f=4<<o;
+                        sum+=amp*vn3(x/NN*f+off[ch], y/NN*f+off[ch], z/NN*f+off[ch], f); nrm+=amp; }
+                    nd[q+ch]=Math.max(0,Math.min(255,Math.round((sum/nrm)*255)));
+                }
+                nd[q+3]=255;
             }
+            // Kept so the CPU can measure the filament field's mean density and normalise it
+            // (see computeFilamentNorm) -- 1 MB, and it is the only way to keep the look
+            // steady while the shaping sliders move.
+            volNoiseData = nd; volNoiseN = NN;
             volNoiseTex = gl.createTexture();
             gl.bindTexture(gl.TEXTURE_3D, volNoiseTex);
             gl.texImage3D(gl.TEXTURE_3D, 0, gl.RGBA8, NN, NN, NN, 0, gl.RGBA, gl.UNSIGNED_BYTE, nd);
@@ -3019,6 +3123,69 @@ void main(){
         volBuilt = true;
     }
 
+    // ===================================================================
+    // Filament density normalisation
+    // -------------------------------------------------------------------
+    // The filament field is a PRODUCT of two sharply-cut noise terms, so its mean value is
+    // tiny and swings by orders of magnitude as the shaping sliders move -- left raw, nudging
+    // "Lane Coverage" would change how dark the galaxy is instead of how the dust is
+    // arranged. So the mean is measured on the CPU from the same noise volume the shader
+    // samples, and uDensScale divides it out. Sliders then change STRUCTURE at constant
+    // opacity, which is also what the rest of this renderer promises.
+    // ===================================================================
+    let _filNormCache = { key: '', value: 1.0 };
+
+    // Trilinear REPEAT fetch of one channel, matching texture(uNoise3, p) in the shader.
+    function _noiseAt(p0, p1, p2, ch) {
+        const N = volNoiseN, d = volNoiseData;
+        const u = p0 * N, v = p1 * N, w = p2 * N;
+        const xi = Math.floor(u), yi = Math.floor(v), zi = Math.floor(w);
+        const fx = u - xi, fy = v - yi, fz = w - zi;
+        const m = k => ((k % N) + N) % N;
+        const X0 = m(xi), X1 = m(xi + 1), Y0 = m(yi), Y1 = m(yi + 1), Z0 = m(zi), Z1 = m(zi + 1);
+        const g = (X, Y, Z) => d[(((Z * N + Y) * N + X) << 2) + ch] / 255;
+        const c000 = g(X0,Y0,Z0), c100 = g(X1,Y0,Z0), c010 = g(X0,Y1,Z0), c110 = g(X1,Y1,Z0);
+        const c001 = g(X0,Y0,Z1), c101 = g(X1,Y0,Z1), c011 = g(X0,Y1,Z1), c111 = g(X1,Y1,Z1);
+        const x00 = c000 + (c100-c000)*fx, x10 = c010 + (c110-c010)*fx;
+        const x01 = c001 + (c101-c001)*fx, x11 = c011 + (c111-c011)*fx;
+        const y0 = x00 + (x10-x00)*fy, y1 = x01 + (x11-x01)*fy;
+        return y0 + (y1-y0)*fz;
+    }
+    function _rfbmJS(q0, q1, q2, oct) {
+        let f = 0, amp = 0.5, fr = 1, norm = 0;
+        for (let i = 0; i < oct; i++) {
+            f += amp * (1 - Math.abs(_noiseAt(q0*fr, q1*fr, q2*fr, 0) * 2 - 1));
+            norm += amp; fr *= 2.07; amp *= 0.55;
+        }
+        return f / Math.max(norm, 1e-4);
+    }
+    const _shapeJS = (f, cut, sharp) => Math.pow(Math.max(0, Math.min(1, (f - cut) / Math.max(1 - cut, 1e-3))), sharp);
+
+    // Mean of the shaped field over a fixed low-discrepancy sample of the volume. The sample
+    // points are deterministic so the normalisation never flickers between frames.
+    function computeFilamentNorm() {
+        if (!volNoiseData) return 1.0;
+        const key = [filCoverage, filSharpLane, filContrast, filSharp, filFineScale].join(',');
+        if (_filNormCache.key === key) return _filNormCache.value;
+        const S = 3072;
+        let mLane = 0, mThread3 = 0, mThread2 = 0;
+        for (let i = 0; i < S; i++) {
+            // golden-ratio lattice: even coverage without a random generator
+            const a = (i * 0.7548776662) % 1, b = (i * 0.5698402910) % 1, c = (i * 0.4756626917) % 1;
+            const w0 = _noiseAt(a*0.31, b*0.31, c*0.31, 0) - 0.5;
+            const w1 = _noiseAt(a*0.31, b*0.31, c*0.31, 1) - 0.5;
+            const w2 = _noiseAt(a*0.31, b*0.31, c*0.31, 2) - 0.5;
+            const q0 = a + w0*filWarp, q1 = b + w1*filWarp, q2 = c + w2*filWarp;
+            mLane += _shapeJS(_rfbmJS(q0, q1, q2, 2), filCoverage, filSharpLane);
+            const t0 = q0*filFineScale + w0, t1 = q1*filFineScale + w1, t2 = q2*filFineScale + w2;
+            mThread3 += _shapeJS(_rfbmJS(t0, t1, t2, 3), filContrast, filSharp);
+            mThread2 += _shapeJS(_rfbmJS(t0, t1, t2, 2), filContrast, filSharp);
+        }
+        mLane /= S; mThread3 /= S; mThread2 /= S;
+        _filNormCache = { key, value: { lane: mLane, t3: mThread3, t2: mThread2 } };
+        return _filNormCache.value;
+    }
+
     // Composited as: dst*T + inscatter  (blend ONE, SRC_ALPHA) so the volume both
     // dims what is behind it and adds its own scattered light, in one pass.
     function drawVolumetric() {
@@ -3042,23 +3209,51 @@ void main(){
         gl.uniform1f(VL.uCosY, Math.cos(rY)); gl.uniform1f(VL.uSinY, Math.sin(rY));
         // Light is stored RELATIVE to the brightest voxel, so the shader works in normalised
         // radiance; VOL_LIGHT_GAIN compensates for the energy the mip blur spreads out.
-        gl.uniform1f(VL.uLightScale, VOL_LIGHT_GAIN);
+        gl.uniform1f(VL.uRd, galaxyRadius * 0.55);
+        gl.uniform1f(VL.uH, DUST_SCALE_HEIGHT * 1.9);
+        gl.uniform1f(VL.uBulgeR, bulgeRadius);
+        gl.uniform1f(VL.uTwist, filTwist);
+        gl.uniform1f(VL.uFxy, filFreq * 0.0052);
+        gl.uniform1f(VL.uFz, filFreq * 0.0052 * filFlatten);
+        gl.uniform1f(VL.uWarp, filWarp);
+        gl.uniform1f(VL.uSharp, filSharp);
+        gl.uniform1f(VL.uContrast, filContrast);
+        gl.uniform1f(VL.uCoverage, filCoverage);
+        gl.uniform1f(VL.uSharpLane, filSharpLane);
+        gl.uniform1f(VL.uFineScale, filFineScale);
+        // Detail cascade: aim the cascade's FINEST octave at ~7 screen pixels, so zooming in
+        // keeps resolving new threads without ever dropping below the pixel grid (sub-pixel
+        // noise would just alias into sparkle). The noise volume's dominant wavelength is
+        // 1/4 of its period and the second octave is 2.07x finer, so a term sampled at
+        // q * G resolves 0.25/(2.07*G*uFxy) world units; solving that for 7/scale world
+        // units per 7 pixels gives the factor below. It self-disables when the thread term
+        // already resolves that finely, and is capped so extreme zoom cannot run away.
+        const _fxy = filFreq * 0.0052;
+        const _px = 1.0 / Math.max(scale * highResMult, 1e-4);   // world units per pixel
+        const _grain = Math.min(0.25 / 2.07 / Math.max(_fxy * 7.0 * _px, 1e-9), filFineScale * 9.0);
+        const _zoomed = _grain > filFineScale * 1.2;
+        gl.uniform1f(VL.uGrainScale, Math.max(_grain, 0.0));
+        gl.uniform1f(VL.uGrainMix, FIL_GRAIN_MIX);
+        gl.uniform1f(VL.uEnvMix, filEnvMix);
+        gl.uniform1f(VL.uEnvGain, 1.8);
+        gl.uniform3f(VL.uExtCol, 0.62, 0.82, 1.0);   // blue absorbed most -> warm brown lanes
         // Stored A is 0..1 of volDensRef, which is a sum of per-cloud optical depths in a voxel.
         // Dividing by the voxel edge converts that to optical depth PER WORLD UNIT, which is what
         // the raymarch integrates over. Without this the exponent scales with step size (opaque).
-        gl.uniform1f(VL.uDensScale, VOL_SIGMA_REF * volDensityMult);
-        gl.uniform1f(VL.uScatter, volScatterStr);
-        gl.uniform1f(VL.uExtinct, 1.0);
-        gl.uniform1f(VL.uPhaseG, 0.35);
+        // Divide the measured mean out, so opacity stays put while the sliders reshape the
+        // field. FIL_REF_MEAN is the mean the old single-scale field had, which is what
+        // FIL_DENSITY is expressed relative to.
+        const _m = computeFilamentNorm();
+        const _mean = (typeof _m === 'number') ? FIL_REF_MEAN
+            : _m.lane * (_zoomed ? _m.t2 * (1 - FIL_GRAIN_MIX + FIL_GRAIN_MIX * _m.t2) : _m.t3);
+        gl.uniform1f(VL.uDensScale, FIL_DENSITY * volDensityMult * FIL_REF_MEAN / Math.max(_mean, 1e-5));
         gl.uniform1f(VL.uSteps, volSteps);
-        gl.uniform1f(VL.uDetail, 0.55);
-        gl.uniform1f(VL.uShadow, 1.35);
-        gl.uniform1f(VL.uExposure, currentExposure * 0.85);
+        gl.uniform1f(VL.uExposure, 1.0);
         gl.enable(gl.BLEND);
-        // RGB: dst*T + inscatter. Alpha is left ALONE -- a plain blendFunc would also write
-        // T into the alpha channel, which drives how this canvas composites over the separate
-        // background-universe canvas and would wash the deep field out.
-        gl.blendFuncSeparate(gl.ONE, gl.SRC_ALPHA, gl.ZERO, gl.ONE);
+        // Pure multiplicative extinction: dst *= T, per channel, so lanes redden what is
+        // behind them instead of greying it. Alpha untouched so this canvas still composites
+        // correctly over the separate background-universe canvas.
+        gl.blendFuncSeparate(gl.ZERO, gl.SRC_COLOR, gl.ZERO, gl.ONE);
         gl.bindBuffer(gl.ARRAY_BUFFER, volQuadVBO);
         gl.vertexAttribPointer(VL.aQuad, 2, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(VL.aQuad);
@@ -7577,8 +7772,11 @@ void main(){
         //     preset system, so a saved look could not reproduce them. ---
         { id:'renderQuality', kind:'select', evt:'change', group:'Rendering', label:'Render Quality' },
         { id:'tglFineGas', kind:'check', evt:'change', group:'Rendering', label:'Fine Gas Structure' },
-        { id:'tglVolumetric', kind:'check', evt:'change', group:'Cinematic', label:'Lit Volumetric Dust' },
-        { id:'volScatter', kind:'range', evt:'input', group:'Cinematic', label:'Volumetric Scattering' },
+        { id:'tglVolumetric', kind:'check', evt:'change', group:'Cinematic', label:'Filament Dust' },
+        { id:'filFreqSlider', kind:'range', evt:'input', group:'Cinematic', label:'Filament Fineness' },
+        { id:'filCoverageSlider', kind:'range', evt:'input', group:'Cinematic', label:'Lane Coverage' },
+        { id:'filSharpSlider', kind:'range', evt:'input', group:'Cinematic', label:'Thread Definition' },
+        { id:'filTwistSlider', kind:'range', evt:'input', group:'Cinematic', label:'Filament Shear' },
         { id:'volDensity', kind:'range', evt:'input', group:'Cinematic', label:'Volumetric Density' },
         { id:'volQuality', kind:'range', evt:'input', group:'Cinematic', label:'Raymarch Quality' },
         { id:'dustGrainSlider', kind:'range', evt:'input', group:'Cinematic', label:'Dust Grain' },
