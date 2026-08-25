@@ -54,14 +54,63 @@ ones; zooming out retires them before they alias into sparkle. It self-disables 
 cannot run away, and the `thread` term drops an octave while it is active so the per-step
 fetch count stays flat.
 
+## Making it move (two rotating frames)
+
+The first version of this field was **static**: it was sampled at fixed world coordinates, so
+the galaxy turned underneath dust that never did, and gravity and stellar feedback changed
+nothing. Advecting it is not a detail — a dust lane that does not move is not a dust lane.
+
+The fix is to sample the noise in a *rotating* frame, but which frame is not obvious, because
+lanes and clumps genuinely move differently:
+
+- **Dust lanes are the compressed ridge of a density wave**, and a density wave rotates
+  **rigidly** at the pattern speed. That is precisely why real spiral arms do not wind
+  themselves shut over a few orbits. The `lane` term is therefore sampled in the pattern
+  frame, using the simulation's own `patternAngle` — the same angle the arm modulation in the
+  gas volume rides on, so the two stay locked together.
+- **Individual dust clumps orbit at the local circular speed** and stream *through* the
+  pattern. The `thread` and `grain` terms are sampled in the material frame, rotated by
+  `-Ω(R)·t`.
+
+Sampling everything in one frame gives you either frozen dust (what it did) or a field that
+winds up into a tight spiral and never stops (what a single material frame would do). Two
+frames cost one extra rotation per sample and reproduce both behaviours.
+
+`Ω(R)` comes from the simulation's real rotation curve, but `getTheoreticalVelocities` is far
+too heavy to call per fragment, so it is fitted on the CPU to
+`v(R) = v_flat · R / sqrt(R² + Rc²)` — hence `Ω(R) = v_flat / sqrt(R² + Rc²)`, one `sqrt` in
+the shader. `Rc` is found by a coarse scan and `v_flat` is the least-squares optimum for each
+`Rc` (it is linear, so that half is exact). Measured fit error against the real curve is 2-6%
+across the disc, rising to ~9% at the very outer edge. The fit is redone whenever the pattern
+speed is, so it tracks mass, radius and preset changes.
+
+## How gravity and stellar events reach the dust
+
+The simulated gas volume is rebuilt every other frame from the actual particles, so it already
+carries everything: arms sweeping past, clouds collapsing, supernovae and H II regions
+clearing gas. What matters is *how* the dust reads it.
+
+It modulates the **lane threshold**, not opacity. That distinction is the whole game: the gas
+volume is a blurred mip, so scaling opacity by it stamps soft round blobs over the image —
+which is exactly the artefact this renderer exists to avoid. Moving the threshold instead
+means dense gas simply lets more filaments through, and every visible edge is still a filament
+edge.
+
+The threshold is centred on `uEnvPivot`, **measured from the volume itself** each frame (the
+mean stored density over voxels that actually hold dust, smoothed) rather than hard-coded. It
+has to be: the measured value is ~0.22, and the 0.75 originally guessed would have pushed the
+threshold up by 0.4 and left the disc nearly dust-free. Measuring it also means the coupling
+stays centred whatever the gas mass, galaxy size or dust bias.
+
 ## Where the large-scale layout comes from
 
 The noise supplies *texture*, not *arms*. Two things place it:
 
-- **Differential-rotation shear** (`uTwist`): the sample point is rotated about z by an angle
-  growing with `log R`, which winds structures into trailing arcs with no seam at ±π. At the
-  old default of 2.2 this dominated everything and the galaxy read as a marbled whirlpool;
-  1.4 keeps the flow without taking over.
+- **Static winding** (`uTwist`): the sample point is rotated about z by an angle growing with
+  `log R`, which wraps structures into trailing arcs with no seam at ±π. This sets how tightly
+  wound the lanes look, independent of time — the time-dependent motion is the two frames
+  above. At the old default of 2.2 this dominated everything and the galaxy read as a marbled
+  whirlpool; 1.4 keeps the flow without taking over.
 - **The simulated gas** (`uEnvMix`, raised to 0.55): the blurred gas density from the actual
   N-body run modulates the field, so lanes follow the arms the simulation produced rather
   than a pattern painted on top of it.
@@ -81,7 +130,7 @@ untouched so the WebGL canvas still composites over the background-universe canv
 | Filament Fineness | `filFreq` -> `uFxy` | overall feature scale |
 | Lane Coverage | `filCoverage` | inverted: 38% coverage is a cut of 0.62 |
 | Thread Definition | `filSharp` | higher = thinner, harder threads |
-| Shear / Winding | `filTwist` | 0 = no winding, 6 = tight spiral |
+| Shear / Winding | `filTwist` | static wrap; 0 = none, 6 = tight spiral |
 | Volume Density | `volDensityMult` | overall opacity |
 | Raymarch Quality | `volSteps` | step count; lower it on weak GPUs |
 

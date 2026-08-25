@@ -1583,6 +1583,9 @@
     let filSharpLane = 2.0;   // lane edge hardness
     let filFineScale = 6.0;   // thread frequency relative to lane frequency
     const FIL_GRAIN_MIX = 0.85;
+    // Gain applied to the stored gas density before it is compared with uEnvPivot. Used on
+    // both sides of that comparison, so it must not be written twice.
+    const FIL_ENV_GAIN = 1.8;
     const FIL_REF_MEAN = 0.12; // mean of the old single-scale field; the density scale's origin
     // Extinction per unit path at 100% Volume Density. Sized so a face-on disc reaches an
     // optical depth around 0.5 in its lanes -- visibly dark, still translucent.
@@ -2685,7 +2688,7 @@
     let volMinW = [0,0,0], volMaxW = [1,1,1];
     // EMA-smoothed normalisation: keeps 8-bit encoding stable frame to frame
     // (a per-frame max would make the whole volume flicker as bright stars move).
-    let volLightRef = 1.0, volDensRef = 1.0;
+    let volLightRef = 1.0, volDensRef = 1.0, volEnvMean = 0.25;
     let volFrame = 0;
 
     const vsVolSrc = `#version 300 es
@@ -2710,6 +2713,11 @@ uniform float uWarp, uSharp, uContrast;   // domain warp, ridge sharpening, thre
 uniform float uCoverage, uSharpLane;      // lane scale: fraction of disc covered, edge hardness
 uniform float uFineScale;                 // thread frequency relative to lane frequency
 uniform float uGrainScale, uGrainMix;     // pixel-locked detail cascade
+uniform float uSimTime, uPatternAngle;    // simulation clock + density-wave phase
+uniform float uVflat, uRc;                // fitted rotation curve -> local angular speed
+// Envelope value treated as "average gas": above it the lane threshold drops and filaments
+// fill in, below it they thin out. Measured from the volume itself so overall opacity holds.
+uniform float uEnvPivot;
 uniform float uEnvMix, uEnvGain;          // how strongly simulated gas modulates the field
 uniform vec3 uExtCol;                     // per-channel extinction weights (blue absorbed most)
 
@@ -2753,11 +2761,13 @@ float shape(float f, float cut, float sharp){
 // are, a fine field textures them into threads, and a third term -- whose frequency is
 // locked to the on-screen PIXEL size -- keeps resolving new threads as you zoom in, instead
 // of magnifying the same ones into blobs.
-float filamentField(vec3 p){
-  vec3 w = texture(uNoise3, p * 0.31).rgb - 0.5;    // three independent fields, one fetch
-  vec3 q = p + w * uWarp;
-  float lane = shape(rfbm(q, 2), uCoverage, uSharpLane);
+// pLane and pMat are the SAME point seen in two different rotating frames -- see
+// dustDensity for why the lanes and the threads inside them must move differently.
+float filamentField(vec3 pLane, vec3 pMat, float cut){
+  vec3 w = texture(uNoise3, pLane * 0.31).rgb - 0.5; // three independent fields, one fetch
+  float lane = shape(rfbm(pLane + w * uWarp, 2), cut, uSharpLane);
   if (lane <= 0.0) return 0.0;                      // most of the disc exits here
+  vec3 q = pMat + w * uWarp;
   bool zoomed = uGrainScale > uFineScale * 1.2;
   // When the pixel-locked cascade is running it already supplies the finest octave, so the
   // thread term gives one back and the total fetch count stays flat as you zoom.
@@ -2778,29 +2788,46 @@ float dustDensity(vec3 p){
   prof *= smoothstep(uBulgeR * 0.35, uBulgeR * 1.15, R);
   if (prof < 2e-4) return 0.0;
 
-  // Large-scale envelope from the SIMULATED gas (heavily blurred), so arms and clumps still
-  // follow the simulation while the fine filaments come from the noise field.
+  // The SIMULATED gas decides WHERE dust is, by moving the lane threshold rather than by
+  // scaling opacity. That distinction matters: the gas volume is a blurred mip, so scaling
+  // opacity with it stamps soft round blobs over everything, while moving the threshold
+  // means dense gas simply lets more filaments through and every visible edge is still a
+  // filament edge. It is also what makes the dust respond to the physics -- arms sweeping
+  // past, clouds collapsing, supernovae clearing gas all show up here.
+  float cut = uCoverage;
   if (uEnvMix > 0.001) {
     vec3 uvw = (p - uVolMin) / max(uVolMax - uVolMin, vec3(1e-4));
     if (all(greaterThan(uvw, vec3(0.0))) && all(lessThan(uvw, vec3(1.0)))) {
-      float env = textureLod(uVol, uvw, 2.0).a * uEnvGain;
-      prof *= mix(1.0, clamp(env, 0.0, 2.0), uEnvMix);
+      float env = clamp(textureLod(uVol, uvw, 1.0).a * uEnvGain, 0.0, 2.0);
+      cut = clamp(uCoverage - uEnvMix * (env - uEnvPivot), 0.03, 0.97);
+    } else {
+      cut = clamp(uCoverage + uEnvMix * uEnvPivot, 0.03, 0.97);  // outside the volume: no gas
     }
   }
 
-  // Differential rotation winds structures into arcs. Rotating the sample point about z by an
-  // angle that grows with radius shears the noise field into trailing spirals -- and unlike
-  // stretching in theta directly, it has no seam at +-pi.
+  // Static winding: how tightly the lanes are wrapped, independent of time.
   float tw = uTwist * log(max(R, 1.0));
-  float cs = cos(tw), sn = sin(tw);
-  vec3 q = vec3(d.x * cs - d.y * sn, d.x * sn + d.y * cs, d.z);
+
+  // TWO ROTATING FRAMES. Dust lanes are the compressed ridge of a density wave, and a
+  // density wave rotates RIGIDLY at the pattern speed -- that is precisely why real arms do
+  // not wind themselves shut. Individual dust clumps, meanwhile, orbit at the LOCAL circular
+  // speed and stream through the pattern. Sampling the lane term in the pattern frame and the
+  // thread term in the material frame reproduces both, and it costs one extra rotation.
+  // Sampling everything in one static frame is what made the dust sit still.
+  float omega = uVflat / sqrt(R * R + uRc * uRc);   // fitted rotation curve
+  float aL = tw - uPatternAngle;
+  float aM = tw - omega * uSimTime;
+  float cL = cos(aL), sL = sin(aL);
+  float cM = cos(aM), sM = sin(aM);
   // Anisotropic frequency, and note uFz is much SMALLER than uFxy: the features are COLUMNAR,
   // long through the disc thickness. That is what makes filaments survive. The raymarch
   // integrates ~40 samples along the line of sight, so a field that decorrelates vertically
   // averages itself into featureless haze -- which is exactly what the first version did.
-  q *= vec3(uFxy, uFxy, uFz);
+  vec3 f3 = vec3(uFxy, uFxy, uFz);
+  vec3 qL = vec3(d.x * cL - d.y * sL, d.x * sL + d.y * cL, d.z) * f3;
+  vec3 qM = vec3(d.x * cM - d.y * sM, d.x * sM + d.y * cM, d.z) * f3;
 
-  return prof * filamentField(q) * uDensScale;
+  return prof * filamentField(qL, qM, cut) * uDensScale;
 }
 
 void main(){
@@ -2867,7 +2894,9 @@ void main(){
                 uWarp: U('uWarp'), uSharp: U('uSharp'), uContrast: U('uContrast'),
                 uEnvMix: U('uEnvMix'), uEnvGain: U('uEnvGain'), uExtCol: U('uExtCol'),
                 uCoverage: U('uCoverage'), uSharpLane: U('uSharpLane'), uFineScale: U('uFineScale'),
-                uGrainScale: U('uGrainScale'), uGrainMix: U('uGrainMix') };
+                uGrainScale: U('uGrainScale'), uGrainMix: U('uGrainMix'),
+                uSimTime: U('uSimTime'), uPatternAngle: U('uPatternAngle'),
+                uVflat: U('uVflat'), uRc: U('uRc'), uEnvPivot: U('uEnvPivot') };
 
             volLight = new Float32Array(VOL_VOXELS * 3);
             volDens  = new Float32Array(VOL_VOXELS);
@@ -3105,6 +3134,12 @@ void main(){
         // (an EMA max made faint frames as dark as dense ones). Clamping at VOL_SIGMA_REF costs
         // nothing: that is already an optically thick line of sight.
         let dSum=0, dMax=0;
+        // Mean stored density over the voxels that actually hold dust. The filament shader
+        // centres its gas coupling on this, so "denser than usual -> more dust" stays true
+        // whatever the gas mass, galaxy size or dust bias happen to be. Averaging over ALL
+        // voxels would be dominated by the empty box around the disc.
+        let occSum = 0, occN = 0;
+        const OCC_MIN = 0.01;
         for (let i=0;i<VOL_VOXELS;i++){
             const o=i*3, q=i*4;
             volBytes[q]   = Math.min(255, Math.sqrt(Math.max(0,volLight[o]  )*invL)*255)|0;
@@ -3112,8 +3147,14 @@ void main(){
             volBytes[q+2] = Math.min(255, Math.sqrt(Math.max(0,volLight[o+2])*invL)*255)|0;
             const sig = volDens[i] * invVoxVol;      // 1/length
             if (sig > dMax) dMax = sig; dSum += sig;
-            volBytes[q+3] = Math.min(255, (sig / VOL_SIGMA_REF) * 255)|0;
+            const a = Math.min(1, sig / VOL_SIGMA_REF);
+            if (a > OCC_MIN) { occSum += a; occN++; }
+            volBytes[q+3] = (a * 255)|0;
         }
+        // Smoothed so a transient (a supernova clearing a region) shifts the coupling rather
+        // than rescaling the whole galaxy for one frame.
+        const occMean = occN ? occSum / occN : 0.25;
+        volEnvMean = volEnvMean * 0.85 + occMean * 0.15;
         volDensRef = VOL_SIGMA_REF;
         volDbg = { sigMax: dMax, sigMean: dSum / VOL_VOXELS, lightMax: lMax };
         gl.bindTexture(gl.TEXTURE_3D, volTex);
@@ -3186,6 +3227,49 @@ void main(){
         return _filNormCache.value;
     }
 
+    // ===================================================================
+    // Rotation-curve fit for dust advection
+    // -------------------------------------------------------------------
+    // The raymarch needs the local angular speed at every sample point, which rules out
+    // calling getTheoreticalVelocities per fragment. A two-parameter form fits a disc
+    // rotation curve closely -- v(R) = vFlat * R / sqrt(R^2 + Rc^2), so
+    // Omega(R) = vFlat / sqrt(R^2 + Rc^2) -- and costs the shader one sqrt. Rc is found by
+    // a coarse scan; vFlat is the least-squares optimum for each Rc, which is linear.
+    // ===================================================================
+    let filVflat = 0.0, filRc = 60.0;
+    function fitRotationCurve() {
+        if (!blackHoles.length) return;
+        const Rmax = Math.max(80, galaxyRadius * 1.2);
+        const N = 24, Rs = [], Vs = [];
+        for (let i = 0; i < N; i++) {
+            const R = Rmax * (i + 1) / N;
+            let v = 0;
+            try { v = getTheoreticalVelocities(R, 0).vTotal; } catch (e) { return; }
+            if (!isFinite(v) || v <= 0) continue;
+            Rs.push(R); Vs.push(v);
+        }
+        if (Rs.length < 4) return;
+        let bestErr = Infinity, bestRc = filRc, bestV = filVflat;
+        for (let k = 0; k <= 60; k++) {
+            const Rc = 4 + k * (Rmax * 0.5 - 4) / 60;
+            // v = vFlat * g(R) with g known -> vFlat = sum(v*g)/sum(g*g)
+            let svg = 0, sgg = 0;
+            for (let i = 0; i < Rs.length; i++) {
+                const g = Rs[i] / Math.sqrt(Rs[i]*Rs[i] + Rc*Rc);
+                svg += Vs[i] * g; sgg += g * g;
+            }
+            if (sgg <= 0) continue;
+            const vF = svg / sgg;
+            let err = 0;
+            for (let i = 0; i < Rs.length; i++) {
+                const d = vF * Rs[i] / Math.sqrt(Rs[i]*Rs[i] + Rc*Rc) - Vs[i];
+                err += d * d;
+            }
+            if (err < bestErr) { bestErr = err; bestRc = Rc; bestV = vF; }
+        }
+        filVflat = bestV; filRc = bestRc;
+    }
+
     // Composited as: dst*T + inscatter  (blend ONE, SRC_ALPHA) so the volume both
     // dims what is behind it and adds its own scattered light, in one pass.
     function drawVolumetric() {
@@ -3234,8 +3318,16 @@ void main(){
         const _zoomed = _grain > filFineScale * 1.2;
         gl.uniform1f(VL.uGrainScale, Math.max(_grain, 0.0));
         gl.uniform1f(VL.uGrainMix, FIL_GRAIN_MIX);
+        // elapsedTime is in years; the pattern and the rotation curve both live in world
+        // time, so convert back through yearsPerStep.
+        gl.uniform1f(VL.uSimTime, elapsedTime / yearsPerStep);
+        gl.uniform1f(VL.uPatternAngle, patternAngle);
+        if (filVflat <= 0) fitRotationCurve();
+        gl.uniform1f(VL.uVflat, filVflat);
+        gl.uniform1f(VL.uRc, Math.max(filRc, 1.0));
+        gl.uniform1f(VL.uEnvPivot, Math.min(1.9, Math.max(0.05, volEnvMean * FIL_ENV_GAIN)));
         gl.uniform1f(VL.uEnvMix, filEnvMix);
-        gl.uniform1f(VL.uEnvGain, 1.8);
+        gl.uniform1f(VL.uEnvGain, FIL_ENV_GAIN);
         gl.uniform3f(VL.uExtCol, 0.62, 0.82, 1.0);   // blue absorbed most -> warm brown lanes
         // Stored A is 0..1 of volDensRef, which is a sum of per-cloud optical depths in a voxel.
         // Dividing by the voxel edge converts that to optical depth PER WORLD UNIT, which is what
@@ -7493,6 +7585,9 @@ void main(){
 
       patternAngle = 0; barAngle = 0; ringShockRadius = bulgeRadius * 0.5; 
       recomputePatternSpeeds(); // derive co-rotating density-wave speed from the rotation curve
+      // Renderer-side only: this block is also extracted into the physics worker, which has
+      // no volumetrics and therefore no fitRotationCurve.
+      if (typeof fitRotationCurve === 'function') fitRotationCurve();
       
       elapsedTime=0;
       updateLiveMassModel();
