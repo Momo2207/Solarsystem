@@ -1,23 +1,35 @@
 # Phase 1 & 2 — handover
 
-The Phase 1 and Phase 2 work was completed and verified, but the session's git
-proxy stopped authorising writes partway through (`401` on `git-receive-pack`),
-so the commits could not be pushed normally. `phase1-2-series.patch` in this
-directory carries both commits, with their full messages.
+Phase 1 and Phase 2 were completed and verified, but the session's git proxy
+stopped authorising writes partway through (`401` on `git-receive-pack`), so the
+commits could not be pushed normally. The two commits are carried here as a
+gzip+base64 patch, split across `phase1-2-patch/part_*.b64`.
 
 ## Apply
 
 ```bash
 git checkout claude/solarsystem-repo-analysis-n58f8n
-git am phase1-2-series.patch
+cat phase1-2-patch/part_*.b64 | base64 -d | gunzip > phase1-2-series.patch
+git am --keep-cr phase1-2-series.patch
 ```
 
-That reproduces two commits:
+`--keep-cr` is **required**. `index.html` uses CRLF line endings, and `git am`
+runs patches through `git mailinfo`, which strips trailing CR by default — the
+patch then fails with `patch does not apply` at `index.html:288`. (You will see
+a harmless `warning: quoted CRLF detected`.)
+
+Verified end-to-end from these hosted parts: the reassembled patch is
+byte-identical to the original (SHA-256
+`71c110460af909a58a67f57b3cb517102ba961407969fe61a3cea454668ad6c9`), applies to
+`c712426`, and reproduces an `index.html` byte-identical to the tested build.
+
+That yields two commits, **+987 / −14** to `index.html`:
 
 1. **Phase 0+1** — WebGL2 context and volumetric lit-dust renderer
 2. **Phase 2** — GPU-resident particle-mesh layer with emergent spiral structure
 
-Net change to `index.html`: **+987 / −14**.
+Once applied, `phase1-2-patch/` and this file can be deleted — they only exist
+to move the work across the credential failure.
 
 ## What the work does
 
