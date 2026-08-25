@@ -374,6 +374,9 @@
         <input type="range" id="filSharpSlider" min="0.5" max="6" step="0.1" value="3.4">
         <label for="filTwistSlider">Shear / Winding: <span id="filTwistValue">1.4</span></label>
         <input type="range" id="filTwistSlider" min="0" max="6" step="0.1" value="1.4">
+        <label for="dustEmission">Thermal Dust Glow: <span id="dustEmissionValue">100%</span></label>
+        <input type="range" id="dustEmission" min="0" max="300" step="5" value="100">
+        <div class="help-text" style="margin-bottom:6px;">Starlight the dust absorbs is re-radiated as heat. Invisible in the optical, where 20-60 K dust emits essentially nothing &mdash; switch the instrument to <strong>Infrared</strong> and the lanes go from the darkest thing on screen to the brightest, warm dust beside young clusters glowing blue-white and cold outer dust deep red.</div>
         <label for="volDensity">Volume Density: <span id="volDensityValue">100%</span></label>
         <input type="range" id="volDensity" min="0" max="300" step="5" value="100">
         <label for="volQuality">Raymarch Quality: <span id="volQualityValue">44</span></label>
@@ -1325,14 +1328,21 @@
 
     function setSpectroscopyTarget(star) { spectroscopyTarget = star; }
 
+    // dustExt is A(lambda)/A(V) for the three DISPLAY channels of each mode, from the standard
+    // R_V = 3.1 interstellar extinction curve -- extinction falls roughly as 1/lambda, so the
+    // infrared really does see through the lanes (~1/9th of visual) while the ultraviolet is
+    // shredded by them. dustEmit is how much thermal dust emission that band picks up: dust at
+    // 20-60 K radiates essentially nothing in the optical and dominates the far-infrared.
+    // X-ray attenuation is photoelectric absorption by metals rather than grain extinction, so
+    // it gets a modest grey value; at radio wavelengths dust is simply transparent.
     const OBSERVATION_MODES = {
-        visible: { name: "Visible", desc: "Hubble-like optical imaging. Preserves color, reveals dust lanes via extinction, adds subtle diffraction.", psfCore: 60.0, psfHalo: 8.0, bloomStrength: 0.3, noiseStrength: 0.03, diffraction: 1.0, sparseMode: 0.0, bgFloor: [0.01, 0.015, 0.02], exposureGain: 1.0, exposureShoulder: 1.5 },
-        telescope: { name: "Real Telescope", desc: "Restrained long-exposure optical telescope view: smoother surface brightness, muted color, limited bloom, faint sensor noise and fewer resolved galaxy stars.", psfCore: 74.0, psfHalo: 13.5, bloomStrength: 0.08, noiseStrength: 0.012, diffraction: 0.18, sparseMode: 0.0, bgFloor: [0.006, 0.007, 0.010], exposureGain: 0.78, exposureShoulder: 2.35 },
-        infrared: { name: "Infrared", desc: "JWST-like view. Penetrates dust, highlights warm gas/dust emission, softens point sources.", psfCore: 35.0, psfHalo: 5.0, bloomStrength: 0.6, noiseStrength: 0.06, diffraction: 0.4, sparseMode: 0.0, bgFloor: [0.04, 0.01, 0.005], exposureGain: 1.3, exposureShoulder: 1.2 },
-        ultraviolet: { name: "Ultraviolet", desc: "GALEX-like view. Traces recent star formation and hot/young populations. Highly attenuated by dust.", psfCore: 50.0, psfHalo: 10.0, bloomStrength: 0.2, noiseStrength: 0.12, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.005, 0.005, 0.015], exposureGain: 1.5, exposureShoulder: 2.0 },
-        xray: { name: "X-Ray", desc: "Chandra-like view. Sparse event rendering. Reveals only highly energetic sources (AGN, jets, remnants).", psfCore: 80.0, psfHalo: 15.0, bloomStrength: 0.0, noiseStrength: 0.4, diffraction: 0.0, sparseMode: 1.0, bgFloor: [0.0, 0.0, 0.0], exposureGain: 2.0, exposureShoulder: 1.0 },
-        radio: { name: "Radio / Cold Gas", desc: "False-color H I style cold-gas map. Stars are suppressed while neutral/cold gas structure is highlighted in cyan-green.", psfCore: 95.0, psfHalo: 18.0, bloomStrength: 0.02, noiseStrength: 0.018, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.0, 0.006, 0.006], exposureGain: 1.1, exposureShoulder: 1.8 },
-        spectroscopy: { name: "Spectroscopy", desc: "Synthetic spectral analysis. Select an object to generate a readout.", psfCore: 60.0, psfHalo: 5.0, bloomStrength: 0.1, noiseStrength: 0.0, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.0, 0.0, 0.0], exposureGain: 0.8, exposureShoulder: 1.0 }
+        visible: { name: "Visible", desc: "Hubble-like optical imaging. Preserves color, reveals dust lanes via extinction, adds subtle diffraction.", psfCore: 60.0, psfHalo: 8.0, bloomStrength: 0.3, noiseStrength: 0.03, diffraction: 1.0, sparseMode: 0.0, bgFloor: [0.01, 0.015, 0.02], exposureGain: 1.0, exposureShoulder: 1.5, dustExt: [0.75, 1.00, 1.32], dustEmit: 0.0 },
+        telescope: { name: "Real Telescope", desc: "Restrained long-exposure optical telescope view: smoother surface brightness, muted color, limited bloom, faint sensor noise and fewer resolved galaxy stars.", psfCore: 74.0, psfHalo: 13.5, bloomStrength: 0.08, noiseStrength: 0.012, diffraction: 0.18, sparseMode: 0.0, bgFloor: [0.006, 0.007, 0.010], exposureGain: 0.78, exposureShoulder: 2.35, dustExt: [0.75, 1.00, 1.32], dustEmit: 0.0 },
+        infrared: { name: "Infrared", desc: "JWST-like view. Penetrates dust, highlights warm gas/dust emission, softens point sources.", psfCore: 35.0, psfHalo: 5.0, bloomStrength: 0.6, noiseStrength: 0.06, diffraction: 0.4, sparseMode: 0.0, bgFloor: [0.04, 0.01, 0.005], exposureGain: 1.3, exposureShoulder: 1.2, dustExt: [0.11, 0.18, 0.28], dustEmit: 1.0 },
+        ultraviolet: { name: "Ultraviolet", desc: "GALEX-like view. Traces recent star formation and hot/young populations. Highly attenuated by dust.", psfCore: 50.0, psfHalo: 10.0, bloomStrength: 0.2, noiseStrength: 0.12, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.005, 0.005, 0.015], exposureGain: 1.5, exposureShoulder: 2.0, dustExt: [1.90, 2.70, 2.90], dustEmit: 0.0 },
+        xray: { name: "X-Ray", desc: "Chandra-like view. Sparse event rendering. Reveals only highly energetic sources (AGN, jets, remnants).", psfCore: 80.0, psfHalo: 15.0, bloomStrength: 0.0, noiseStrength: 0.4, diffraction: 0.0, sparseMode: 1.0, bgFloor: [0.0, 0.0, 0.0], exposureGain: 2.0, exposureShoulder: 1.0, dustExt: [0.25, 0.25, 0.25], dustEmit: 0.0 },
+        radio: { name: "Radio / Cold Gas", desc: "False-color H I style cold-gas map. Stars are suppressed while neutral/cold gas structure is highlighted in cyan-green.", psfCore: 95.0, psfHalo: 18.0, bloomStrength: 0.02, noiseStrength: 0.018, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.0, 0.006, 0.006], exposureGain: 1.1, exposureShoulder: 1.8, dustExt: [0.02, 0.02, 0.02], dustEmit: 0.0 },
+        spectroscopy: { name: "Spectroscopy", desc: "Synthetic spectral analysis. Select an object to generate a readout.", psfCore: 60.0, psfHalo: 5.0, bloomStrength: 0.1, noiseStrength: 0.0, diffraction: 0.0, sparseMode: 0.0, bgFloor: [0.0, 0.0, 0.0], exposureGain: 0.8, exposureShoulder: 1.0, dustExt: [0.75, 1.00, 1.32], dustEmit: 0.0 }
     };
     
     let currentModeId = 'visible'; let currentMode = OBSERVATION_MODES[currentModeId];
@@ -1532,6 +1542,7 @@
     // a low cut on the lane field, so 80% coverage is a cut of 0.20.
     document.getElementById('filCoverageSlider').addEventListener('input',(e)=>{ filCoverage=1-parseFloat(e.target.value)/100; document.getElementById('filCoverageValue').textContent=e.target.value+'%'; });
     document.getElementById('filTwistSlider').addEventListener('input',(e)=>{ filTwist=parseFloat(e.target.value); document.getElementById('filTwistValue').textContent=e.target.value; });
+    document.getElementById('dustEmission').addEventListener('input',(e)=>{ dustEmissionMult=parseFloat(e.target.value)/100; document.getElementById('dustEmissionValue').textContent=e.target.value+'%'; });
     document.getElementById('volDensity').addEventListener('input',(e)=>{ volDensityMult=parseFloat(e.target.value)/100; document.getElementById('volDensityValue').textContent=e.target.value+'%'; });
     document.getElementById('volQuality').addEventListener('input',(e)=>{ volSteps=parseInt(e.target.value); document.getElementById('volQualityValue').textContent=e.target.value; });
     document.getElementById('renderQuality').addEventListener('change',(e)=>{ renderScaleSetting=e.target.value; applyRenderScale(); });
@@ -1586,6 +1597,19 @@
     // Gain applied to the stored gas density before it is compared with uEnvPivot. Used on
     // both sides of that comparison, so it must not be written twice.
     const FIL_ENV_GAIN = 1.8;
+    // Scales the physical extinction curve to the visual density this renderer was tuned at.
+    // 0.80 x the R_V=3.1 optical triple reproduces the previous hand-picked (0.62,0.82,1.0).
+    const FIL_EXT_SCALE = 0.80;
+    const FIL_DUST_T0 = 18.0;      // equilibrium dust temperature (K) at the typical field
+    // Instrument gain for the thermal band. The STRUCTURE of the emission is fully determined
+    // -- brightness is density x local field by energy conservation, colour by temperature --
+    // but the overall exposure of a band is free, exactly as it is on a real detector, since
+    // the display units here are arbitrary. Measured: at a gain of 20 a typical dust column
+    // added ~0.08 of full scale, so ~100 puts it at ~0.4 -- a dominant feature of the infrared
+    // image without saturating it. This is the one number here set by eye rather than derived;
+    // the "Thermal Dust Glow" slider spans 0-3x on top of it.
+    const FIL_EMIT_SCALE = 100.0;
+    let dustEmissionMult = 1.0;    // "Thermal Dust Glow" slider
     const FIL_REF_MEAN = 0.12; // mean of the old single-scale field; the density scale's origin
     // Extinction per unit path at 100% Volume Density. Sized so a face-on disc reaches an
     // optical depth around 0.5 in its lanes -- visibly dark, still translucent.
@@ -2688,7 +2712,7 @@
     let volMinW = [0,0,0], volMaxW = [1,1,1];
     // EMA-smoothed normalisation: keeps 8-bit encoding stable frame to frame
     // (a per-frame max would make the whole volume flicker as bright stars move).
-    let volLightRef = 1.0, volDensRef = 1.0, volEnvMean = 0.25;
+    let volLightRef = 1.0, volDensRef = 1.0, volEnvMean = 0.25, volLightMeanDusty = 1e-3;
     let volFrame = 0;
 
     const vsVolSrc = `#version 300 es
@@ -2718,6 +2742,8 @@ uniform float uVflat, uRc;                // fitted rotation curve -> local angu
 // Envelope value treated as "average gas": above it the lane threshold drops and filaments
 // fill in, below it they thin out. Measured from the volume itself so overall opacity holds.
 uniform float uEnvPivot;
+uniform float uPass;                      // 0 = extinction (multiply), 1 = emission (add)
+uniform float uEmitGain, uUScale, uTd0;   // thermal dust emission
 uniform float uEnvMix, uEnvGain;          // how strongly simulated gas modulates the field
 uniform vec3 uExtCol;                     // per-channel extinction weights (blue absorbed most)
 
@@ -2777,6 +2803,29 @@ float filamentField(vec3 pLane, vec3 pMat, float cut){
     thread *= mix(1.0, grain, uGrainMix);
   }
   return lane * thread;
+}
+
+// Modified blackbody, emissivity ~ nu^beta with beta = 2. Only the RATIOS between bands are
+// used -- the total emitted power is fixed by energy conservation, not by this -- so every
+// constant in front cancels and the exponent is all that matters.
+float mbb(float lamUm, float T){
+  float x = 14387.7 / max(lamUm * T, 1e-3);      // h*nu/(k*T)
+  return pow(1.0 / lamUm, 5.0) / (exp(min(x, 60.0)) - 1.0);
+}
+
+// Local starlight energy density, decoded from the volume. Stored sqrt-encoded relative to the
+// brightest voxel, so squaring recovers it; uUScale renormalises so a typical dusty voxel
+// sits near 1 whatever the galaxy's absolute luminosity happens to be.
+float radiationField(vec3 p){
+  vec3 uvw = (p - uVolMin) / max(uVolMax - uVolMin, vec3(1e-4));
+  if (any(lessThan(uvw, vec3(0.0))) || any(greaterThan(uvw, vec3(1.0)))) return 0.0;
+  // Mip 0 deliberately. The volume is sqrt-encoded, and averaging square roots before
+  // squaring them destroys concentrated light -- eight voxels with one lit decode to L/64,
+  // which silently cost this term a factor of ~40 when it sampled mip 1. Mip 0 also IS the
+  // right quantity: dust is heated by the local field, not a blurred one.
+  vec3 lc = textureLod(uVol, uvw, 0.0).rgb;
+  lc *= lc;
+  return dot(lc, vec3(0.30, 0.59, 0.11)) * uUScale;
 }
 
 float dustDensity(vec3 p){
@@ -2863,16 +2912,37 @@ void main(){
   // most, reproduces the warm brown of the sprite dust while the structure comes from the
   // filament field above.
   vec3 tau = vec3(0.0);
+  vec3 emit = vec3(0.0);
   for (int i = 0; i < 128; i++) {
     if (float(i) >= steps) break;
     vec3 p = ro + rd * t;
     float dens = dustDensity(p);
-    if (dens > 1e-5) tau += dens * uExtCol * dt;
+    if (dens > 1e-5) {
+      if (uPass > 0.5) {
+        // Whatever starlight the dust absorbs has to come back out. The total is therefore
+        // fixed by energy conservation -- brightness ~ (dust) x (local field) -- and only the
+        // COLOUR is free, set by the equilibrium temperature: absorbed ~ emitted ~ T^(4+beta)
+        // gives T ~ U^(1/6). Warm dust beside young clusters peaks short and reads blue-white;
+        // cold outer dust peaks long and reads deep red.
+        float U = radiationField(p);
+        if (U > 1e-5) {
+          float Td = clamp(uTd0 * pow(U, 1.0 / 6.0), 6.0, 150.0);
+          vec3 band = vec3(mbb(160.0, Td), mbb(100.0, Td), mbb(70.0, Td));
+          band /= max(band.r + band.g + band.b, 1e-20);
+          emit += band * (dens * U) * exp(-tau) * dt;   // self-absorbed on the way out
+        }
+      }
+      tau += dens * uExtCol * dt;
+    }
     if (tau.b > 12.0) break;              // saturated; nothing below will show through
     t += dt;
   }
-  vec3 T = exp(-tau * uExposure);
-  fragColor = vec4(clamp(T, 0.0, 1.0), 1.0);
+  if (uPass > 0.5) {
+    fragColor = vec4(max(emit * uEmitGain, 0.0), 1.0);
+  } else {
+    vec3 T = exp(-tau * uExposure);
+    fragColor = vec4(clamp(T, 0.0, 1.0), 1.0);
+  }
 }`;
 
     function initVolumetrics() {
@@ -2896,7 +2966,8 @@ void main(){
                 uCoverage: U('uCoverage'), uSharpLane: U('uSharpLane'), uFineScale: U('uFineScale'),
                 uGrainScale: U('uGrainScale'), uGrainMix: U('uGrainMix'),
                 uSimTime: U('uSimTime'), uPatternAngle: U('uPatternAngle'),
-                uVflat: U('uVflat'), uRc: U('uRc'), uEnvPivot: U('uEnvPivot') };
+                uVflat: U('uVflat'), uRc: U('uRc'), uEnvPivot: U('uEnvPivot'),
+                uPass: U('uPass'), uEmitGain: U('uEmitGain'), uUScale: U('uUScale'), uTd0: U('uTd0') };
 
             volLight = new Float32Array(VOL_VOXELS * 3);
             volDens  = new Float32Array(VOL_VOXELS);
@@ -3138,7 +3209,7 @@ void main(){
         // centres its gas coupling on this, so "denser than usual -> more dust" stays true
         // whatever the gas mass, galaxy size or dust bias happen to be. Averaging over ALL
         // voxels would be dominated by the empty box around the disc.
-        let occSum = 0, occN = 0;
+        let occSum = 0, occN = 0, lumSum = 0;
         const OCC_MIN = 0.01;
         for (let i=0;i<VOL_VOXELS;i++){
             const o=i*3, q=i*4;
@@ -3148,13 +3219,22 @@ void main(){
             const sig = volDens[i] * invVoxVol;      // 1/length
             if (sig > dMax) dMax = sig; dSum += sig;
             const a = Math.min(1, sig / VOL_SIGMA_REF);
-            if (a > OCC_MIN) { occSum += a; occN++; }
+            if (a > OCC_MIN) {
+                occSum += a; occN++;
+                // starlight energy density in the SAME voxels, in the shader's decoded units
+                lumSum += (volLight[o]*0.30 + volLight[o+1]*0.59 + volLight[o+2]*0.11) * invL;
+            }
             volBytes[q+3] = (a * 255)|0;
         }
         // Smoothed so a transient (a supernova clearing a region) shifts the coupling rather
         // than rescaling the whole galaxy for one frame.
         const occMean = occN ? occSum / occN : 0.25;
         volEnvMean = volEnvMean * 0.85 + occMean * 0.15;
+        // Same idea for the radiation field: the dust temperature must not depend on how
+        // luminous this particular galaxy happens to be, so U is renormalised to ~1 in a
+        // typical dusty voxel.
+        const lumMean = occN ? lumSum / occN : 1e-3;
+        volLightMeanDusty = volLightMeanDusty * 0.85 + Math.max(lumMean, 1e-9) * 0.15;
         volDensRef = VOL_SIGMA_REF;
         volDbg = { sigMax: dMax, sigMean: dSum / VOL_VOXELS, lightMax: lMax };
         gl.bindTexture(gl.TEXTURE_3D, volTex);
@@ -3328,7 +3408,11 @@ void main(){
         gl.uniform1f(VL.uEnvPivot, Math.min(1.9, Math.max(0.05, volEnvMean * FIL_ENV_GAIN)));
         gl.uniform1f(VL.uEnvMix, filEnvMix);
         gl.uniform1f(VL.uEnvGain, FIL_ENV_GAIN);
-        gl.uniform3f(VL.uExtCol, 0.62, 0.82, 1.0);   // blue absorbed most -> warm brown lanes
+        // Dust optics for the CURRENT instrument. FIL_EXT_SCALE ties the physical extinction
+        // curve to the visual density this renderer was tuned at, so optical looks as before
+        // while the other bands now differ from it the way they really do.
+        const _opt = (currentMode && currentMode.dustExt) ? currentMode.dustExt : [0.75, 1.00, 1.32];
+        gl.uniform3f(VL.uExtCol, _opt[0]*FIL_EXT_SCALE, _opt[1]*FIL_EXT_SCALE, _opt[2]*FIL_EXT_SCALE);
         // Stored A is 0..1 of volDensRef, which is a sum of per-cloud optical depths in a voxel.
         // Dividing by the voxel edge converts that to optical depth PER WORLD UNIT, which is what
         // the raymarch integrates over. Without this the exponent scales with step size (opaque).
@@ -3341,6 +3425,9 @@ void main(){
         gl.uniform1f(VL.uDensScale, FIL_DENSITY * volDensityMult * FIL_REF_MEAN / Math.max(_mean, 1e-5));
         gl.uniform1f(VL.uSteps, volSteps);
         gl.uniform1f(VL.uExposure, 1.0);
+        gl.uniform1f(VL.uUScale, 1.0 / Math.max(volLightMeanDusty, 1e-9));
+        gl.uniform1f(VL.uTd0, FIL_DUST_T0);
+        gl.uniform1f(VL.uEmitGain, dustEmissionMult * FIL_EMIT_SCALE);
         gl.enable(gl.BLEND);
         // Pure multiplicative extinction: dst *= T, per channel, so lanes redden what is
         // behind them instead of greying it. Alpha untouched so this canvas still composites
@@ -3349,7 +3436,18 @@ void main(){
         gl.bindBuffer(gl.ARRAY_BUFFER, volQuadVBO);
         gl.vertexAttribPointer(VL.aQuad, 2, gl.FLOAT, false, 0, 0);
         gl.enableVertexAttribArray(VL.aQuad);
+        gl.uniform1f(VL.uPass, 0.0);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
+        // Emission is a SECOND pass because the result is dst*T + E, and no single blend can
+        // produce both a per-channel multiply and an add from one output. It only runs in bands
+        // where dust actually radiates, so the optical view costs exactly what it did before.
+        const _emit = (currentMode && currentMode.dustEmit) || 0.0;
+        if (_emit > 0.001 && dustEmissionMult > 0.001) {
+            gl.uniform1f(VL.uEmitGain, dustEmissionMult * _emit * FIL_EMIT_SCALE);
+            gl.uniform1f(VL.uPass, 1.0);
+            gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ZERO, gl.ONE);
+            gl.drawArrays(gl.TRIANGLES, 0, 3);
+        }
         gl.disableVertexAttribArray(VL.aQuad);
         gl.bindTexture(gl.TEXTURE_3D, null);
         gl.useProgram(program);
@@ -7870,6 +7968,7 @@ void main(){
         { id:'tglVolumetric', kind:'check', evt:'change', group:'Cinematic', label:'Filament Dust' },
         { id:'filFreqSlider', kind:'range', evt:'input', group:'Cinematic', label:'Filament Fineness' },
         { id:'filCoverageSlider', kind:'range', evt:'input', group:'Cinematic', label:'Lane Coverage' },
+        { id:'dustEmission', kind:'range', evt:'input', group:'Cinematic', label:'Thermal Dust Glow' },
         { id:'filSharpSlider', kind:'range', evt:'input', group:'Cinematic', label:'Thread Definition' },
         { id:'filTwistSlider', kind:'range', evt:'input', group:'Cinematic', label:'Filament Shear' },
         { id:'volDensity', kind:'range', evt:'input', group:'Cinematic', label:'Volumetric Density' },

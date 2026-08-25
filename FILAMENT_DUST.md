@@ -115,6 +115,73 @@ The noise supplies *texture*, not *arms*. Two things place it:
   N-body run modulates the field, so lanes follow the arms the simulation produced rather
   than a pattern painted on top of it.
 
+## Wavelength: the dust is different in every instrument
+
+Extinction used to be a frozen `(0.62, 0.82, 1.0)` regardless of the selected instrument — so
+the filter labelled *Infrared (Dust Pen.)* did not, in fact, penetrate dust. Each observation
+mode now carries its own `dustExt`, the standard R_V = 3.1 interstellar extinction curve
+sampled at that band's three display channels:
+
+| mode | A(λ)/A(V) | what you see |
+|---|---|---|
+| Visible / Telescope | 0.75, 1.00, 1.32 | warm brown lanes (unchanged) |
+| Infrared | 0.11, 0.18, 0.28 | lanes dissolve; stars behind them appear |
+| Ultraviolet | 1.90, 2.70, 2.90 | disc shredded into fragments |
+| X-ray | 0.25 grey | photoelectric absorption by metals, not grain extinction |
+| Radio | ~0 | dust is simply transparent |
+
+`FIL_EXT_SCALE = 0.80` ties the physical curve to the visual density this renderer was tuned
+at, so the optical view is unchanged while every other band now differs from it the way it
+really does.
+
+## Thermal emission: closing the energy loop
+
+`buildLightVolume` already deposited every star's luminosity, with Planck colours, into
+`uVol.rgb` and mipmapped it — and the raymarch read only `.a`. A whole radiation field was
+computed each frame and discarded.
+
+It now drives dust emission, because starlight the dust absorbs has to come back out:
+
+- **Brightness is not a free parameter.** Emitted power equals absorbed power, so it is
+  `density × local field` and nothing else. No gain was invented for it.
+- **Only the colour is free**, and it is set by the equilibrium temperature. Absorbed ≈ emitted
+  ≈ T^(4+β) gives `T ∝ U^(1/6)` (β = 2), around 18 K in the typical field and rising near young
+  clusters. A modified blackbody at 160 / 100 / 70 µm — Herschel's bands — maps that
+  temperature onto the three display channels, so warm dust reads blue-white and cold outer
+  dust deep red. Only the ratios matter, so every constant in front cancels.
+- Emission is **self-absorbed** on the way to the camera, using the optical depth already
+  accumulated along the ray.
+- `U` is renormalised to ~1 in a typical dusty voxel, measured from the volume like the
+  envelope pivot, so dust temperature does not depend on how luminous the galaxy happens to be.
+
+In the optical this contributes essentially nothing, which is correct — 20–60 K dust does not
+glow at 550 nm. In the infrared it becomes a major feature of the image.
+
+One caveat worth recording: `FIL_EMIT_SCALE` is the single number here set by eye rather than
+derived. Everything about the emission's *structure* is fixed — brightness by energy
+conservation, colour by temperature — but a band's overall exposure is genuinely free, as it
+is on a real detector, because the display units are arbitrary. It was set from a measurement
+(at a gain of 20 a typical dust column added ~0.08 of full scale), and the **Thermal Dust
+Glow** slider spans 0–3x on top of it.
+
+### Two things that nearly shipped broken here
+
+- The emission first sampled the light volume at **mip 1**. That volume is `sqrt`-encoded, and
+  averaging square roots before squaring them destroys concentrated light — eight voxels with
+  one lit decode to `L/64`. It silently cost the term a factor of ~40, and the CPU calibration
+  never saw it because that measured raw voxels. It samples mip 0 now, which is also the
+  physically right quantity: dust is heated by the *local* field, not a blurred one.
+- The first visual check appeared to show glowing dust in the infrared. It did not — that was
+  the infrared mode's own colour grade. Only toggling the emission on and off at a fixed
+  camera, and differencing, showed the truth. Any future change here should be verified by
+  differencing, never by looking at one frame.
+
+**Why two passes.** The composite is `dst·T + E`, and no single blend function can produce a
+per-channel multiply *and* an add from one output: `SRC_COLOR` as the destination factor and
+`ONE` as the source factor both read the same `src.rgb`. So extinction and emission are drawn
+separately. The emission pass only runs in bands where dust actually radiates, so the optical
+view costs exactly what it did before.
+
 ## Colour
 
 Optical depth accumulates **per channel** (`uExtCol = (0.62, 0.82, 1.0)`, blue absorbed most)
@@ -131,6 +198,7 @@ untouched so the WebGL canvas still composites over the background-universe canv
 | Lane Coverage | `filCoverage` | inverted: 38% coverage is a cut of 0.62 |
 | Thread Definition | `filSharp` | higher = thinner, harder threads |
 | Shear / Winding | `filTwist` | static wrap; 0 = none, 6 = tight spiral |
+| Thermal Dust Glow | `dustEmissionMult` | re-radiated starlight; visible in Infrared |
 | Volume Density | `volDensityMult` | overall opacity |
 | Raymarch Quality | `volSteps` | step count; lower it on weak GPUs |
 
