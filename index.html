@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+  <meta name="color-scheme" content="dark"/>
   <title>Galaxy Simulation – Observatory Edition v16.0 (Thin Disk Dynamics)</title>
   <style>
     :root {
@@ -59,7 +60,8 @@
     /* --- SIMULATION CANVAS --- */
     #sim-container { position: relative; flex: 1; height: 100%; background: var(--bg-dark); }
     #background-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
-    #simulation { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+    #simulation { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1;
+      touch-action: none; -webkit-tap-highlight-color: transparent; }
     #overlay-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
 
     /* --- HUD --- */
@@ -202,12 +204,116 @@
     
     .status-badge { background: rgba(221,115,115,0.14); border: 1px solid var(--accent-red); color: #f0b8b8; padding: 4px 8px; border-radius: 4px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em; }
     .status-badge::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-red); margin-right: 7px; vertical-align: middle; }
+    /* ================================================================
+       MOBILE
+       The desktop layout is a 320px sidebar beside the canvas, which on a phone
+       leaves a strip of galaxy. Below 900px the sidebar becomes an off-canvas
+       drawer over the full-bleed canvas, and the four actions people actually
+       reach for get a thumb bar pinned to the bottom.
+       ================================================================ */
+    #m-bar, #m-scrim, #m-close { display: none; }
+
+    @media (max-width: 900px), (pointer: coarse) and (max-width: 1100px) {
+      /* dvh so the bar is not hidden behind a mobile browser's URL chrome */
+      html, body { height: 100dvh; overscroll-behavior: none; }
+      body { -webkit-text-size-adjust: 100%; }
+
+      #controls {
+        position: fixed; top: 0; left: 0; bottom: 0;
+        width: min(86vw, 340px);
+        transform: translateX(-102%);
+        padding-bottom: calc(24px + env(safe-area-inset-bottom));
+        z-index: 60; box-shadow: 4px 0 26px rgba(0,0,0,0.85);
+        -webkit-overflow-scrolling: touch;
+        /* The render loop owns the main thread on a phone, so hand the slide to the
+           compositor -- otherwise the drawer visibly steps instead of sliding. */
+        will-change: transform;
+      }
+      body.m-drawer-open #controls { transform: translateX(0); }
+      /* The drawer covers the bar that opened it, so it carries its own dismiss. */
+      #m-close {
+        display: block; position: sticky; top: 0; margin: -15px -15px 8px auto;
+        width: 46px; height: 46px; font-size: 18px; line-height: 1;
+        background: var(--bg-panel); color: var(--text-muted);
+        border: none; border-bottom: 1px solid var(--border-color);
+        border-left: 1px solid var(--border-color); border-bottom-left-radius: 8px;
+        cursor: pointer; z-index: 2; -webkit-tap-highlight-color: transparent;
+      }
+      #m-close:active { color: #fff; background: var(--bg-hover); }
+      /* presentation mode already translates the sidebar away; keep it off-canvas here */
+      body.presentation-mode #controls { transform: translateX(-102%); }
+
+      #m-scrim {
+        display: block; position: fixed; inset: 0; z-index: 55;
+        background: rgba(0,0,0,0.55); backdrop-filter: blur(2px);
+      }
+      #m-scrim[hidden] { display: none; }
+
+      #sim-container { width: 100vw; }
+
+      /* --- thumb bar --- */
+      #m-bar {
+        display: flex; position: absolute; left: 0; right: 0; bottom: 0; z-index: 40;
+        padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+        gap: 6px; background: rgba(11,14,19,0.92); backdrop-filter: blur(8px);
+        border-top: 1px solid var(--border-color);
+      }
+      .m-btn {
+        flex: 1; min-height: 48px; display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 2px;
+        background: var(--bg-header); color: var(--text-main);
+        border: 1px solid var(--border-color); border-radius: 8px;
+        font-size: 17px; line-height: 1; cursor: pointer;
+        -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+      }
+      .m-btn span { font-size: 10px; letter-spacing: .04em; color: var(--text-muted); text-transform: uppercase; }
+      .m-btn:active { background: var(--bg-hover); }
+      .m-btn.on { border-color: var(--accent-blue); color: #fff; }
+
+      /* --- HUD: compact, and out of the way unless asked for --- */
+      #hud {
+        top: 8px; left: 8px; right: 8px; max-width: none;
+        font-size: 11px; gap: 0;
+      }
+      .hud-card { padding: 5px 9px; flex: 1 1 auto; min-width: 0; }
+      .hud-card .hud-value { font-size: 12px; }
+      body:not(.m-hud-on) #hud { display: none; }
+
+      /* --- floating panels become full-width sheets above the bar --- */
+      #spectroscopy-panel, body.drawer-collapsed #sim-container #spectroscopy-panel {
+        left: 8px; right: 8px; width: auto; bottom: calc(72px + env(safe-area-inset-bottom)); top: auto;
+        max-height: 46vh;
+      }
+      #snapshots-wrapper, body.drawer-collapsed #snapshots-wrapper { display: none; }
+
+      /* --- touch targets: 44px minimum on everything interactive --- */
+      #controls input[type=range] { height: 34px; }
+      #controls input[type=range]::-webkit-slider-thumb { width: 26px; height: 26px; }
+      #controls input[type=range]::-moz-range-thumb { width: 26px; height: 26px; }
+      #controls input[type=checkbox] { width: 22px; height: 22px; }
+      #controls select, #controls button { min-height: 44px; font-size: 15px; }
+      #controls .checkbox-label { min-height: 40px; display: flex; align-items: center; gap: 10px; }
+      .group-header { padding: 14px 12px; font-size: 12px; }
+      /* iOS zooms the page when focusing a control smaller than 16px */
+      #controls input, #controls select, #controls textarea { font-size: 16px; }
+
+      #exitPresentationBtn { min-height: 44px; }
+      #interactionHint {
+        bottom: calc(76px + env(safe-area-inset-bottom));
+        /* the base rule centres it with translateX(-50%); spanning the width instead
+           means that transform would push it off the left edge */
+        left: 8px; right: 8px; transform: none;
+        max-width: none; font-size: 12px; text-align: center;
+      }
+    }
+
   </style>
 </head>
 <body class="drawer-collapsed">
   
   <!-- MAIN SIMULATION SIDEBAR -->
   <div id="controls">
+    <button id="m-close" aria-label="Close controls">&#10005;</button>
     
     <!-- Quick Controls Group -->
     <div class="control-group">
@@ -595,6 +701,17 @@
   <div id="sim-container">
     <button id="exitPresentationBtn">Exit Presentation (Esc)</button>
 
+    <!-- MOBILE CHROME: only rendered on small screens (see the media query).
+         The sidebar becomes an off-canvas drawer, and the actions people reach for
+         constantly get a thumb-height bar at the bottom of the screen. -->
+    <div id="m-scrim" hidden></div>
+    <div id="m-bar">
+      <button id="m-controls" class="m-btn" aria-label="Open controls">&#9776;<span>Controls</span></button>
+      <button id="m-pause" class="m-btn" aria-label="Play or pause">&#9208;<span>Pause</span></button>
+      <button id="m-restart" class="m-btn" aria-label="Restart simulation">&#8635;<span>Restart</span></button>
+      <button id="m-hud" class="m-btn" aria-label="Show or hide telemetry">&#9432;<span>Data</span></button>
+    </div>
+
     <!-- TELEMETRY HUD -->
     <div id="hud">
       <div class="hud-card"><div class="hud-label">Time Elapsed</div><div class="hud-value" id="hud-time">0 yr</div></div>
@@ -705,6 +822,79 @@
             }
         });
     });
+
+    // ================================================================
+    // MOBILE CHROME + PERFORMANCE PROFILE
+    // ================================================================
+    const IS_TOUCH_UI = window.matchMedia('(max-width: 900px), (pointer: coarse) and (max-width: 1100px)').matches;
+
+    // Drawer, scrim and the bottom thumb bar.
+    (function setupMobileChrome(){
+        const scrim = document.getElementById('m-scrim');
+        const openBtn = document.getElementById('m-controls');
+        const setDrawer = (open) => {
+            document.body.classList.toggle('m-drawer-open', open);
+            scrim.hidden = !open;
+            openBtn.classList.toggle('on', open);
+        };
+        openBtn.addEventListener('click', () => setDrawer(!document.body.classList.contains('m-drawer-open')));
+        scrim.addEventListener('click', () => setDrawer(false));
+        document.getElementById('m-close').addEventListener('click', () => setDrawer(false));
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setDrawer(false); });
+
+        // Mirror the real buttons rather than duplicating their logic, so the two stay in step.
+        document.getElementById('m-pause').addEventListener('click', () => {
+            document.getElementById('pauseSim').click();
+        });
+        document.getElementById('m-restart').addEventListener('click', () => {
+            document.getElementById('restartSim').click(); setDrawer(false);
+        });
+        const hudBtn = document.getElementById('m-hud');
+        hudBtn.addEventListener('click', () => {
+            const on = document.body.classList.toggle('m-hud-on');
+            hudBtn.classList.toggle('on', on);
+        });
+        // Telemetry starts hidden on a phone -- it covers a third of the screen otherwise.
+        if (!IS_TOUCH_UI) document.body.classList.add('m-hud-on');
+        else hudBtn.classList.remove('on');
+    })();
+
+    // Keep the thumb bar's pause label honest whichever button was pressed.
+    function syncMobilePauseLabel() {
+        const b = document.getElementById('m-pause');
+        if (!b) return;
+        b.firstChild.nodeValue = isPaused ? '\u25B6' : '\u23F8';
+        b.querySelector('span').textContent = isPaused ? 'Resume' : 'Pause';
+        b.classList.toggle('on', isPaused);
+    }
+
+    // A phone GPU is perhaps a twentieth of a desktop one, and the defaults here were
+    // chosen for a desktop. Rather than guess per device, apply one conservative profile
+    // whenever the touch layout is active; every value stays user-adjustable afterwards.
+    const MOBILE_PROFILE = {
+        starCount: '15000',      // 40000
+        dustDetail: '4000',      // 8000
+        volQuality: '20',        // 44 raymarch steps -- the single most expensive knob
+        tglHDRPipe: 'off',       // extra full-screen passes
+        tglGPUSim: 'off',        // second particle system
+        useObservationSynthesis: 'off',
+        showBackgroundUniverse: 'off',
+        renderQuality: '1'       // never supersample; also disables the idle 2x boost
+    };
+    function applyMobileProfile() {
+        for (const [id, v] of Object.entries(MOBILE_PROFILE)) {
+            const el = document.getElementById(id);
+            if (!el) continue;
+            if (el.type === 'checkbox') {
+                const want = (v === 'on');
+                if (el.checked !== want) { el.checked = want; el.dispatchEvent(new Event('change', { bubbles: true })); }
+            } else if (el.value !== v) {
+                el.value = v;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        }
+    }
 
     // Snapshot Drawer Toggle
     const snapWrapper = document.getElementById('snapshots-wrapper');
@@ -1277,12 +1467,18 @@
             hintEl.textContent = "Cinematic Track Active: Drag canvas to exit manual lock.";
         } else if (isPaused) {
             if (currentModeId === 'spectroscopy') {
-                hintEl.textContent = "Spectroscopy: Click a star to analyze. Shift+Click for astrometry.";
+                hintEl.textContent = IS_TOUCH_UI
+                    ? "Spectroscopy: tap a star to analyse."
+                    : "Spectroscopy: Click a star to analyze. Shift+Click for astrometry.";
             } else {
-                hintEl.textContent = "Analysis Mode: Click a star to inspect. Click a second for relative astrometry.";
+                hintEl.textContent = IS_TOUCH_UI
+                    ? "Analysis: tap a star to inspect, tap a second for relative astrometry."
+                    : "Analysis Mode: Click a star to inspect. Click a second for relative astrometry.";
             }
         } else {
-            hintEl.textContent = "Camera: Wheel to zoom, drag to pan, right-click drag to rotate.";
+            hintEl.textContent = IS_TOUCH_UI
+                ? "Camera: drag to pan \u00B7 pinch to zoom \u00B7 two fingers to orbit."
+                : "Camera: Wheel to zoom, drag to pan, right-click drag to rotate.";
         }
         hintEl.style.opacity = '1';
     }
@@ -7805,7 +8001,7 @@ void main(){
         isPaused = !isPaused; pauseSimButton.textContent = isPaused ? "Resume" : "Pause"; 
         glCanvas.style.cursor = isPaused ? "crosshair" : "default";
         if (!isPaused) { hoveredStar = null; currentMouseX = -1000; currentMouseY = -1000; isPopupCollapsed = true; } else { isPopupCollapsed = false; updateSciencePanels(true); }
-        updateInteractionHint();
+        updateInteractionHint(); syncMobilePauseLabel();
     });
     
     glCanvas.addEventListener('wheel',(e)=>{
@@ -7846,13 +8042,13 @@ void main(){
         }
     });
     
-    glCanvas.addEventListener('click', (e) => {
-        if (!isPaused) return; 
-        const dragDist = Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY);
-        if (dragDist > 5) return; 
+    // Selection, shared by mouse click and touch tap. Touch gets a larger pick radius
+    // because a fingertip is roughly 8mm across and cannot be aimed like a cursor.
+    function selectAtPoint(clientX, clientY, additive, coarse) {
         const rect = glCanvas.getBoundingClientRect();
+        const pickR = SCANNER_RADIUS * (coarse ? 2.4 : 1.0) * activeRenderScale;
         // DETAIL: map CSS-pixel click into backing-store space (== activeRenderScale) so selection works at any render quality
-        const clickedStar = getStarUnderCursor((e.clientX - rect.left) * activeRenderScale, (e.clientY - rect.top) * activeRenderScale, SCANNER_RADIUS * activeRenderScale);
+        const clickedStar = getStarUnderCursor((clientX - rect.left) * activeRenderScale, (clientY - rect.top) * activeRenderScale, pickR);
         
         if (!clickedStar) {
             astrometryTargets = [];
@@ -7863,7 +8059,7 @@ void main(){
         }
         
         if (currentModeId === 'spectroscopy') {
-            if (e.shiftKey || e.ctrlKey || e.metaKey) {
+            if (additive) {
                 toggleAstrometryTarget(clickedStar);
             } else {
                 setSpectroscopyTarget(clickedStar);
@@ -7879,7 +8075,105 @@ void main(){
         hoveredStar = clickedStar; 
         isPopupCollapsed = false; 
         refreshAnalysisUI();
+    }
+
+    glCanvas.addEventListener('click', (e) => {
+        if (!isPaused) return;
+        if (Math.hypot(e.clientX - dragStartX, e.clientY - dragStartY) > 5) return;
+        selectAtPoint(e.clientX, e.clientY, e.shiftKey || e.ctrlKey || e.metaKey, false);
     });
+
+    // ================================================================
+    // TOUCH
+    // The canvas had no touch handling at all, so on a phone it could not be panned,
+    // zoomed or rotated. Map-app conventions, because they are what a thumb expects:
+    //   one finger  drag  -> pan
+    //   two finger  pinch -> zoom about the midpoint
+    //   two finger  drag  -> orbit (what right-drag does with a mouse)
+    //   tap               -> select a star
+    // touch-action:none on the canvas stops the browser from scrolling the page instead.
+    // ================================================================
+    (function setupTouch(){
+        let pts = new Map();               // active touches
+        let mode = 0;                      // 0 none, 1 pan, 2 pinch/orbit
+        let startDist = 0, startScale = 1;
+        let lastCx = 0, lastCy = 0;
+        let tapX = 0, tapY = 0, tapTime = 0, moved = 0;
+
+        const centroid = () => {
+            let x = 0, y = 0;
+            for (const p of pts.values()) { x += p.x; y += p.y; }
+            const n = Math.max(pts.size, 1);
+            return { x: x / n, y: y / n };
+        };
+        const spread = () => {
+            const a = [...pts.values()];
+            return a.length < 2 ? 0 : Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y);
+        };
+
+        glCanvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            for (const t of e.changedTouches) pts.set(t.identifier, { x: t.clientX, y: t.clientY });
+            if (isDirectorMode) {
+                isDirectorMode = false; directorModeBtn.textContent = "Toggle Cinematic Track";
+                trackingTarget = null; updateInteractionHint();
+            }
+            const c = centroid();
+            lastCx = c.x; lastCy = c.y;
+            if (pts.size === 1) {
+                mode = 1; moved = 0;
+                tapX = c.x; tapY = c.y; tapTime = performance.now();
+            } else if (pts.size >= 2) {
+                mode = 2; startDist = spread() || 1; startScale = scale;
+            }
+        }, { passive: false });
+
+        glCanvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            for (const t of e.changedTouches) if (pts.has(t.identifier)) pts.set(t.identifier, { x: t.clientX, y: t.clientY });
+            const c = centroid();
+            const dx = c.x - lastCx, dy = c.y - lastCy;
+            moved += Math.hypot(dx, dy);
+
+            if (mode === 1) {
+                translateX += dx; translateY += dy;
+                if (moved > 8) isDragging = true;
+            } else if (mode === 2) {
+                // zoom from how far the fingers spread, about the point between them
+                const d = spread();
+                if (d > 0 && startDist > 0) {
+                    const nS = Math.max(0.01, Math.min(30, startScale * (d / startDist)));
+                    const r = glCanvas.getBoundingClientRect();
+                    const mx = c.x - r.left, my = c.y - r.top;
+                    translateX = mx - (mx - translateX) * (nS / scale);
+                    translateY = my - (my - translateY) * (nS / scale);
+                    scale = nS;
+                }
+                // and orbit from how the pair as a whole moved
+                rotationY += dx * 0.4;
+                rotationX = Math.max(-90, Math.min(90, rotationX + dy * 0.4));
+                isRotating = true;
+            }
+            lastCx = c.x; lastCy = c.y;
+        }, { passive: false });
+
+        function endTouch(e) {
+            e.preventDefault();
+            for (const t of e.changedTouches) pts.delete(t.identifier);
+            if (pts.size === 0) {
+                // a short, still contact is a tap: select whatever is under it
+                if (mode === 1 && moved < 12 && performance.now() - tapTime < 500 && isPaused) {
+                    selectAtPoint(tapX, tapY, false, true);
+                }
+                mode = 0; isDragging = false; isRotating = false;
+            } else if (pts.size === 1) {
+                mode = 1; moved = 999;          // never treat the tail of a pinch as a tap
+                const c = centroid(); lastCx = c.x; lastCy = c.y;
+            }
+        }
+        glCanvas.addEventListener('touchend', endTouch, { passive: false });
+        glCanvas.addEventListener('touchcancel', endTouch, { passive: false });
+    })();
 
     glCanvas.addEventListener('mouseout', () => { currentMouseX = -1000; currentMouseY = -1000; });
     glCanvas.addEventListener('contextmenu',e=>e.preventDefault());
@@ -8323,9 +8617,19 @@ void main(){
         }, 150);
     });
 
+    // Applied before the first initSimulation, so a phone never builds the 40k-star desktop
+    // default and then throws it away.
+    if (IS_TOUCH_UI) applyMobileProfile();
+
     if (isGL2) { initVolumetrics(); initGPUSim(); }
     initBackgroundUniverse(); onResize(); initSimulation(); requestAnimationFrame(draw);
-    updateInteractionHint();
+    updateInteractionHint(); syncMobilePauseLabel();
+
+    // The touch layout swaps in and out at 900px, so a rotation or a desktop window resize
+    // has to re-run the canvas sizing rather than leave a stale backing store.
+    window.addEventListener('resize', () => { clearTimeout(window.__mResizeT);
+        window.__mResizeT = setTimeout(onResize, 150); });
+    window.addEventListener('orientationchange', () => setTimeout(onResize, 350));
   </script>
 </body>
 </html>
